@@ -1,0 +1,36 @@
+appId: com.blcrushing.manager
+productName: BL Crusher Manager
+directories:
+  buildResources: build
+  output: release
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml,package-lock.json}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!{postcss.config.js,tailwind.config.js,components.json}'
+asarUnpack:
+  - resources/**
+  - '**/*.node'
+win:
+  executableName: BL Crusher Manager
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+nsis:
+  artifactName: ${name}-${version}-setup.${ext}
+  shortcutName: ${productName}
+  uninstallDisplayName: ${productName}
+  createDesktopShortcut: always
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+portable:
+  artifactName: ${name}-${version}-portable.${ext}
+npmRebuild: true

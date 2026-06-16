@@ -1,0 +1,36 @@
+# Dependencies
+node_modules
+
+# Build output / artifacts
+dist
+dist-server
+out
+release
+deploy
+*.tsbuildinfo
+electron.vite.config.js
+electron.vite.config.d.ts
+# Generated TypeScript emit (sources are .ts/.tsx; authored preload/index.d.ts is kept)
+src/main/**/*.js
+src/main/**/*.d.ts
+src/shared/**/*.js
+src/shared/**/*.d.ts
+src/preload/index.js
+
+# Databases (never commit business data)
+*.db
+*.db-shm
+*.db-wal
+data/
+
+# Archives / backups
+*.zip
+
+# Local / editor / tooling
+.claude/
+*.log
+.DS_Store
+
+# Secrets / env
+.env
+.env.*

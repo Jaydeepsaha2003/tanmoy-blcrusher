@@ -1,0 +1,18 @@
+# Render.com Blueprint — deploys the web app from the Dockerfile with a
+# persistent disk for the SQLite database.
+# Docs: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: bl-crusher-manager
+    runtime: docker
+    plan: starter            # 512 MB RAM is plenty; upgrade if needed
+    healthCheckPath: /healthz
+    envVars:
+      - key: BL_DB_DIR
+        value: /data
+      - key: SECURE_COOKIE
+        value: "1"
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1

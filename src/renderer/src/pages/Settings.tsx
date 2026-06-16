@@ -1,0 +1,392 @@
+import * as React from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { KeyRound, Trash2, AlertTriangle, Receipt, Plus, X, Factory, Pencil } from 'lucide-react'
+import { api } from '@/lib/api'
+import type { Plant } from '@shared/types'
+import { PageHeader, Page } from '@/components/layout'
+import {
+  Button,
+  Input,
+  Select,
+  Field,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Table,
+  THead,
+  TBody,
+  TR,
+  TH,
+  TD,
+  EmptyState
+} from '@/components/ui'
+import { useToast } from '@/components/toast'
+import { confirmDialog } from '@/components/confirm'
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+export function SettingsPage(): React.JSX.Element {
+  const qc = useQueryClient()
+  const toast = useToast()
+  const [current, setCurrent] = React.useState('')
+  const [next, setNext] = React.useState('')
+  const [confirm, setConfirm] = React.useState('')
+  const [loading, setLoading] = React.useState(false)
+  const [wipePassword, setWipePassword] = React.useState('')
+  const [wipeConfirm, setWipeConfirm] = React.useState('')
+  const [wiping, setWiping] = React.useState(false)
+  const [newType, setNewType] = React.useState('')
+
+  const { data: expenseTypes = [] } = useQuery({
+    queryKey: ['expenseTypes'],
+    queryFn: api.racks.expenseTypes
+  })
+  const { data: plants = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
+  const [plantForm, setPlantForm] = React.useState<Partial<Plant>>({ status: 'active' })
+
+  const { data: workdays } = useQuery({ queryKey: ['workdays'], queryFn: api.system.getWorkdays })
+  const offDays = new Set(workdays?.weekly_offs ?? [0])
+  const saveWorkdays = useMutation({
+    mutationFn: (arr: number[]) => api.system.setWorkdays(arr),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['workdays'] })
+      toast.success('Working days updated.')
+    },
+    onError: (e: Error) => toast.error(e.message)
+  })
+  function toggleOff(i: number): void {
+    const next = new Set(offDays)
+    if (next.has(i)) next.delete(i)
+    else next.add(i)
+    saveWorkdays.mutate([...next])
+  }
+
+  const savePlant = useMutation({
+    mutationFn: (p: Partial<Plant>) => (p.id ? api.plants.update(p) : api.plants.create(p)),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['plants'] })
+      setPlantForm({ status: 'active' })
+      toast.success('Plant saved.')
+    },
+    onError: (e: Error) => toast.error(e.message)
+  })
+
+  async function removePlant(p: Plant): Promise<void> {
+    const ok = await confirmDialog({ title: 'Delete plant', message: `Delete "${p.name}"?` })
+    if (!ok) return
+    const res = await api.plants.delete(p.id)
+    if (res.ok) {
+      qc.invalidateQueries({ queryKey: ['plants'] })
+      toast.success('Plant deleted.')
+    } else toast.error(res.error || 'Could not delete plant.')
+  }
+
+  async function addType(): Promise<void> {
+    const res = await api.racks.createExpenseType(newType)
+    if (res.ok) {
+      qc.invalidateQueries({ queryKey: ['expenseTypes'] })
+      setNewType('')
+      toast.success('Expense type added.')
+    } else toast.error(res.error || 'Could not add expense type.')
+  }
+
+  async function removeType(name: string): Promise<void> {
+    const ok = await confirmDialog({
+      title: 'Delete expense type',
+      message: `Remove "${name}" from the list? Existing rack expenses already using it are not affected.`
+    })
+    if (!ok) return
+    await api.racks.deleteExpenseType(name)
+    qc.invalidateQueries({ queryKey: ['expenseTypes'] })
+    toast.success('Expense type removed.')
+  }
+
+  async function wipe(): Promise<void> {
+    const ok = await confirmDialog({
+      title: 'Delete ALL data?',
+      message:
+        'This permanently deletes every record — plants, locations, suppliers, customers, transporters, purchases, productions, racks, sales, expenses, payments and the full movement history. This cannot be undone.',
+      confirmText: 'Yes, delete everything'
+    })
+    if (!ok) return
+    setWiping(true)
+    try {
+      const res = await api.system.wipeData(wipePassword)
+      if (res.ok) {
+        qc.clear()
+        setWipePassword('')
+        setWipeConfirm('')
+        toast.success('All data deleted. The application is now a fresh installation.')
+      } else toast.error(res.error || 'Could not delete data.')
+    } finally {
+      setWiping(false)
+    }
+  }
+
+  async function submit(e: React.FormEvent): Promise<void> {
+    e.preventDefault()
+    if (next !== confirm) {
+      toast.error('New passwords do not match.')
+      return
+    }
+    setLoading(true)
+    try {
+      const res = await api.auth.changePassword(current, next)
+      if (res.ok) {
+        toast.success('Password changed successfully.')
+        setCurrent('')
+        setNext('')
+        setConfirm('')
+      } else toast.error(res.error || 'Could not change password.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <>
+      <PageHeader title="Settings" description="Application settings, master lists and security" />
+      <Page>
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Change password */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <KeyRound size={18} /> Change Admin Password
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={submit} className="space-y-4">
+                <Field label="Current Password">
+                  <Input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} />
+                </Field>
+                <Field label="New Password" hint="At least 4 characters">
+                  <Input type="password" value={next} onChange={(e) => setNext(e.target.value)} />
+                </Field>
+                <Field label="Confirm New Password">
+                  <Input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+                </Field>
+                <Button type="submit" disabled={loading || !current || !next}>
+                  {loading ? 'Saving…' : 'Update Password'}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+
+          {/* Expense types */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Receipt size={18} /> Expense Types
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-xs text-muted-foreground">
+                These appear as suggestions when you add an expense to a rack. New types are also
+                saved automatically the first time you type them on a rack.
+              </p>
+              <div className="flex items-end gap-2">
+                <div className="flex-1">
+                  <Field label="New Expense Type">
+                    <Input
+                      value={newType}
+                      onChange={(e) => setNewType(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && newType.trim()) addType()
+                      }}
+                      placeholder="e.g. Railway Freight, Loading Labour"
+                    />
+                  </Field>
+                </div>
+                <Button onClick={addType} disabled={!newType.trim()}>
+                  <Plus size={16} /> Add
+                </Button>
+              </div>
+
+              {expenseTypes.length === 0 ? (
+                <EmptyState message="No expense types yet." />
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {expenseTypes.map((t) => (
+                    <span
+                      key={t}
+                      className="inline-flex items-center gap-1.5 rounded-full border bg-secondary px-3 py-1 text-sm text-secondary-foreground"
+                    >
+                      {t}
+                      <button
+                        onClick={() => removeType(t)}
+                        className="text-muted-foreground transition-colors hover:text-destructive"
+                        title="Remove"
+                      >
+                        <X size={14} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          {/* Working days (payroll) */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Receipt size={18} /> Payroll — Working Days
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                Tick the <b>weekly off</b> days. The remaining days are counted as working days when
+                calculating monthly salaries in Payroll.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {WEEKDAYS.map((w, i) => {
+                  const off = offDays.has(i)
+                  return (
+                    <button
+                      key={w}
+                      onClick={() => toggleOff(i)}
+                      className={
+                        'rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ' +
+                        (off
+                          ? 'border-destructive/40 bg-destructive/10 text-destructive'
+                          : 'border-input bg-card hover:bg-accent')
+                      }
+                    >
+                      {w}
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Off days: <b>{[...offDays].sort().map((i) => WEEKDAYS[i]).join(', ') || 'None'}</b>
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Plants */}
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Factory size={18} /> Plants
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Add or edit your crushing plants. Switch the active plant any time from the selector at
+              the top-right of every screen.
+            </p>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+              <Field label="Plant Name">
+                <Input value={plantForm.name || ''} onChange={(e) => setPlantForm({ ...plantForm, name: e.target.value })} />
+              </Field>
+              <Field label="Code">
+                <Input value={plantForm.code || ''} onChange={(e) => setPlantForm({ ...plantForm, code: e.target.value })} placeholder="e.g. P1" />
+              </Field>
+              <Field label="Location">
+                <Input value={plantForm.location || ''} onChange={(e) => setPlantForm({ ...plantForm, location: e.target.value })} />
+              </Field>
+              <Field label="Status">
+                <Select value={plantForm.status || 'active'} onChange={(e) => setPlantForm({ ...plantForm, status: e.target.value as Plant['status'] })}>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </Select>
+              </Field>
+              <div className="flex items-end gap-2">
+                <Button onClick={() => savePlant.mutate(plantForm)} disabled={!plantForm.name?.trim() || !plantForm.code?.trim()}>
+                  {plantForm.id ? 'Update' : <><Plus size={16} /> Add</>}
+                </Button>
+                {plantForm.id && (
+                  <Button variant="ghost" onClick={() => setPlantForm({ status: 'active' })}>Cancel</Button>
+                )}
+              </div>
+            </div>
+
+            {plants.length === 0 ? (
+              <EmptyState message="No plants yet. Add your first plant above." />
+            ) : (
+              <Table>
+                <THead>
+                  <TR>
+                    <TH>Name</TH>
+                    <TH>Code</TH>
+                    <TH>Location</TH>
+                    <TH>Status</TH>
+                    <TH className="text-right">Actions</TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {plants.map((p) => (
+                    <TR key={p.id}>
+                      <TD className="font-medium">{p.name}</TD>
+                      <TD className="font-mono text-xs">{p.code}</TD>
+                      <TD className="text-muted-foreground">{p.location || '-'}</TD>
+                      <TD className="capitalize text-muted-foreground">{p.status}</TD>
+                      <TD className="text-right">
+                        <Button variant="ghost" size="icon" onClick={() => setPlantForm(p)}>
+                          <Pencil size={15} />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => removePlant(p)}>
+                          <Trash2 size={15} className="text-destructive" />
+                        </Button>
+                      </TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Danger zone */}
+        <Card className="mt-6 max-w-2xl border-destructive/40">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 size={18} /> Danger Zone — Delete All Data
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-start gap-2.5 rounded-lg bg-destructive/10 px-3.5 py-3 text-xs leading-relaxed text-destructive">
+              <AlertTriangle size={26} className="shrink-0" />
+              <span>
+                Permanently deletes <b>every record</b> in the application — masters, purchases,
+                productions, racks, sales, ledgers, payments and stock history. Document numbering
+                restarts from 000001. Your password is kept. <b>This cannot be undone</b> — export
+                your reports first.
+              </span>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Admin Password">
+                <Input
+                  type="password"
+                  value={wipePassword}
+                  onChange={(e) => setWipePassword(e.target.value)}
+                />
+              </Field>
+              <Field label={'Type "DELETE" to confirm'}>
+                <Input
+                  value={wipeConfirm}
+                  onChange={(e) => setWipeConfirm(e.target.value)}
+                  placeholder="DELETE"
+                />
+              </Field>
+            </div>
+            <Button
+              variant="destructive"
+              onClick={wipe}
+              disabled={wiping || !wipePassword || wipeConfirm !== 'DELETE'}
+            >
+              <Trash2 size={16} /> {wiping ? 'Deleting…' : 'Delete All Data'}
+            </Button>
+          </CardContent>
+        </Card>
+
+        <p className="mt-6 text-xs text-muted-foreground">
+          BL Crushing — Stone Crusher Manager. All data is stored locally on this computer. Keep
+          regular backups of your data file.
+        </p>
+      </Page>
+    </>
+  )
+}

@@ -1,0 +1,140 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 215 35% 97%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 222 84% 48%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 214 38% 95%;
+    --secondary-foreground: 222 47% 16%;
+    --muted: 214 32% 94%;
+    --muted-foreground: 215 18% 42%;
+    --accent: 214 95% 95%;
+    --accent-foreground: 222 60% 26%;
+    --destructive: 0 72% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 62% 38%;
+    --success-foreground: 0 0% 100%;
+    --warning: 32 95% 44%;
+    --warning-foreground: 0 0% 100%;
+    --border: 214 30% 89%;
+    --input: 214 30% 86%;
+    --ring: 222 84% 48%;
+    --radius: 0.625rem;
+  }
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: 'Segoe UI Variable Text', 'Segoe UI', 'Inter', system-ui, -apple-system,
+    BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss01';
+  user-select: none;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.01em;
+}
+
+/* Align figures in tables and stat cards for an accounting-grade look. */
+table,
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+input,
+textarea {
+  user-select: text;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: hsl(var(--muted-foreground) / 0.7);
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 8px;
+  border: 2px solid hsl(var(--background));
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.45);
+  background-clip: padding-box;
+}
+
+/* Subtle entrance for modals/cards. */
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.animate-in {
+  animation: pop-in 0.16s ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-fade {
+  animation: fade-in 0.2s ease-out;
+}
+
+/* Clean printing for statements/ledgers — hide app chrome, show only content. */
+@media print {
+  aside,
+  .no-print {
+    display: none !important;
+  }
+  main {
+    overflow: visible !important;
+    height: auto !important;
+  }
+  body {
+    background: #fff;
+  }
+  .print-area {
+    box-shadow: none !important;
+    border: none !important;
+  }
+}

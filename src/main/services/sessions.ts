@@ -1,0 +1,38 @@
+import { randomBytes } from 'node:crypto'
+import { getDb } from '../db'
+
+// 30-day sliding session lifetime.
+export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000
+
+export function createSession(userId: number): string {
+  const d = getDb()
+  const token = randomBytes(32).toString('hex')
+  const now = Date.now()
+  d.prepare(
+    `INSERT INTO sessions (token, created_at, expires_at, user_id) VALUES (?, ?, ?, ?)`
+  ).run(token, now, now + SESSION_TTL_MS, userId)
+  return token
+}
+
+/** Returns the session's user id if live (sliding the expiry), else null. */
+export function sessionUserId(token: string | undefined): number | null {
+  if (!token) return null
+  const d = getDb()
+  const row = d.prepare(`SELECT expires_at, user_id FROM sessions WHERE token = ?`).get(token) as
+    | { expires_at: number; user_id: number | null }
+    | undefined
+  const now = Date.now()
+  if (!row || row.expires_at < now || row.user_id == null) return null
+  d.prepare(`UPDATE sessions SET expires_at = ? WHERE token = ?`).run(now + SESSION_TTL_MS, token)
+  return row.user_id
+}
+
+export function destroySession(token: string | undefined): void {
+  if (!token) return
+  getDb().prepare(`DELETE FROM sessions WHERE token = ?`).run(token)
+}
+
+/** Remove expired sessions; call occasionally to keep the table tidy. */
+export function cleanupSessions(): void {
+  getDb().prepare(`DELETE FROM sessions WHERE expires_at < ?`).run(Date.now())
+}

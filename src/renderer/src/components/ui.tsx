@@ -1,0 +1,273 @@
+import * as React from 'react'
+import { cva, type VariantProps } from 'class-variance-authority'
+import { X } from 'lucide-react'
+import { cn } from '@/lib/utils'
+
+/* ---------------- Button ---------------- */
+const buttonVariants = cva(
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50',
+  {
+    variants: {
+      variant: {
+        default: 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm',
+        destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm',
+        outline: 'border border-input bg-card hover:bg-accent hover:text-accent-foreground',
+        secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
+        ghost: 'hover:bg-accent hover:text-accent-foreground',
+        success: 'bg-success text-success-foreground hover:bg-success/90 shadow-sm'
+      },
+      size: {
+        default: 'h-9 px-4 py-2',
+        sm: 'h-8 rounded-md px-3 text-xs',
+        lg: 'h-10 rounded-md px-6',
+        icon: 'h-9 w-9'
+      }
+    },
+    defaultVariants: { variant: 'default', size: 'default' }
+  }
+)
+export interface ButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof buttonVariants> {}
+export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ className, variant, size, ...props }, ref) => (
+    <button ref={ref} className={cn(buttonVariants({ variant, size, className }))} {...props} />
+  )
+)
+Button.displayName = 'Button'
+
+/* ---------------- Input ---------------- */
+export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
+  ({ className, ...props }, ref) => (
+    <input
+      ref={ref}
+      className={cn(
+        'flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50',
+        className
+      )}
+      {...props}
+    />
+  )
+)
+Input.displayName = 'Input'
+
+/* ---------------- Textarea ---------------- */
+export const Textarea = React.forwardRef<
+  HTMLTextAreaElement,
+  React.TextareaHTMLAttributes<HTMLTextAreaElement>
+>(({ className, ...props }, ref) => (
+  <textarea
+    ref={ref}
+    className={cn(
+      'flex min-h-[64px] w-full rounded-md border border-input bg-card px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50',
+      className
+    )}
+    {...props}
+  />
+))
+Textarea.displayName = 'Textarea'
+
+/* ---------------- Select (native) ---------------- */
+export const Select = React.forwardRef<
+  HTMLSelectElement,
+  React.SelectHTMLAttributes<HTMLSelectElement>
+>(({ className, children, ...props }, ref) => (
+  <select
+    ref={ref}
+    className={cn(
+      'flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50',
+      className
+    )}
+    {...props}
+  >
+    {children}
+  </select>
+))
+Select.displayName = 'Select'
+
+/* ---------------- Label ---------------- */
+export function Label({
+  className,
+  ...props
+}: React.LabelHTMLAttributes<HTMLLabelElement>): React.JSX.Element {
+  return (
+    <label
+      className={cn('text-sm font-medium text-foreground/80 mb-1.5 block', className)}
+      {...props}
+    />
+  )
+}
+
+export function Field({
+  label,
+  children,
+  hint,
+  required,
+  className
+}: {
+  label: string
+  children: React.ReactNode
+  hint?: string
+  required?: boolean
+  className?: string
+}): React.JSX.Element {
+  return (
+    <div className={className}>
+      <Label>
+        {label}
+        {required && <span className="ml-0.5 text-destructive">*</span>}
+      </Label>
+      {children}
+      {hint && <p className="text-xs text-muted-foreground mt-1">{hint}</p>}
+    </div>
+  )
+}
+
+/* ---------------- Card ---------------- */
+export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>): React.JSX.Element {
+  return (
+    <div
+      className={cn('rounded-xl border bg-card text-card-foreground shadow-sm', className)}
+      {...props}
+    />
+  )
+}
+export function CardHeader({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>): React.JSX.Element {
+  return <div className={cn('flex flex-col space-y-1.5 p-5', className)} {...props} />
+}
+export function CardTitle({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLHeadingElement>): React.JSX.Element {
+  return <h3 className={cn('font-semibold leading-none tracking-tight', className)} {...props} />
+}
+export function CardContent({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>): React.JSX.Element {
+  return <div className={cn('p-5 pt-0', className)} {...props} />
+}
+
+/* ---------------- Badge ---------------- */
+const badgeVariants = cva(
+  'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium',
+  {
+    variants: {
+      variant: {
+        default: 'border-transparent bg-primary/10 text-primary',
+        success: 'border-transparent bg-success/10 text-success',
+        warning: 'border-transparent bg-warning/15 text-warning',
+        destructive: 'border-transparent bg-destructive/10 text-destructive',
+        muted: 'border-transparent bg-muted text-muted-foreground'
+      }
+    },
+    defaultVariants: { variant: 'default' }
+  }
+)
+export function Badge({
+  className,
+  variant,
+  ...props
+}: React.HTMLAttributes<HTMLSpanElement> & VariantProps<typeof badgeVariants>): React.JSX.Element {
+  return <span className={cn(badgeVariants({ variant }), className)} {...props} />
+}
+
+/* ---------------- Table ---------------- */
+export function Table({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLTableElement>): React.JSX.Element {
+  return (
+    <div className="relative w-full overflow-auto rounded-lg border bg-card">
+      <table className={cn('w-full caption-bottom text-sm', className)} {...props} />
+    </div>
+  )
+}
+export function THead(props: React.HTMLAttributes<HTMLTableSectionElement>): React.JSX.Element {
+  return <thead className="bg-muted/60 [&_tr]:border-b" {...props} />
+}
+export function TBody(props: React.HTMLAttributes<HTMLTableSectionElement>): React.JSX.Element {
+  return <tbody className="[&_tr:last-child]:border-0" {...props} />
+}
+export function TR({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLTableRowElement>): React.JSX.Element {
+  return <tr className={cn('border-b transition-colors hover:bg-muted/40', className)} {...props} />
+}
+export function TH({
+  className,
+  ...props
+}: React.ThHTMLAttributes<HTMLTableCellElement>): React.JSX.Element {
+  return (
+    <th
+      className={cn(
+        'h-10 px-3 text-left align-middle text-xs font-semibold uppercase tracking-wide text-muted-foreground',
+        className
+      )}
+      {...props}
+    />
+  )
+}
+export function TD({
+  className,
+  ...props
+}: React.TdHTMLAttributes<HTMLTableCellElement>): React.JSX.Element {
+  return <td className={cn('px-3 py-2.5 align-middle', className)} {...props} />
+}
+
+/* ---------------- Modal / Dialog ---------------- */
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  width = 'max-w-lg'
+}: {
+  open: boolean
+  onClose: () => void
+  title: string
+  children: React.ReactNode
+  width?: string
+}): React.JSX.Element | null {
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent): void {
+      if (e.key === 'Escape') onClose()
+    }
+    if (open) window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-3 pt-8 sm:p-4 sm:pt-16">
+      <div
+        className={cn(
+          'relative w-full rounded-xl border bg-card shadow-xl animate-in',
+          width
+        )}
+      >
+        <div className="flex items-center justify-between border-b px-5 py-3.5">
+          <h2 className="text-base font-semibold">{title}</h2>
+          <button
+            onClick={onClose}
+            className="rounded-md p-1 text-muted-foreground hover:bg-accent"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="p-5">{children}</div>
+      </div>
+    </div>
+  )
+}
+
+export function EmptyState({ message }: { message: string }): React.JSX.Element {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-14 text-sm text-muted-foreground">
+      {message}
+    </div>
+  )
+}
