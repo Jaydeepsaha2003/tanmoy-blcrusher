@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS users (
   role          TEXT NOT NULL DEFAULT 'staff',
   access_level  TEXT NOT NULL DEFAULT 'view',
   modules       TEXT NOT NULL DEFAULT '[]',
+  edit_modules  TEXT NOT NULL DEFAULT '[]',
   active        INTEGER NOT NULL DEFAULT 1,
   created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );

@@ -21,31 +21,31 @@ function roundMoney(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100
 }
 
-function partyName(partyType: LedgerType, partyId: number): string {
+async function partyName(partyType: LedgerType, partyId: number): Promise<string> {
   const d = getDb()
   if (partyType === 'rack') {
-    const row = d.prepare(`SELECT rack_no AS name FROM racks WHERE id = ?`).get(partyId) as
+    const row = (await d.prepare(`SELECT rack_no AS name FROM racks WHERE id = ?`).get(partyId)) as
       | { name: string }
       | undefined
     if (!row) throw new Error('Rack not found.')
     return row.name
   }
   if (partyType === 'company') {
-    const row = d.prepare(`SELECT name FROM companies WHERE id = ?`).get(partyId) as
+    const row = (await d.prepare(`SELECT name FROM companies WHERE id = ?`).get(partyId)) as
       | { name: string }
       | undefined
     if (!row) throw new Error('Company not found.')
     return row.name
   }
   if (partyType === 'plant') {
-    const row = d.prepare(`SELECT name FROM plants WHERE id = ?`).get(partyId) as
+    const row = (await d.prepare(`SELECT name FROM plants WHERE id = ?`).get(partyId)) as
       | { name: string }
       | undefined
     if (!row) throw new Error('Plant not found.')
     return row.name
   }
   if (partyType === 'business') {
-    const row = d.prepare(`SELECT name FROM businesses WHERE id = ?`).get(partyId) as
+    const row = (await d.prepare(`SELECT name FROM businesses WHERE id = ?`).get(partyId)) as
       | { name: string }
       | undefined
     if (!row) throw new Error('Business not found.')
@@ -53,7 +53,7 @@ function partyName(partyType: LedgerType, partyId: number): string {
   }
   const table = PARTY_TABLE[partyType as PartyType]
   if (!table) throw new Error('Invalid party type.')
-  const row = d.prepare(`SELECT name FROM ${table} WHERE id = ?`).get(partyId) as
+  const row = (await d.prepare(`SELECT name FROM ${table} WHERE id = ?`).get(partyId)) as
     | { name: string }
     | undefined
   if (!row) throw new Error('Party not found.')
@@ -61,12 +61,14 @@ function partyName(partyType: LedgerType, partyId: number): string {
 }
 
 /** Gather the supplier/customer/transporter records linked to a company. */
-function companyLinks(companyId: number): { type: PartyType; id: number }[] {
+async function companyLinks(companyId: number): Promise<{ type: PartyType; id: number }[]> {
   const d = getDb()
   const links: { type: PartyType; id: number }[] = []
   // Only these three have a company_id column.
   for (const type of ['customer', 'supplier', 'transporter'] as PartyType[]) {
-    const rows = d.prepare(`SELECT id FROM ${PARTY_TABLE[type]} WHERE company_id = ?`).all(companyId) as {
+    const rows = (await d
+      .prepare(`SELECT id FROM ${PARTY_TABLE[type]} WHERE company_id = ?`)
+      .all(companyId)) as {
       id: number
     }[]
     for (const r of rows) links.push({ type, id: r.id })
@@ -87,13 +89,13 @@ export interface PaymentInput {
   remarks: string
 }
 
-export function addPayment(p: PaymentInput): PaymentEntry {
+export async function addPayment(p: PaymentInput): Promise<PaymentEntry> {
   const d = getDb()
   if (!PARTY_TABLE[p.party_type]) throw new Error('Invalid party type.')
   if (p.direction !== 'in' && p.direction !== 'out') throw new Error('Invalid payment direction.')
   if (!(Number(p.amount) > 0)) throw new Error('Amount must be greater than 0.')
-  partyName(p.party_type, p.party_id) // validates existence
-  const info = d
+  await partyName(p.party_type, p.party_id) // validates existence
+  const info = await d
     .prepare(
       `INSERT INTO payments (party_type, party_id, direction, amount, mode, ref, date, remarks)
        VALUES (@party_type,@party_id,@direction,@amount,@mode,@ref,@date,@remarks)`
@@ -108,7 +110,9 @@ export function addPayment(p: PaymentInput): PaymentEntry {
       date: p.date,
       remarks: p.remarks ?? ''
     })
-  return d.prepare(`SELECT * FROM payments WHERE id = ?`).get(info.lastInsertRowid) as PaymentEntry
+  return (await d
+    .prepare(`SELECT * FROM payments WHERE id = ?`)
+    .get(info.lastInsertRowid)) as PaymentEntry
 }
 
 export interface PaymentFilter {
@@ -118,7 +122,7 @@ export interface PaymentFilter {
   to?: string
 }
 
-export function listPayments(filter: PaymentFilter = {}): PaymentEntry[] {
+export async function listPayments(filter: PaymentFilter = {}): Promise<PaymentEntry[]> {
   const d = getDb()
   const where: string[] = []
   const params: Record<string, unknown> = {}
@@ -139,7 +143,7 @@ export function listPayments(filter: PaymentFilter = {}): PaymentEntry[] {
     params.to = filter.to
   }
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  return d
+  return (await d
     .prepare(
       `SELECT pay.*, COALESCE(c.name, s.name, t.name) AS party_name
        FROM payments pay
@@ -149,12 +153,12 @@ export function listPayments(filter: PaymentFilter = {}): PaymentEntry[] {
        ${clause}
        ORDER BY pay.date DESC, pay.id DESC`
     )
-    .all(params) as PaymentEntry[]
+    .all(params)) as PaymentEntry[]
 }
 
-export function deletePayment(payload: { id: number }): { ok: boolean } {
+export async function deletePayment(payload: { id: number }): Promise<{ ok: boolean }> {
   const d = getDb()
-  d.prepare(`DELETE FROM payments WHERE id = ?`).run(payload.id)
+  await d.prepare(`DELETE FROM payments WHERE id = ?`).run(payload.id)
   return { ok: true }
 }
 
@@ -181,19 +185,19 @@ interface RawEntry {
  * Rack:        debit = transport bills + rack expenses (costs); credit = rack sales (revenue).
  *              Positive balance = profit on the rack (excl. raw material cost).
  */
-function buildEntries(partyType: LedgerType, partyId: number): RawEntry[] {
+async function buildEntries(partyType: LedgerType, partyId: number): Promise<RawEntry[]> {
   const d = getDb()
   const entries: RawEntry[] = []
 
   if (partyType === 'rack') {
-    const loadings = d
+    const loadings = (await d
       .prepare(
         `SELECT rl.loading_no, rl.date, rl.created_at, COALESCE(rl.amount,0) AS amount,
                 rl.total_cm, rl.trips, t.name AS transporter_name
          FROM rack_loadings rl JOIN transporters t ON t.id = rl.transporter_id
          WHERE rl.rack_id = ?`
       )
-      .all(partyId) as {
+      .all(partyId)) as {
       loading_no: string
       date: string
       created_at: string
@@ -212,11 +216,11 @@ function buildEntries(partyType: LedgerType, partyId: number): RawEntry[] {
           debit: x.amount,
           credit: 0
         })
-    const expenses = d
+    const expenses = (await d
       .prepare(
         `SELECT expense_type, amount, date, created_at, remarks FROM rack_expenses WHERE rack_id = ?`
       )
-      .all(partyId) as {
+      .all(partyId)) as {
       expense_type: string
       amount: number
       date: string
@@ -232,14 +236,14 @@ function buildEntries(partyType: LedgerType, partyId: number): RawEntry[] {
         debit: x.amount,
         credit: 0
       })
-    const sales = d
+    const sales = (await d
       .prepare(
         `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rs.amount,0) AS amount,
                 rs.product_name, rs.quantity, rs.uom, c.name AS customer_name
          FROM rack_sales rs JOIN customers c ON c.id = rs.customer_id
          WHERE rs.rack_id = ?`
       )
-      .all(partyId) as {
+      .all(partyId)) as {
       sale_no: string
       date: string
       created_at: string
@@ -272,8 +276,8 @@ function buildEntries(partyType: LedgerType, partyId: number): RawEntry[] {
       transporter: 'Transporter',
       outsource: 'Outsource'
     }
-    for (const link of companyLinks(partyId)) {
-      for (const e of buildEntries(link.type, link.id))
+    for (const link of await companyLinks(partyId)) {
+      for (const e of await buildEntries(link.type, link.id))
         entries.push({ ...e, particulars: `[${roleLabel[link.type]}] ${e.particulars}` })
     }
     entries.sort((a, b) =>
@@ -285,7 +289,7 @@ function buildEntries(partyType: LedgerType, partyId: number): RawEntry[] {
   if (partyType === 'plant') {
     // Plant P&L: income (credit) = direct sales + attributed gross of closed racks;
     // costs (debit) = raw-material purchases + plant operating expenses.
-    const sales = d
+    const sales = (await d
       .prepare(
         `SELECT dispatch_no, date, created_at, product_name, quantity, uom,
           (COALESCE(amount,0)
@@ -293,7 +297,7 @@ function buildEntries(partyType: LedgerType, partyId: number): RawEntry[] {
             + CASE WHEN other_billed=1 THEN other_charge ELSE 0 END) AS billed
          FROM dispatches WHERE plant_id = ? AND amount IS NOT NULL`
       )
-      .all(partyId) as {
+      .all(partyId)) as {
       dispatch_no: string
       date: string
       created_at: string
@@ -313,7 +317,7 @@ function buildEntries(partyType: LedgerType, partyId: number): RawEntry[] {
           credit: x.billed
         })
 
-    const racks = d
+    const racks = (await d
       .prepare(
         `SELECT r.id, r.rack_no, r.date, r.created_at,
           (SELECT COALESCE(SUM(amount),0) FROM rack_sales WHERE rack_id=r.id)
@@ -326,7 +330,7 @@ function buildEntries(partyType: LedgerType, partyId: number): RawEntry[] {
          WHERE r.status='closed'
            AND EXISTS (SELECT 1 FROM rack_loadings WHERE rack_id=r.id AND plant_id=@pid)`
       )
-      .all({ pid: partyId }) as {
+      .all({ pid: partyId })) as {
       rack_no: string
       date: string
       created_at: string
@@ -348,12 +352,12 @@ function buildEntries(partyType: LedgerType, partyId: number): RawEntry[] {
       })
     }
 
-    const purchases = d
+    const purchases = (await d
       .prepare(
         `SELECT purchase_no, date, created_at, COALESCE(amount,0) AS amount, quantity
          FROM purchases WHERE plant_id = ? AND amount IS NOT NULL`
       )
-      .all(partyId) as {
+      .all(partyId)) as {
       purchase_no: string
       date: string
       created_at: string
@@ -378,12 +382,12 @@ function buildEntries(partyType: LedgerType, partyId: number): RawEntry[] {
       equipment_rent: 'Equipment Rent',
       other: 'Other Expense'
     }
-    const expenses = d
+    const expenses = (await d
       .prepare(
         `SELECT expense_no, date, created_at, category, title, amount
          FROM plant_expenses WHERE plant_id = ?`
       )
-      .all(partyId) as {
+      .all(partyId)) as {
       expense_no: string
       date: string
       created_at: string
@@ -401,12 +405,12 @@ function buildEntries(partyType: LedgerType, partyId: number): RawEntry[] {
         credit: 0
       })
 
-    const dieselCost = d
+    const dieselCost = (await d
       .prepare(
         `SELECT purchase_no, date, created_at, COALESCE(amount,0) AS amount, litres
          FROM diesel_purchases WHERE plant_id = ?`
       )
-      .all(partyId) as {
+      .all(partyId)) as {
       purchase_no: string
       date: string
       created_at: string
@@ -424,13 +428,13 @@ function buildEntries(partyType: LedgerType, partyId: number): RawEntry[] {
           credit: 0
         })
 
-    const wages = d
+    const wages = (await d
       .prepare(
         `SELECT w.entry_no, w.date, w.created_at, w.amount, w.period, e.name AS emp
          FROM wage_entries w JOIN employees e ON e.id = w.employee_id
          WHERE w.plant_id = ?`
       )
-      .all(partyId) as {
+      .all(partyId)) as {
       entry_no: string
       date: string
       created_at: string
@@ -459,17 +463,19 @@ function buildEntries(partyType: LedgerType, partyId: number): RawEntry[] {
     // P&L for one of the owner's firms: rent earned by its machines (income) minus
     // maintenance / other expenses / operator wages / diesel issued to those machines (cost).
     const assetIds = (
-      d.prepare(`SELECT id FROM assets WHERE business_id = ?`).all(partyId) as { id: number }[]
+      (await d.prepare(`SELECT id FROM assets WHERE business_id = ?`).all(partyId)) as {
+        id: number
+      }[]
     ).map((a) => a.id)
     if (assetIds.length === 0) return entries
     const inC = assetIds.map(() => '?').join(',')
-    const rents = d
+    const rents = (await d
       .prepare(
         `SELECT pe.expense_no, pe.date, pe.created_at, pe.amount, pe.category, a.name AS asset
          FROM plant_expenses pe JOIN assets a ON a.id = pe.asset_id
          WHERE pe.asset_id IN (${inC}) AND pe.category IN ('tipper_rent','equipment_rent')`
       )
-      .all(...assetIds) as {
+      .all(...assetIds)) as {
       expense_no: string
       date: string
       created_at: string
@@ -487,13 +493,13 @@ function buildEntries(partyType: LedgerType, partyId: number): RawEntry[] {
           debit: 0,
           credit: x.amount
         })
-    const costs = d
+    const costs = (await d
       .prepare(
         `SELECT pe.expense_no, pe.date, pe.created_at, pe.amount, pe.category, a.name AS asset
          FROM plant_expenses pe JOIN assets a ON a.id = pe.asset_id
          WHERE pe.asset_id IN (${inC}) AND pe.category NOT IN ('tipper_rent','equipment_rent')`
       )
-      .all(...assetIds) as {
+      .all(...assetIds)) as {
       expense_no: string
       date: string
       created_at: string
@@ -511,13 +517,13 @@ function buildEntries(partyType: LedgerType, partyId: number): RawEntry[] {
           debit: x.amount,
           credit: 0
         })
-    const wages = d
+    const wages = (await d
       .prepare(
         `SELECT w.entry_no, w.date, w.created_at, w.amount, e.name AS emp, a.name AS asset
          FROM wage_entries w JOIN employees e ON e.id = w.employee_id JOIN assets a ON a.id = w.asset_id
          WHERE w.asset_id IN (${inC})`
       )
-      .all(...assetIds) as {
+      .all(...assetIds)) as {
       entry_no: string
       date: string
       created_at: string
@@ -535,18 +541,18 @@ function buildEntries(partyType: LedgerType, partyId: number): RawEntry[] {
           debit: x.amount,
           credit: 0
         })
-    const avgRow = d
+    const avgRow = (await d
       .prepare(
         `SELECT COALESCE(SUM(amount),0) AS a, COALESCE(SUM(litres),0) AS l FROM diesel_purchases WHERE amount IS NOT NULL`
       )
-      .get() as { a: number; l: number }
+      .get()) as { a: number; l: number }
     const avg = avgRow.l > 0 ? avgRow.a / avgRow.l : 0
-    const diesel = d
+    const diesel = (await d
       .prepare(
         `SELECT di.issue_no, di.date, di.created_at, di.litres, a.name AS asset
          FROM diesel_issues di JOIN assets a ON a.id = di.asset_id WHERE di.asset_id IN (${inC})`
       )
-      .all(...assetIds) as {
+      .all(...assetIds)) as {
       issue_no: string
       date: string
       created_at: string
@@ -571,12 +577,12 @@ function buildEntries(partyType: LedgerType, partyId: number): RawEntry[] {
 
   if (partyType === 'outsource') {
     // Expenses attributed to the outsource vendor are payable to them; settlements come via payments.
-    const exp = d
+    const exp = (await d
       .prepare(
         `SELECT expense_no, date, created_at, category, amount, paid_amount
          FROM plant_expenses WHERE outsource_id = ?`
       )
-      .all(partyId) as {
+      .all(partyId)) as {
       expense_no: string
       date: string
       created_at: string
@@ -607,7 +613,7 @@ function buildEntries(partyType: LedgerType, partyId: number): RawEntry[] {
   }
 
   if (partyType === 'customer') {
-    const dispatches = d
+    const dispatches = (await d
       .prepare(
         `SELECT dispatch_no, date, created_at, product_name, quantity, uom,
           (COALESCE(amount,0)
@@ -616,7 +622,7 @@ function buildEntries(partyType: LedgerType, partyId: number): RawEntry[] {
           paid_amount
          FROM dispatches WHERE customer_id = ?`
       )
-      .all(partyId) as {
+      .all(partyId)) as {
       dispatch_no: string
       date: string
       created_at: string
@@ -646,14 +652,14 @@ function buildEntries(partyType: LedgerType, partyId: number): RawEntry[] {
           credit: x.paid_amount
         })
     }
-    const sales = d
+    const sales = (await d
       .prepare(
         `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rs.amount,0) AS amount,
                 rs.product_name, rs.quantity, rs.uom, r.rack_no
          FROM rack_sales rs JOIN racks r ON r.id = rs.rack_id
          WHERE rs.customer_id = ? AND rs.amount IS NOT NULL`
       )
-      .all(partyId) as {
+      .all(partyId)) as {
       sale_no: string
       date: string
       created_at: string
@@ -675,12 +681,12 @@ function buildEntries(partyType: LedgerType, partyId: number): RawEntry[] {
   }
 
   if (partyType === 'supplier') {
-    const purchases = d
+    const purchases = (await d
       .prepare(
         `SELECT purchase_no, date, created_at, COALESCE(amount,0) AS amount, paid_amount, quantity
          FROM purchases WHERE supplier_id = ?`
       )
-      .all(partyId) as {
+      .all(partyId)) as {
       purchase_no: string
       date: string
       created_at: string
@@ -708,12 +714,12 @@ function buildEntries(partyType: LedgerType, partyId: number): RawEntry[] {
           credit: 0
         })
     }
-    const diesel = d
+    const diesel = (await d
       .prepare(
         `SELECT purchase_no, date, created_at, COALESCE(amount,0) AS amount, paid_amount, litres
          FROM diesel_purchases WHERE supplier_id = ?`
       )
-      .all(partyId) as {
+      .all(partyId)) as {
       purchase_no: string
       date: string
       created_at: string
@@ -744,14 +750,14 @@ function buildEntries(partyType: LedgerType, partyId: number): RawEntry[] {
   }
 
   if (partyType === 'transporter') {
-    const loadings = d
+    const loadings = (await d
       .prepare(
         `SELECT rl.loading_no, rl.date, rl.created_at, COALESCE(rl.amount,0) AS amount,
                 COALESCE(rl.diesel_amount,0) AS diesel, rl.total_cm, rl.trips, r.rack_no
          FROM rack_loadings rl JOIN racks r ON r.id = rl.rack_id
          WHERE rl.transporter_id = ?`
       )
-      .all(partyId) as {
+      .all(partyId)) as {
       loading_no: string
       date: string
       created_at: string
@@ -781,14 +787,14 @@ function buildEntries(partyType: LedgerType, partyId: number): RawEntry[] {
           credit: 0
         })
     }
-    const unloadings = d
+    const unloadings = (await d
       .prepare(
         `SELECT ru.unloading_no, ru.date, ru.created_at, COALESCE(ru.amount,0) AS amount,
                 COALESCE(ru.diesel_amount,0) AS diesel, ru.total_cm, ru.trips, r.rack_no
          FROM rack_unloadings ru JOIN racks r ON r.id = ru.rack_id
          WHERE ru.transporter_id = ?`
       )
-      .all(partyId) as {
+      .all(partyId)) as {
       unloading_no: string
       date: string
       created_at: string
@@ -820,9 +826,9 @@ function buildEntries(partyType: LedgerType, partyId: number): RawEntry[] {
     }
   }
 
-  const payments = getDb()
+  const payments = (await getDb()
     .prepare(`SELECT * FROM payments WHERE party_type = ? AND party_id = ?`)
-    .all(partyType, partyId) as PaymentEntry[]
+    .all(partyType, partyId)) as PaymentEntry[]
   for (const p of payments) {
     const received = p.direction === 'in'
     // Money received: credit for customers (receipt), credit for supplier/transporter (refund).
@@ -852,14 +858,14 @@ function runningSign(partyType: LedgerType): 1 | -1 {
   return partyType === 'customer' || partyType === 'company' ? 1 : -1
 }
 
-export function getLedger(payload: {
+export async function getLedger(payload: {
   party_type: LedgerType
   party_id: number
   from?: string
   to?: string
-}): LedgerStatement {
-  const name = partyName(payload.party_type, payload.party_id)
-  const all = buildEntries(payload.party_type, payload.party_id)
+}): Promise<LedgerStatement> {
+  const name = await partyName(payload.party_type, payload.party_id)
+  const all = await buildEntries(payload.party_type, payload.party_id)
   const sign = runningSign(payload.party_type)
 
   let opening = 0
@@ -911,33 +917,33 @@ export function getLedger(payload: {
   }
 }
 
-export function getPartyBalances(payload: {
+export async function getPartyBalances(payload: {
   party_type: LedgerType
   plant_id?: number
-}): PartyBalance[] {
+}): Promise<PartyBalance[]> {
   const d = getDb()
   let parties: { id: number; name: string }[]
   if (payload.party_type === 'rack') {
-    parties = d
+    parties = (await d
       .prepare(`SELECT id, rack_no AS name FROM racks ORDER BY date DESC, id DESC`)
-      .all() as { id: number; name: string }[]
+      .all()) as { id: number; name: string }[]
   } else if (payload.party_type === 'company') {
-    parties = d.prepare(`SELECT id, name FROM companies ORDER BY name`).all() as {
+    parties = (await d.prepare(`SELECT id, name FROM companies ORDER BY name`).all()) as {
       id: number
       name: string
     }[]
   } else if (payload.party_type === 'plant') {
-    parties = d.prepare(`SELECT id, name FROM plants ORDER BY name`).all() as {
+    parties = (await d.prepare(`SELECT id, name FROM plants ORDER BY name`).all()) as {
       id: number
       name: string
     }[]
   } else if (payload.party_type === 'business') {
-    parties = d.prepare(`SELECT id, name FROM businesses ORDER BY name`).all() as {
+    parties = (await d.prepare(`SELECT id, name FROM businesses ORDER BY name`).all()) as {
       id: number
       name: string
     }[]
   } else if (payload.party_type === 'outsource') {
-    parties = d.prepare(`SELECT id, name FROM outsource ORDER BY name`).all() as {
+    parties = (await d.prepare(`SELECT id, name FROM outsource ORDER BY name`).all()) as {
       id: number
       name: string
     }[]
@@ -946,37 +952,39 @@ export function getPartyBalances(payload: {
     if (!table) throw new Error('Invalid party type.')
     // Plant filter returns common parties plus that plant's own.
     const clause = payload.plant_id ? `WHERE (plant_id IS NULL OR plant_id = @plant_id)` : ''
-    parties = d
+    parties = (await d
       .prepare(`SELECT id, name FROM ${table} ${clause} ORDER BY name`)
-      .all(payload.plant_id ? { plant_id: payload.plant_id } : {}) as {
+      .all(payload.plant_id ? { plant_id: payload.plant_id } : {})) as {
       id: number
       name: string
     }[]
   }
   const sign = runningSign(payload.party_type)
-  return parties.map((p) => {
-    const entries = buildEntries(payload.party_type, p.id)
+  const result: PartyBalance[] = []
+  for (const p of parties) {
+    const entries = await buildEntries(payload.party_type, p.id)
     const totalDebit = entries.reduce((a, e) => a + e.debit, 0)
     const totalCredit = entries.reduce((a, e) => a + e.credit, 0)
-    return {
+    result.push({
       party_id: p.id,
       name: p.name,
       total_debit: roundMoney(totalDebit),
       total_credit: roundMoney(totalCredit),
       balance: roundMoney(sign * (totalDebit - totalCredit))
-    }
-  })
+    })
+  }
+  return result
 }
 
 /**
  * Consolidated outstanding position across suppliers, customers and transporters
  * for the Payment Status screen. Customers are receivable; suppliers/transporters payable.
  */
-export function getAllDues(payload: { plant_id?: number } = {}): DueRow[] {
+export async function getAllDues(payload: { plant_id?: number } = {}): Promise<DueRow[]> {
   const types: PartyType[] = ['customer', 'supplier', 'transporter', 'outsource']
   const rows: DueRow[] = []
   for (const t of types) {
-    const balances = getPartyBalances({ party_type: t, plant_id: payload.plant_id })
+    const balances = await getPartyBalances({ party_type: t, plant_id: payload.plant_id })
     for (const b of balances) {
       rows.push({
         party_type: t,

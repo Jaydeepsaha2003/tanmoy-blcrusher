@@ -48,12 +48,16 @@ const deployPkg = {
   private: true,
   // Passenger imports this startup file (set it in hPanel's Node app config).
   main: 'app.js',
-  scripts: { start: 'node app.js' },
+  // No build step — the bundle is prebuilt. The no-op "build" keeps hosts that
+  // always run `npm run build` (e.g. Hostinger's pipeline) happy.
+  scripts: { build: 'echo "No build needed - prebuilt bundle"', start: 'node app.js' },
   engines: { node: '>=18 <23' },
+  // MySQL only on the server (pure-JS driver — no native build on Hostinger).
+  // better-sqlite3 is intentionally omitted; the server uses MySQL via DB_HOST.
   dependencies: {
-    'better-sqlite3': pick('better-sqlite3'),
     cookie: pick('cookie'),
-    express: pick('express')
+    express: pick('express'),
+    mysql2: pick('mysql2')
   }
 }
 fs.writeFileSync(path.join(deploy, 'package.json'), JSON.stringify(deployPkg, null, 2) + '\n')

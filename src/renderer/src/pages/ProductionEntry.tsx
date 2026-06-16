@@ -135,7 +135,7 @@ export function ProductionEntry(): React.JSX.Element {
 
       {form && (
         <Modal open={open} onClose={() => setOpen(false)} title="New Production" width="max-w-2xl">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Plant" hint={plantId ? 'Locked to active plant' : undefined}>
               <Select value={form.plant_id || ''} disabled={!!plantId} onChange={(e) => setForm({ ...form, plant_id: Number(e.target.value), stock_location_id: undefined })}>
                 {plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}

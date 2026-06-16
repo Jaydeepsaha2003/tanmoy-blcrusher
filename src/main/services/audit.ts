@@ -56,7 +56,8 @@ const SPECIFIC: Record<string, string> = {
   'racks.addSale': 'Added rack sale',
   'racks.setStatus': 'Changed rack status',
   'movements.transfer': 'Transferred stock',
-  'system.wipeData': 'Wiped ALL data',
+  'system.requestDelete': 'Requested data deletion (3-day)',
+  'system.cancelDelete': 'Cancelled data deletion',
   'system.setWorkdays': 'Updated working-days setting',
   'dispatches.setPayment': 'Recorded sale payment',
   'dispatches.setDelivery': 'Updated delivery status',
@@ -111,15 +112,15 @@ function detailFrom(payload: unknown): string {
   return parts.slice(0, 6).join(', ')
 }
 
-export function logActivity(entry: {
+export async function logActivity(entry: {
   method: string
   payload?: unknown
   user?: User | null
   ip?: string
-}): void {
+}): Promise<void> {
   try {
     const me = entry.user ?? getCurrentUser()
-    getDb()
+    await getDb()
       .prepare(
         `INSERT INTO activity_log (user_id, username, action, module, method, detail, ip)
          VALUES (?,?,?,?,?,?,?)`
@@ -145,7 +146,7 @@ export interface ActivityFilter {
   limit?: number
 }
 
-export function listActivity(filter: ActivityFilter = {}): ActivityEntry[] {
+export async function listActivity(filter: ActivityFilter = {}): Promise<ActivityEntry[]> {
   const d = getDb()
   const where: string[] = []
   const params: Record<string, unknown> = {}
@@ -163,7 +164,7 @@ export function listActivity(filter: ActivityFilter = {}): ActivityEntry[] {
   }
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''
   const limit = Math.min(Math.max(Number(filter.limit) || 1000, 1), 5000)
-  return d
+  return await d
     .prepare(`SELECT * FROM activity_log ${clause} ORDER BY id DESC LIMIT ${limit}`)
     .all(params) as ActivityEntry[]
 }

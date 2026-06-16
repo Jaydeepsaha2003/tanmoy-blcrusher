@@ -19,7 +19,7 @@ await esbuild.build({
   format: 'cjs',
   target: 'node18',
   sourcemap: true,
-  external: ['better-sqlite3', 'express', 'cookie'],
+  external: ['better-sqlite3', 'mysql2', 'mysql2/promise', 'express', 'cookie'],
   alias: {
     electron: path.join(root, 'server', 'electron-stub.ts'),
     '@shared': path.join(root, 'src', 'shared')

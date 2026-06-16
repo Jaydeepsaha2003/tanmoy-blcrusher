@@ -126,16 +126,16 @@ export function Movements(): React.JSX.Element {
       />
       <Page>
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <Select className="w-44" value={(filter.stock_location_id as number) ?? ''} onChange={(e) => set('stock_location_id', e.target.value ? Number(e.target.value) : '')}>
+          <Select className="w-full sm:w-44" value={(filter.stock_location_id as number) ?? ''} onChange={(e) => set('stock_location_id', e.target.value ? Number(e.target.value) : '')}>
             <option value="">All locations</option>
             {formLocations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </Select>
-          <Select className="w-40" value={(filter.material_type as string) ?? ''} onChange={(e) => set('material_type', e.target.value)}>
+          <Select className="w-full sm:w-40" value={(filter.material_type as string) ?? ''} onChange={(e) => set('material_type', e.target.value)}>
             <option value="">All material</option>
             <option value="raw">Raw</option>
             <option value="finished">Finished</option>
           </Select>
-          <Select className="w-40" value={(filter.type as string) ?? ''} onChange={(e) => set('type', e.target.value)}>
+          <Select className="w-full sm:w-40" value={(filter.type as string) ?? ''} onChange={(e) => set('type', e.target.value)}>
             <option value="">All types</option>
             <option value="opening">Opening</option>
             <option value="purchase">Purchase</option>
@@ -145,9 +145,9 @@ export function Movements(): React.JSX.Element {
             <option value="rack_load">To Rack</option>
             <option value="transfer">Transfer</option>
           </Select>
-          <Input type="date" className="w-36" value={(filter.from as string) ?? ''} onChange={(e) => set('from', e.target.value)} />
+          <Input type="date" className="w-full sm:w-36" value={(filter.from as string) ?? ''} onChange={(e) => set('from', e.target.value)} />
           <span className="text-muted-foreground">to</span>
-          <Input type="date" className="w-36" value={(filter.to as string) ?? ''} onChange={(e) => set('to', e.target.value)} />
+          <Input type="date" className="w-full sm:w-36" value={(filter.to as string) ?? ''} onChange={(e) => set('to', e.target.value)} />
         </div>
 
         {data.length === 0 ? (
@@ -207,7 +207,7 @@ export function Movements(): React.JSX.Element {
                 {locations.filter((l) => l.id !== Number(xfer.from_location_id)).map((l) => <option key={l.id} value={l.id}>{l.plant_name} — {l.name}</option>)}
               </Select>
             </Field>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Quantity (m³)" required>
                 <Input type="number" step="0.001" value={xfer.quantity} onChange={(e) => setXfer({ ...xfer, quantity: e.target.value })} />
               </Field>

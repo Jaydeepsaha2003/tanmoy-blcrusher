@@ -73,13 +73,13 @@ export function FinishedGoods(): React.JSX.Element {
       />
       <Page>
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <Select className="w-44" value={filter.product_name ?? ''} onChange={(e) => setFilter({ ...filter, product_name: e.target.value || undefined })}>
+          <Select className="w-full sm:w-44" value={filter.product_name ?? ''} onChange={(e) => setFilter({ ...filter, product_name: e.target.value || undefined })}>
             <option value="">All products</option>
             {products.map((p) => <option key={p} value={p}>{p}</option>)}
           </Select>
-          <Input type="date" className="w-40" value={filter.from ?? ''} onChange={(e) => setFilter({ ...filter, from: e.target.value || undefined })} />
+          <Input type="date" className="w-full sm:w-40" value={filter.from ?? ''} onChange={(e) => setFilter({ ...filter, from: e.target.value || undefined })} />
           <span className="text-muted-foreground">to</span>
-          <Input type="date" className="w-40" value={filter.to ?? ''} onChange={(e) => setFilter({ ...filter, to: e.target.value || undefined })} />
+          <Input type="date" className="w-full sm:w-40" value={filter.to ?? ''} onChange={(e) => setFilter({ ...filter, to: e.target.value || undefined })} />
         </div>
 
         {data.length === 0 ? (

@@ -23,7 +23,8 @@
   "dependencies": {
     "better-sqlite3": "^11.8.1",
     "cookie": "^1.1.1",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "mysql2": "^3.22.5"
   },
   "devDependencies": {
     "@electron-toolkit/preload": "^3.0.1",

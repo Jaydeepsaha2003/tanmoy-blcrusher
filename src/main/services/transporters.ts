@@ -2,10 +2,10 @@ import { getDb } from '../db'
 import type { Transporter } from '@shared/types'
 import { properCase } from '@shared/types'
 
-export function listTransporters(payload: { plant_id?: number } = {}): Transporter[] {
+export async function listTransporters(payload: { plant_id?: number } = {}): Promise<Transporter[]> {
   const d = getDb()
   const clause = payload.plant_id ? `WHERE (t.plant_id IS NULL OR t.plant_id = @plant_id)` : ''
-  const rows = d
+  const rows = (await d
     .prepare(
       `SELECT t.*, co.name AS company_name, pl.name AS plant_name
        FROM transporters t
@@ -14,9 +14,9 @@ export function listTransporters(payload: { plant_id?: number } = {}): Transport
        ${clause}
        ORDER BY t.name`
     )
-    .all(payload) as Transporter[]
+    .all(payload)) as Transporter[]
   for (const t of rows) {
-    const agg = d
+    const agg = (await d
       .prepare(
         `SELECT
            COALESCE(SUM(trips),0) AS trips,
@@ -29,15 +29,15 @@ export function listTransporters(payload: { plant_id?: number } = {}): Transport
            SELECT trips, total_cm, amount, diesel_amount FROM rack_unloadings WHERE transporter_id = @id
          )`
       )
-      .get({ id: t.id }) as { trips: number; cm: number; amt: number; diesel: number }
-    const pay = d
+      .get({ id: t.id })) as { trips: number; cm: number; amt: number; diesel: number }
+    const pay = (await d
       .prepare(
         `SELECT
            COALESCE(SUM(CASE WHEN direction='out' THEN amount ELSE 0 END),0) AS paid,
            COALESCE(SUM(CASE WHEN direction='in' THEN amount ELSE 0 END),0) AS recvd
          FROM payments WHERE party_type='transporter' AND party_id = ?`
       )
-      .get(t.id) as { paid: number; recvd: number }
+      .get(t.id)) as { paid: number; recvd: number }
     t.total_trips = round(agg.trips)
     t.total_cm = round(agg.cm)
     t.total_amount = round(agg.amt)
@@ -49,16 +49,16 @@ export function listTransporters(payload: { plant_id?: number } = {}): Transport
   return rows
 }
 
-export function createTransporter(p: {
+export async function createTransporter(p: {
   name: string
   contact: string
   address: string
   remarks: string
   company_id?: number | null
   plant_id?: number | null
-}): Transporter {
+}): Promise<Transporter> {
   const d = getDb()
-  const info = d
+  const info = await d
     .prepare(
       `INSERT INTO transporters (name, contact, address, remarks, company_id, plant_id) VALUES (?, ?, ?, ?, ?, ?)`
     )
@@ -70,10 +70,10 @@ export function createTransporter(p: {
       p.company_id ?? null,
       p.plant_id ?? null
     )
-  return d.prepare(`SELECT * FROM transporters WHERE id = ?`).get(info.lastInsertRowid) as Transporter
+  return (await d.prepare(`SELECT * FROM transporters WHERE id = ?`).get(info.lastInsertRowid)) as Transporter
 }
 
-export function updateTransporter(p: {
+export async function updateTransporter(p: {
   id: number
   name: string
   contact: string
@@ -81,9 +81,9 @@ export function updateTransporter(p: {
   remarks: string
   company_id?: number | null
   plant_id?: number | null
-}): Transporter {
+}): Promise<Transporter> {
   const d = getDb()
-  d.prepare(
+  await d.prepare(
     `UPDATE transporters SET name=?, contact=?, address=?, remarks=?, company_id=?, plant_id=? WHERE id=?`
   ).run(
     properCase(p.name),
@@ -94,28 +94,28 @@ export function updateTransporter(p: {
     p.plant_id ?? null,
     p.id
   )
-  return d.prepare(`SELECT * FROM transporters WHERE id = ?`).get(p.id) as Transporter
+  return (await d.prepare(`SELECT * FROM transporters WHERE id = ?`).get(p.id)) as Transporter
 }
 
-export function deleteTransporter(payload: { id: number }): { ok: boolean; error?: string } {
+export async function deleteTransporter(payload: { id: number }): Promise<{ ok: boolean; error?: string }> {
   const d = getDb()
-  const used = d
+  const used = (await d
     .prepare(
       `SELECT
         (SELECT COUNT(*) FROM rack_loadings WHERE transporter_id = @id) +
         (SELECT COUNT(*) FROM rack_unloadings WHERE transporter_id = @id) AS c`
     )
-    .get({ id: payload.id }) as { c: number }
+    .get({ id: payload.id })) as { c: number }
   if (used.c > 0) {
     return { ok: false, error: 'Cannot delete: this transporter has rack loading/unloading records.' }
   }
-  const paid = d
+  const paid = (await d
     .prepare(`SELECT COUNT(*) AS c FROM payments WHERE party_type='transporter' AND party_id = ?`)
-    .get(payload.id) as { c: number }
+    .get(payload.id)) as { c: number }
   if (paid.c > 0) {
     return { ok: false, error: 'Cannot delete: this transporter has payment records.' }
   }
-  d.prepare(`DELETE FROM transporters WHERE id = ?`).run(payload.id)
+  await d.prepare(`DELETE FROM transporters WHERE id = ?`).run(payload.id)
   return { ok: true }
 }
 

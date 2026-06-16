@@ -48,6 +48,13 @@ export function Payments(): React.JSX.Element {
     queryKey: ['allDues', plantId],
     queryFn: () => api.ledgers.allDues(plantId)
   })
+  // All parties (no plant filter) for the advance/payment picker.
+  const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers', 'all'], queryFn: () => api.suppliers.list() })
+  const { data: customers = [] } = useQuery({ queryKey: ['customers', 'all'], queryFn: () => api.customers.list() })
+  const { data: transporters = [] } = useQuery({ queryKey: ['transporters', 'all'], queryFn: () => api.transporters.list() })
+  const { data: outsource = [] } = useQuery({ queryKey: ['outsource', 'all'], queryFn: () => api.outsource.list() })
+  const partyList = (t: PartyType): { id: number; name: string }[] =>
+    t === 'customer' ? customers : t === 'supplier' ? suppliers : t === 'transporter' ? transporters : outsource
 
   const [typeFilter, setTypeFilter] = React.useState<PartyType | ''>('')
   const [statusFilter, setStatusFilter] = React.useState<'' | 'outstanding' | 'settled'>('')
@@ -95,6 +102,22 @@ export function Payments(): React.JSX.Element {
     })
   }
 
+  // Record a payment or ADVANCE for any party — even one with no bills yet.
+  function openAdvance(): void {
+    setPayForm({
+      pick: true,
+      party_type: 'supplier' as PartyType,
+      party_id: 0,
+      party_name: '',
+      direction: 'out' as PaymentDirection,
+      amount: '',
+      mode: 'cash',
+      ref: 'Advance',
+      date: today(),
+      remarks: ''
+    })
+  }
+
   function exportExcel(): void {
     downloadExcel(
       'payment-status',
@@ -120,9 +143,14 @@ export function Payments(): React.JSX.Element {
         title="Payment Status"
         description="All outstanding dues — customers, suppliers and transporters under one roof"
         actions={
-          <Button variant="outline" onClick={exportExcel} disabled={!rows.length}>
-            <FileSpreadsheet size={16} /> Excel
-          </Button>
+          <>
+            <Button onClick={openAdvance}>
+              <HandCoins size={16} /> Record Payment / Advance
+            </Button>
+            <Button variant="outline" onClick={exportExcel} disabled={!rows.length}>
+              <FileSpreadsheet size={16} /> Excel
+            </Button>
+          </>
         }
       />
       <Page>
@@ -218,9 +246,47 @@ export function Payments(): React.JSX.Element {
       </Page>
 
       {payForm && (
-        <Modal open onClose={() => setPayForm(null)} title={`Record Payment — ${payForm.party_name}`}>
+        <Modal
+          open
+          onClose={() => setPayForm(null)}
+          title={payForm.pick ? 'Record Payment / Advance' : `Record Payment — ${payForm.party_name}`}
+        >
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            {payForm.pick && (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="Party type">
+                  <Select
+                    value={payForm.party_type}
+                    onChange={(e) =>
+                      setPayForm({ ...payForm, party_type: e.target.value as PartyType, party_id: 0, party_name: '' })
+                    }
+                  >
+                    <option value="supplier">Supplier</option>
+                    <option value="customer">Customer</option>
+                    <option value="transporter">Transporter</option>
+                    <option value="outsource">Outsource</option>
+                  </Select>
+                </Field>
+                <Field label="Party">
+                  <Select
+                    value={payForm.party_id || ''}
+                    onChange={(e) => {
+                      const id = Number(e.target.value)
+                      const p = partyList(payForm.party_type).find((x) => x.id === id)
+                      setPayForm({ ...payForm, party_id: id, party_name: p?.name ?? '' })
+                    }}
+                  >
+                    <option value="">Select {typeLabel[payForm.party_type as PartyType]}…</option>
+                    {partyList(payForm.party_type).map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              </div>
+            )}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Direction">
                 <Select value={payForm.direction} onChange={(e) => setPayForm({ ...payForm, direction: e.target.value })}>
                   <option value="in">Received from party</option>
@@ -251,7 +317,10 @@ export function Payments(): React.JSX.Element {
             </Field>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => setPayForm(null)}>Cancel</Button>
-              <Button onClick={() => savePayment.mutate({ ...payForm, amount: Number(payForm.amount) })} disabled={!(Number(payForm.amount) > 0)}>
+              <Button
+                onClick={() => savePayment.mutate({ ...payForm, amount: Number(payForm.amount) })}
+                disabled={!(Number(payForm.amount) > 0) || (payForm.pick && !payForm.party_id)}
+              >
                 Save Payment
               </Button>
             </div>

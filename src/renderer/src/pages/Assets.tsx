@@ -133,7 +133,7 @@ export function Assets(): React.JSX.Element {
       </Page>
 
       <Modal open={open} onClose={() => setOpen(false)} title={form.id ? 'Edit Asset' : 'New Machine / Vehicle'} width="max-w-2xl">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Name">
             <Input value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Crusher Unit 1" />
           </Field>

@@ -127,7 +127,7 @@ export function Diesel(): React.JSX.Element {
       />
       <Page>
         {/* Stock */}
-        <div className="mb-5 grid grid-cols-3 gap-3">
+        <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
           <StockCard icon={<Fuel size={21} />} label="Purchased" value={`${fmtQty(stock?.purchased)} L`} />
           <StockCard icon={<Gauge size={21} />} label="Issued" value={`${fmtQty(stock?.issued)} L`} tone="warning" />
           <StockCard icon={<FlaskConical size={21} />} label="In Stock" value={`${fmtQty(stock?.balance)} L`} tone="success" />
@@ -212,7 +212,7 @@ export function Diesel(): React.JSX.Element {
       {/* Purchase modal */}
       {pForm && (
         <Modal open onClose={() => setPForm(null)} title={pForm.id ? `Edit ${pForm.purchase_no}` : 'New Diesel Purchase'} width="max-w-2xl">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Creditor (Supplier)" required>
               <Select value={pForm.supplier_id || ''} onChange={(e) => setPForm({ ...pForm, supplier_id: Number(e.target.value) })}>
                 {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -270,7 +270,7 @@ export function Diesel(): React.JSX.Element {
                 {assets.map((a) => <option key={a.id} value={a.id}>{a.name}{a.identifier ? ` (${a.identifier})` : ''}</option>)}
               </Select>
             </Field>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Litres" required>
                 <Input type="number" step="0.01" value={iForm.litres} onChange={(e) => setIForm({ ...iForm, litres: e.target.value })} />
               </Field>

@@ -75,7 +75,7 @@ export function ProductionSettings(): React.JSX.Element {
           <EmptyState message="Create a plant first." />
         ) : (
           <div className="max-w-2xl space-y-4">
-            <Select className="w-72" value={plantId || ''} disabled={!!globalPlant} onChange={(e) => setPlantId(Number(e.target.value))}>
+            <Select className="w-full sm:w-72" value={plantId || ''} disabled={!!globalPlant} onChange={(e) => setPlantId(Number(e.target.value))}>
               {plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </Select>
 

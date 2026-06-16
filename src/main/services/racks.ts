@@ -1,4 +1,4 @@
-import { getDb, nextNumber } from '../db'
+import { getDb, nextNumber, dbKind } from '../db'
 import type {
   Rack,
   RackStatus,
@@ -12,7 +12,7 @@ import type {
 } from '@shared/types'
 import { toCm, properCase } from '@shared/types'
 import { addMovement, finishedBalance } from './movements'
-import type Database from 'better-sqlite3'
+import type { Db } from '../db'
 
 const RACK_STATUSES: RackStatus[] = ['loading', 'in_transit', 'reached', 'closed']
 
@@ -61,7 +61,7 @@ export interface RackFilter {
   to?: string
 }
 
-export function listRacks(filter: RackFilter = {}): Rack[] {
+export async function listRacks(filter: RackFilter = {}): Promise<Rack[]> {
   const d = getDb()
   const where: string[] = []
   const params: Record<string, unknown> = {}
@@ -78,53 +78,53 @@ export function listRacks(filter: RackFilter = {}): Rack[] {
     params.to = filter.to
   }
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  const rows = d
+  const rows = (await d
     .prepare(`SELECT r.*, ${RACK_AGG} FROM racks r ${clause} ORDER BY r.date DESC, r.id DESC`)
-    .all(params) as Rack[]
+    .all(params)) as Rack[]
   return rows.map(decorate)
 }
 
-function getRack(d: Database.Database, id: number): Rack {
-  const row = d.prepare(`SELECT r.*, ${RACK_AGG} FROM racks r WHERE r.id = ?`).get(id) as
+async function getRack(d: Db, id: number): Promise<Rack> {
+  const row = (await d.prepare(`SELECT r.*, ${RACK_AGG} FROM racks r WHERE r.id = ?`).get(id)) as
     | Rack
     | undefined
   if (!row) throw new Error('Rack not found.')
   return decorate(row)
 }
 
-export function createRack(p: {
+export async function createRack(p: {
   rack_no: string
   destination: string
   date: string
   remarks: string
-}): Rack {
+}): Promise<Rack> {
   const d = getDb()
   const no = (p.rack_no || '').trim()
   if (!no) throw new Error('Railway rack no. is required.')
-  const dup = d.prepare(`SELECT id FROM racks WHERE rack_no = ?`).get(no)
+  const dup = await d.prepare(`SELECT id FROM racks WHERE rack_no = ?`).get(no)
   if (dup) throw new Error(`Rack "${no}" already exists.`)
-  const info = d
+  const info = await d
     .prepare(`INSERT INTO racks (rack_no, destination, date, remarks) VALUES (?, ?, ?, ?)`)
     .run(no, properCase(p.destination), p.date, p.remarks ?? '')
   return getRack(d, Number(info.lastInsertRowid))
 }
 
-export function updateRack(p: {
+export async function updateRack(p: {
   id: number
   rack_no: string
   destination: string
   date: string
   remarks: string
-}): Rack {
+}): Promise<Rack> {
   const d = getDb()
   const no = (p.rack_no || '').trim()
   if (!no) throw new Error('Railway rack no. is required.')
-  const dup = d.prepare(`SELECT id FROM racks WHERE rack_no = ? AND id <> ?`).get(no, p.id)
+  const dup = await d.prepare(`SELECT id FROM racks WHERE rack_no = ? AND id <> ?`).get(no, p.id)
   if (dup) throw new Error(`Rack "${no}" already exists.`)
-  const old = d.prepare(`SELECT * FROM racks WHERE id = ?`).get(p.id) as Rack | undefined
+  const old = (await d.prepare(`SELECT * FROM racks WHERE id = ?`).get(p.id)) as Rack | undefined
   if (!old) throw new Error('Rack not found.')
-  const tx = d.transaction(() => {
-    d.prepare(`UPDATE racks SET rack_no=?, destination=?, date=?, remarks=? WHERE id=?`).run(
+  await d.transaction(async () => {
+    await d.prepare(`UPDATE racks SET rack_no=?, destination=?, date=?, remarks=? WHERE id=?`).run(
       no,
       properCase(p.destination),
       p.date,
@@ -133,47 +133,46 @@ export function updateRack(p: {
     )
     // Keep stock movement notes in sync with the renamed rack.
     if (old.rack_no !== no) {
-      d.prepare(
-        `UPDATE stock_movements SET note = 'Loaded to rack ' || ? WHERE type='rack_load' AND ref_no IN
+      await d.prepare(
+        `UPDATE stock_movements SET note = ? WHERE type='rack_load' AND ref_no IN
            (SELECT loading_no FROM rack_loadings WHERE rack_id = ?)`
-      ).run(no, p.id)
+      ).run(`Loaded to rack ${no}`, p.id)
     }
   })
-  tx()
   return getRack(d, p.id)
 }
 
-export function setRackStatus(p: { id: number; status: RackStatus }): Rack {
+export async function setRackStatus(p: { id: number; status: RackStatus }): Promise<Rack> {
   const d = getDb()
   if (!RACK_STATUSES.includes(p.status)) throw new Error('Invalid rack status.')
-  d.prepare(`UPDATE racks SET status=? WHERE id=?`).run(p.status, p.id)
+  await d.prepare(`UPDATE racks SET status=? WHERE id=?`).run(p.status, p.id)
   return getRack(d, p.id)
 }
 
-export function deleteRack(payload: { id: number }): { ok: boolean; error?: string } {
+export async function deleteRack(payload: { id: number }): Promise<{ ok: boolean; error?: string }> {
   const d = getDb()
-  const counts = d
+  const counts = (await d
     .prepare(
       `SELECT
         (SELECT COUNT(*) FROM rack_loadings WHERE rack_id = @id) AS l,
         (SELECT COUNT(*) FROM rack_expenses WHERE rack_id = @id) AS e,
         (SELECT COUNT(*) FROM rack_sales WHERE rack_id = @id) AS s`
     )
-    .get({ id: payload.id }) as { l: number; e: number; s: number }
+    .get({ id: payload.id })) as { l: number; e: number; s: number }
   if (counts.l || counts.e || counts.s) {
     return {
       ok: false,
       error: 'Cannot delete: rack has loadings, expenses or sales. Remove them first.'
     }
   }
-  d.prepare(`DELETE FROM racks WHERE id = ?`).run(payload.id)
+  await d.prepare(`DELETE FROM racks WHERE id = ?`).run(payload.id)
   return { ok: true }
 }
 
-export function getRackDetail(payload: { id: number }): RackDetailData {
+export async function getRackDetail(payload: { id: number }): Promise<RackDetailData> {
   const d = getDb()
-  const rack = getRack(d, payload.id)
-  const loadings = d
+  const rack = await getRack(d, payload.id)
+  const loadings = (await d
     .prepare(
       `SELECT rl.*, p.name AS plant_name, t.name AS transporter_name, r.rack_no
        FROM rack_loadings rl
@@ -183,8 +182,8 @@ export function getRackDetail(payload: { id: number }): RackDetailData {
        WHERE rl.rack_id = ?
        ORDER BY rl.date DESC, rl.id DESC`
     )
-    .all(payload.id) as RackLoading[]
-  const unloadings = d
+    .all(payload.id)) as RackLoading[]
+  const unloadings = (await d
     .prepare(
       `SELECT ru.*, r.rack_no, t.name AS transporter_name
        FROM rack_unloadings ru
@@ -193,11 +192,11 @@ export function getRackDetail(payload: { id: number }): RackDetailData {
        WHERE ru.rack_id = ?
        ORDER BY ru.date DESC, ru.id DESC`
     )
-    .all(payload.id) as RackUnloading[]
-  const expenses = d
+    .all(payload.id)) as RackUnloading[]
+  const expenses = (await d
     .prepare(`SELECT * FROM rack_expenses WHERE rack_id = ? ORDER BY date DESC, id DESC`)
-    .all(payload.id) as RackExpense[]
-  const sales = d
+    .all(payload.id)) as RackExpense[]
+  const sales = (await d
     .prepare(
       `SELECT rs.*, c.name AS customer_name, r.rack_no
        FROM rack_sales rs
@@ -206,8 +205,8 @@ export function getRackDetail(payload: { id: number }): RackDetailData {
        WHERE rs.rack_id = ?
        ORDER BY rs.date DESC, rs.id DESC`
     )
-    .all(payload.id) as RackSale[]
-  const products = d
+    .all(payload.id)) as RackSale[]
+  const products = (await d
     .prepare(
       `SELECT product_name,
         ROUND(COALESCE(SUM(loaded),0),3) AS loaded_cm,
@@ -224,74 +223,79 @@ export function getRackDetail(payload: { id: number }): RackDetailData {
        )
        GROUP BY product_name ORDER BY product_name`
     )
-    .all({ id: payload.id }) as RackProductBalance[]
+    .all({ id: payload.id })) as RackProductBalance[]
   return { rack, loadings, unloadings, expenses, sales, products }
 }
 
-function loadedOf(d: Database.Database, rackId: number, productName: string): number {
+async function loadedOf(d: Db, rackId: number, productName: string): Promise<number> {
   return (
-    d
+    (await d
       .prepare(
         `SELECT COALESCE(SUM(total_cm),0) AS q FROM rack_loadings WHERE rack_id=? AND product_name=?`
       )
-      .get(rackId, productName) as { q: number }
+      .get(rackId, productName)) as { q: number }
   ).q
 }
 
-function unloadedOf(
-  d: Database.Database,
+async function unloadedOf(
+  d: Db,
   rackId: number,
   productName: string,
   excludeId?: number
-): number {
+): Promise<number> {
   return (
-    d
+    (await d
       .prepare(
         `SELECT COALESCE(SUM(qty_cm),0) AS q FROM rack_unloadings
          WHERE rack_id=? AND product_name=? ${excludeId ? 'AND id <> ?' : ''}`
       )
-      .get(...(excludeId ? [rackId, productName, excludeId] : [rackId, productName])) as {
+      .get(...(excludeId ? [rackId, productName, excludeId] : [rackId, productName]))) as {
       q: number
     }
   ).q
 }
 
-function soldOf(
-  d: Database.Database,
+async function soldOf(
+  d: Db,
   rackId: number,
   productName: string,
   excludeId?: number
-): number {
+): Promise<number> {
   return (
-    d
+    (await d
       .prepare(
         `SELECT COALESCE(SUM(qty_cm),0) AS q FROM rack_sales
          WHERE rack_id=? AND product_name=? ${excludeId ? 'AND id <> ?' : ''}`
       )
-      .get(...(excludeId ? [rackId, productName, excludeId] : [rackId, productName])) as {
+      .get(...(excludeId ? [rackId, productName, excludeId] : [rackId, productName]))) as {
       q: number
     }
   ).q
 }
 
 /** Quantity at destination still available to sell = unloaded - sold. */
-function rackSellable(
-  d: Database.Database,
+async function rackSellable(
+  d: Db,
   rackId: number,
   productName: string,
   excludeSaleId?: number
-): number {
-  return roundQty(unloadedOf(d, rackId, productName) - soldOf(d, rackId, productName, excludeSaleId))
+): Promise<number> {
+  return roundQty(
+    (await unloadedOf(d, rackId, productName)) - (await soldOf(d, rackId, productName, excludeSaleId))
+  )
 }
 
 /** Quantity still on the rake that can still be unloaded = loaded - unloaded. */
-function rackUnloadable(
-  d: Database.Database,
+async function rackUnloadable(
+  d: Db,
   rackId: number,
   productName: string,
   excludeUnloadId?: number
-): number {
-  return roundQty(loadedOf(d, rackId, productName) - unloadedOf(d, rackId, productName, excludeUnloadId))
+): Promise<number> {
+  return roundQty(
+    (await loadedOf(d, rackId, productName)) -
+      (await unloadedOf(d, rackId, productName, excludeUnloadId))
+  )
 }
 
 /* ---------------- Loadings (plant -> railway yard) ---------------- */
@@ -321,24 +325,24 @@ function resolveLoading(p: LoadingInput): { total: number; amount: number | null
   return { total: roundQty(total), amount: computeAmount(p.rate, total) }
 }
 
-export function addLoading(p: LoadingInput): RackLoading {
+export async function addLoading(p: LoadingInput): Promise<RackLoading> {
   const d = getDb()
-  const rack = d.prepare(`SELECT * FROM racks WHERE id = ?`).get(p.rack_id) as Rack | undefined
+  const rack = (await d.prepare(`SELECT * FROM racks WHERE id = ?`).get(p.rack_id)) as Rack | undefined
   if (!rack) throw new Error('Rack not found.')
   if (rack.status === 'closed') throw new Error('Rack is closed. Re-open it to add loadings.')
   if (!p.product_name?.trim()) throw new Error('Product is required.')
   const { total, amount } = resolveLoading(p)
   const outsourced = !!p.outsourced
   if (!outsourced) {
-    const available = finishedBalance(d, p.plant_id, p.product_name)
+    const available = await finishedBalance(d, p.plant_id, p.product_name)
     if (total > available)
       throw new Error(
         `Not enough finished goods. Available ${p.product_name}: ${available} m³, requested: ${total} m³.`
       )
   }
-  const tx = d.transaction(() => {
-    const no = nextNumber('RKL', 'rack_loading')
-    const info = d
+  const id = await d.transaction(async () => {
+    const no = await nextNumber('RKL', 'rack_loading')
+    const info = await d
       .prepare(
         `INSERT INTO rack_loadings
           (loading_no, rack_id, plant_id, product_name, transporter_id, vehicle_no, trips, per_trip_cm,
@@ -365,7 +369,7 @@ export function addLoading(p: LoadingInput): RackLoading {
         remarks: p.remarks ?? ''
       })
     if (!outsourced) {
-      addMovement(d, {
+      await addMovement(d, {
         type: 'rack_load',
         material_type: 'finished',
         ref_no: no,
@@ -375,27 +379,26 @@ export function addLoading(p: LoadingInput): RackLoading {
         date: p.date,
         note: `Loaded to rack ${rack.rack_no}`
       })
-      if (finishedBalance(d, p.plant_id, p.product_name) < 0)
+      if ((await finishedBalance(d, p.plant_id, p.product_name)) < 0)
         throw new Error('Stock cannot go negative.')
     }
     return Number(info.lastInsertRowid)
   })
-  const id = tx()
-  return d.prepare(`SELECT * FROM rack_loadings WHERE id = ?`).get(id) as RackLoading
+  return (await d.prepare(`SELECT * FROM rack_loadings WHERE id = ?`).get(id)) as RackLoading
 }
 
-export function updateLoading(p: LoadingInput): RackLoading {
+export async function updateLoading(p: LoadingInput): Promise<RackLoading> {
   const d = getDb()
   if (!p.id) throw new Error('Missing loading id.')
-  const old = d.prepare(`SELECT * FROM rack_loadings WHERE id = ?`).get(p.id) as
+  const old = (await d.prepare(`SELECT * FROM rack_loadings WHERE id = ?`).get(p.id)) as
     | RackLoading
     | undefined
   if (!old) throw new Error('Loading not found.')
   if (!p.product_name?.trim()) throw new Error('Product is required.')
   const { total, amount } = resolveLoading(p)
   const outsourced = !!p.outsourced
-  const tx = d.transaction(() => {
-    d.prepare(
+  await d.transaction(async () => {
+    await d.prepare(
       `UPDATE rack_loadings SET plant_id=@plant_id, product_name=@product_name, transporter_id=@transporter_id,
          vehicle_no=@vehicle_no, trips=@trips, per_trip_cm=@per_trip_cm, total_cm=@total_cm,
          rate=@rate, amount=@amount, diesel_litres=@diesel_litres, diesel_amount=@diesel_amount,
@@ -418,9 +421,9 @@ export function updateLoading(p: LoadingInput): RackLoading {
       remarks: p.remarks ?? ''
     })
     // Rebuild the plant-stock movement to match the current outsourced flag.
-    d.prepare(`DELETE FROM stock_movements WHERE ref_no=? AND type='rack_load'`).run(old.loading_no)
+    await d.prepare(`DELETE FROM stock_movements WHERE ref_no=? AND type='rack_load'`).run(old.loading_no)
     if (!outsourced) {
-      addMovement(d, {
+      await addMovement(d, {
         type: 'rack_load',
         material_type: 'finished',
         ref_no: old.loading_no,
@@ -430,37 +433,35 @@ export function updateLoading(p: LoadingInput): RackLoading {
         date: p.date,
         note: `Loaded to rack`
       })
-      if (finishedBalance(d, old.plant_id, old.product_name) < 0)
+      if ((await finishedBalance(d, old.plant_id, old.product_name)) < 0)
         throw new Error('Edit would make finished goods stock negative.')
-      if (finishedBalance(d, p.plant_id, p.product_name) < 0)
+      if ((await finishedBalance(d, p.plant_id, p.product_name)) < 0)
         throw new Error('Edit would make finished goods stock negative.')
     }
     // The rack must still have loaded at least as much as has been unloaded.
-    if (rackUnloadable(d, old.rack_id, old.product_name) < 0)
+    if ((await rackUnloadable(d, old.rack_id, old.product_name)) < 0)
       throw new Error('Edit would leave more unloaded than loaded for this product.')
-    if (rackUnloadable(d, old.rack_id, p.product_name.trim()) < 0)
+    if ((await rackUnloadable(d, old.rack_id, p.product_name.trim())) < 0)
       throw new Error('Edit would leave more unloaded than loaded for this product.')
   })
-  tx()
-  return d.prepare(`SELECT * FROM rack_loadings WHERE id = ?`).get(p.id) as RackLoading
+  return (await d.prepare(`SELECT * FROM rack_loadings WHERE id = ?`).get(p.id)) as RackLoading
 }
 
-export function deleteLoading(payload: { id: number }): { ok: boolean; error?: string } {
+export async function deleteLoading(payload: { id: number }): Promise<{ ok: boolean; error?: string }> {
   const d = getDb()
-  const old = d.prepare(`SELECT * FROM rack_loadings WHERE id = ?`).get(payload.id) as
+  const old = (await d.prepare(`SELECT * FROM rack_loadings WHERE id = ?`).get(payload.id)) as
     | RackLoading
     | undefined
   if (!old) return { ok: false, error: 'Loading not found.' }
   try {
-    const tx = d.transaction(() => {
-      d.prepare(`DELETE FROM stock_movements WHERE ref_no=? AND type='rack_load'`).run(
+    await d.transaction(async () => {
+      await d.prepare(`DELETE FROM stock_movements WHERE ref_no=? AND type='rack_load'`).run(
         old.loading_no
       )
-      d.prepare(`DELETE FROM rack_loadings WHERE id = ?`).run(payload.id)
-      if (rackUnloadable(d, old.rack_id, old.product_name) < 0)
+      await d.prepare(`DELETE FROM rack_loadings WHERE id = ?`).run(payload.id)
+      if ((await rackUnloadable(d, old.rack_id, old.product_name)) < 0)
         throw new Error('Cannot delete: this material has already been unloaded at the destination.')
     })
-    tx()
     return { ok: true }
   } catch (e) {
     return { ok: false, error: (e as Error).message }
@@ -513,20 +514,20 @@ function unloadingFields(p: UnloadingInput, total: number, amount: number | null
   }
 }
 
-export function addUnloading(p: UnloadingInput): RackUnloading {
+export async function addUnloading(p: UnloadingInput): Promise<RackUnloading> {
   const d = getDb()
-  const rack = d.prepare(`SELECT * FROM racks WHERE id = ?`).get(p.rack_id) as Rack | undefined
+  const rack = (await d.prepare(`SELECT * FROM racks WHERE id = ?`).get(p.rack_id)) as Rack | undefined
   if (!rack) throw new Error('Rack not found.')
   if (rack.status === 'closed') throw new Error('Rack is closed. Re-open it to add unloadings.')
   if (!p.product_name?.trim()) throw new Error('Product is required.')
   const { total, amount } = resolveUnloading(p)
-  const onRake = rackUnloadable(d, p.rack_id, p.product_name.trim())
+  const onRake = await rackUnloadable(d, p.rack_id, p.product_name.trim())
   if (total > onRake)
     throw new Error(
       `Cannot unload more than was loaded. On rake — ${p.product_name}: ${onRake} m³, requested: ${total} m³.`
     )
-  const no = nextNumber('RKU', 'rack_unloading')
-  const info = d
+  const no = await nextNumber('RKU', 'rack_unloading')
+  const info = await d
     .prepare(
       `INSERT INTO rack_unloadings
         (unloading_no, rack_id, product_name, transporter_id, vehicle_no, trips, per_trip_cm, total_cm,
@@ -535,53 +536,51 @@ export function addUnloading(p: UnloadingInput): RackUnloading {
          @uom,@quantity,@qty_cm,@rate,@amount,@diesel_litres,@diesel_amount,@date,@remarks)`
     )
     .run({ unloading_no: no, ...unloadingFields(p, total, amount) })
-  return d.prepare(`SELECT * FROM rack_unloadings WHERE id = ?`).get(info.lastInsertRowid) as RackUnloading
+  return (await d.prepare(`SELECT * FROM rack_unloadings WHERE id = ?`).get(info.lastInsertRowid)) as RackUnloading
 }
 
-export function updateUnloading(p: UnloadingInput): RackUnloading {
+export async function updateUnloading(p: UnloadingInput): Promise<RackUnloading> {
   const d = getDb()
   if (!p.id) throw new Error('Missing unloading id.')
-  const old = d.prepare(`SELECT * FROM rack_unloadings WHERE id = ?`).get(p.id) as
+  const old = (await d.prepare(`SELECT * FROM rack_unloadings WHERE id = ?`).get(p.id)) as
     | RackUnloading
     | undefined
   if (!old) throw new Error('Unloading not found.')
   if (!p.product_name?.trim()) throw new Error('Product is required.')
   const { total, amount } = resolveUnloading(p)
-  const tx = d.transaction(() => {
-    d.prepare(
+  await d.transaction(async () => {
+    await d.prepare(
       `UPDATE rack_unloadings SET product_name=@product_name, transporter_id=@transporter_id,
          vehicle_no=@vehicle_no, trips=@trips, per_trip_cm=@per_trip_cm, total_cm=@total_cm,
          uom=@uom, quantity=@quantity, qty_cm=@qty_cm, rate=@rate, amount=@amount,
          diesel_litres=@diesel_litres, diesel_amount=@diesel_amount, date=@date, remarks=@remarks WHERE id=@id`
     ).run({ id: p.id, ...unloadingFields(p, total, amount) })
     if (
-      rackUnloadable(d, old.rack_id, old.product_name) < 0 ||
-      rackUnloadable(d, old.rack_id, p.product_name.trim()) < 0
+      (await rackUnloadable(d, old.rack_id, old.product_name)) < 0 ||
+      (await rackUnloadable(d, old.rack_id, p.product_name.trim())) < 0
     )
       throw new Error('Edit would leave more unloaded than loaded for this product.')
     if (
-      rackSellable(d, old.rack_id, old.product_name) < 0 ||
-      rackSellable(d, old.rack_id, p.product_name.trim()) < 0
+      (await rackSellable(d, old.rack_id, old.product_name)) < 0 ||
+      (await rackSellable(d, old.rack_id, p.product_name.trim())) < 0
     )
       throw new Error('Edit would leave sales exceeding the unloaded quantity.')
   })
-  tx()
-  return d.prepare(`SELECT * FROM rack_unloadings WHERE id = ?`).get(p.id) as RackUnloading
+  return (await d.prepare(`SELECT * FROM rack_unloadings WHERE id = ?`).get(p.id)) as RackUnloading
 }
 
-export function deleteUnloading(payload: { id: number }): { ok: boolean; error?: string } {
+export async function deleteUnloading(payload: { id: number }): Promise<{ ok: boolean; error?: string }> {
   const d = getDb()
-  const old = d.prepare(`SELECT * FROM rack_unloadings WHERE id = ?`).get(payload.id) as
+  const old = (await d.prepare(`SELECT * FROM rack_unloadings WHERE id = ?`).get(payload.id)) as
     | RackUnloading
     | undefined
   if (!old) return { ok: false, error: 'Unloading not found.' }
   try {
-    const tx = d.transaction(() => {
-      d.prepare(`DELETE FROM rack_unloadings WHERE id = ?`).run(payload.id)
-      if (rackSellable(d, old.rack_id, old.product_name) < 0)
+    await d.transaction(async () => {
+      await d.prepare(`DELETE FROM rack_unloadings WHERE id = ?`).run(payload.id)
+      if ((await rackSellable(d, old.rack_id, old.product_name)) < 0)
         throw new Error('Cannot delete: material from this unloading has already been sold.')
     })
-    tx()
     return { ok: true }
   } catch (e) {
     return { ok: false, error: (e as Error).message }
@@ -599,67 +598,77 @@ export interface ExpenseInput {
   remarks: string
 }
 
-export function listExpenseTypes(): string[] {
+export async function listExpenseTypes(): Promise<string[]> {
   const d = getDb()
-  const rows = d.prepare(`SELECT name FROM expense_types ORDER BY name`).all() as {
+  const rows = (await d.prepare(`SELECT name FROM expense_types ORDER BY name`).all()) as {
     name: string
   }[]
   return rows.map((r) => r.name)
 }
 
-export function createExpenseType(payload: { name: string }): { ok: boolean; error?: string } {
+export async function createExpenseType(payload: { name: string }): Promise<{ ok: boolean; error?: string }> {
   const d = getDb()
   const name = properCase(payload.name)
   if (!name) return { ok: false, error: 'Expense type name is required.' }
-  const dup = d.prepare(`SELECT id FROM expense_types WHERE name = ? COLLATE NOCASE`).get(name)
+  const dup = await d.prepare(`SELECT id FROM expense_types WHERE name = ? COLLATE NOCASE`).get(name)
   if (dup) return { ok: false, error: `"${name}" already exists.` }
-  d.prepare(`INSERT INTO expense_types (name) VALUES (?)`).run(name)
+  await d.prepare(`INSERT INTO expense_types (name) VALUES (?)`).run(name)
   return { ok: true }
 }
 
-export function deleteExpenseType(payload: { name: string }): { ok: boolean } {
+export async function deleteExpenseType(payload: { name: string }): Promise<{ ok: boolean }> {
   const d = getDb()
-  d.prepare(`DELETE FROM expense_types WHERE name = ?`).run(payload.name)
+  await d.prepare(`DELETE FROM expense_types WHERE name = ?`).run(payload.name)
   return { ok: true }
 }
 
-export function addExpense(p: ExpenseInput): RackExpense {
+export async function addExpense(p: ExpenseInput): Promise<RackExpense> {
   const d = getDb()
   const type = properCase(p.expense_type)
   if (!type) throw new Error('Expense type is required.')
   if (!(Number(p.amount) > 0)) throw new Error('Amount must be greater than 0.')
-  const tx = d.transaction(() => {
-    d.prepare(`INSERT INTO expense_types (name) VALUES (?) ON CONFLICT(name) DO NOTHING`).run(type)
-    const info = d
+  const id = await d.transaction(async () => {
+    await d
+      .prepare(
+        dbKind() === 'mysql'
+          ? `INSERT IGNORE INTO expense_types (name) VALUES (?)`
+          : `INSERT INTO expense_types (name) VALUES (?) ON CONFLICT(name) DO NOTHING`
+      )
+      .run(type)
+    const info = await d
       .prepare(
         `INSERT INTO rack_expenses (rack_id, expense_type, amount, date, remarks) VALUES (?, ?, ?, ?, ?)`
       )
       .run(p.rack_id, type, roundMoney(Number(p.amount)), p.date, p.remarks ?? '')
     return Number(info.lastInsertRowid)
   })
-  const id = tx()
-  return d.prepare(`SELECT * FROM rack_expenses WHERE id = ?`).get(id) as RackExpense
+  return (await d.prepare(`SELECT * FROM rack_expenses WHERE id = ?`).get(id)) as RackExpense
 }
 
-export function updateExpense(p: ExpenseInput): RackExpense {
+export async function updateExpense(p: ExpenseInput): Promise<RackExpense> {
   const d = getDb()
   if (!p.id) throw new Error('Missing expense id.')
   const type = properCase(p.expense_type)
   if (!type) throw new Error('Expense type is required.')
   if (!(Number(p.amount) > 0)) throw new Error('Amount must be greater than 0.')
-  const tx = d.transaction(() => {
-    d.prepare(`INSERT INTO expense_types (name) VALUES (?) ON CONFLICT(name) DO NOTHING`).run(type)
-    d.prepare(
+  await d.transaction(async () => {
+    await d
+      .prepare(
+        dbKind() === 'mysql'
+          ? `INSERT IGNORE INTO expense_types (name) VALUES (?)`
+          : `INSERT INTO expense_types (name) VALUES (?) ON CONFLICT(name) DO NOTHING`
+      )
+      .run(type)
+    await d.prepare(
       `UPDATE rack_expenses SET expense_type=?, amount=?, date=?, remarks=? WHERE id=?`
     ).run(type, roundMoney(Number(p.amount)), p.date, p.remarks ?? '', p.id)
   })
-  tx()
-  return d.prepare(`SELECT * FROM rack_expenses WHERE id = ?`).get(p.id) as RackExpense
+  return (await d.prepare(`SELECT * FROM rack_expenses WHERE id = ?`).get(p.id)) as RackExpense
 }
 
-export function deleteExpense(payload: { id: number }): { ok: boolean } {
+export async function deleteExpense(payload: { id: number }): Promise<{ ok: boolean }> {
   const d = getDb()
-  d.prepare(`DELETE FROM rack_expenses WHERE id = ?`).run(payload.id)
+  await d.prepare(`DELETE FROM rack_expenses WHERE id = ?`).run(payload.id)
   return { ok: true }
 }
 
@@ -671,7 +680,7 @@ export interface ExpenseFilter {
   to?: string
 }
 
-export function listExpenses(filter: ExpenseFilter = {}): RackExpense[] {
+export async function listExpenses(filter: ExpenseFilter = {}): Promise<RackExpense[]> {
   const d = getDb()
   const where: string[] = []
   const params: Record<string, unknown> = {}
@@ -692,7 +701,7 @@ export function listExpenses(filter: ExpenseFilter = {}): RackExpense[] {
     params.to = filter.to
   }
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  return d
+  return (await d
     .prepare(
       `SELECT e.*, r.rack_no
        FROM rack_expenses e
@@ -700,7 +709,7 @@ export function listExpenses(filter: ExpenseFilter = {}): RackExpense[] {
        ${clause}
        ORDER BY e.date DESC, e.id DESC`
     )
-    .all(params) as RackExpense[]
+    .all(params)) as RackExpense[]
 }
 
 /* ---------------- Sales (rack -> customer, any UOM) ---------------- */
@@ -726,22 +735,22 @@ function resolveSale(p: SaleInput): { qtyCm: number; amount: number | null } {
   return { qtyCm, amount: computeAmount(p.rate, Number(p.quantity)) }
 }
 
-export function addSale(p: SaleInput): RackSale {
+export async function addSale(p: SaleInput): Promise<RackSale> {
   const d = getDb()
-  const rack = d.prepare(`SELECT * FROM racks WHERE id = ?`).get(p.rack_id) as Rack | undefined
+  const rack = (await d.prepare(`SELECT * FROM racks WHERE id = ?`).get(p.rack_id)) as Rack | undefined
   if (!rack) throw new Error('Rack not found.')
   if (rack.status === 'loading' || rack.status === 'in_transit')
     throw new Error(`Sales start once the rack has reached its destination. Mark rack "${rack.rack_no}" as Reached first.`)
   if (rack.status === 'closed') throw new Error('Rack is closed. Re-open it to add sales.')
   const { qtyCm, amount } = resolveSale(p)
-  const available = rackSellable(d, p.rack_id, p.product_name)
+  const available = await rackSellable(d, p.rack_id, p.product_name)
   if (qtyCm > available)
     throw new Error(
       `Not enough unloaded material at destination. Available ${p.product_name}: ${available} m³, requested: ${qtyCm} m³. Add an unloading first.`
     )
-  const tx = d.transaction(() => {
-    const no = nextNumber('SL', 'rack_sale')
-    const info = d
+  const id = await d.transaction(async () => {
+    const no = await nextNumber('SL', 'rack_sale')
+    const info = await d
       .prepare(
         `INSERT INTO rack_sales
           (sale_no, rack_id, customer_id, product_name, uom, quantity, qty_cm, rate, amount, truck_no, date, remarks)
@@ -763,22 +772,21 @@ export function addSale(p: SaleInput): RackSale {
       })
     return Number(info.lastInsertRowid)
   })
-  const id = tx()
-  return d.prepare(`SELECT * FROM rack_sales WHERE id = ?`).get(id) as RackSale
+  return (await d.prepare(`SELECT * FROM rack_sales WHERE id = ?`).get(id)) as RackSale
 }
 
-export function updateSale(p: SaleInput): RackSale {
+export async function updateSale(p: SaleInput): Promise<RackSale> {
   const d = getDb()
   if (!p.id) throw new Error('Missing sale id.')
-  const old = d.prepare(`SELECT * FROM rack_sales WHERE id = ?`).get(p.id) as RackSale | undefined
+  const old = (await d.prepare(`SELECT * FROM rack_sales WHERE id = ?`).get(p.id)) as RackSale | undefined
   if (!old) throw new Error('Sale not found.')
   const { qtyCm, amount } = resolveSale(p)
-  const available = rackSellable(d, old.rack_id, p.product_name, p.id)
+  const available = await rackSellable(d, old.rack_id, p.product_name, p.id)
   if (qtyCm > available)
     throw new Error(
       `Not enough unloaded material at destination. Available ${p.product_name}: ${available} m³, requested: ${qtyCm} m³.`
     )
-  d.prepare(
+  await d.prepare(
     `UPDATE rack_sales SET customer_id=@customer_id, product_name=@product_name, uom=@uom,
        quantity=@quantity, qty_cm=@qty_cm, rate=@rate, amount=@amount, truck_no=@truck_no, date=@date, remarks=@remarks
      WHERE id=@id`
@@ -795,12 +803,12 @@ export function updateSale(p: SaleInput): RackSale {
     date: p.date,
     remarks: p.remarks ?? ''
   })
-  return d.prepare(`SELECT * FROM rack_sales WHERE id = ?`).get(p.id) as RackSale
+  return (await d.prepare(`SELECT * FROM rack_sales WHERE id = ?`).get(p.id)) as RackSale
 }
 
-export function deleteSale(payload: { id: number }): { ok: boolean } {
+export async function deleteSale(payload: { id: number }): Promise<{ ok: boolean }> {
   const d = getDb()
-  d.prepare(`DELETE FROM rack_sales WHERE id = ?`).run(payload.id)
+  await d.prepare(`DELETE FROM rack_sales WHERE id = ?`).run(payload.id)
   return { ok: true }
 }
 
@@ -813,7 +821,7 @@ export interface SaleFilter {
   to?: string
 }
 
-export function listSales(filter: SaleFilter = {}): RackSale[] {
+export async function listSales(filter: SaleFilter = {}): Promise<RackSale[]> {
   const d = getDb()
   const where: string[] = []
   const params: Record<string, unknown> = {}
@@ -838,7 +846,7 @@ export function listSales(filter: SaleFilter = {}): RackSale[] {
     params.to = filter.to
   }
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  return d
+  return (await d
     .prepare(
       `SELECT rs.*, c.name AS customer_name, r.rack_no
        FROM rack_sales rs
@@ -847,5 +855,5 @@ export function listSales(filter: SaleFilter = {}): RackSale[] {
        ${clause}
        ORDER BY rs.date DESC, rs.id DESC`
     )
-    .all(params) as RackSale[]
+    .all(params)) as RackSale[]
 }

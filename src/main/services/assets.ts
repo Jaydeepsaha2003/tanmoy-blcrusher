@@ -3,10 +3,10 @@ import type { Asset, AssetReport } from '@shared/types'
 import { properCase } from '@shared/types'
 import { avgDieselRate } from './diesel'
 
-export function listAssets(payload: { plant_id?: number } = {}): Asset[] {
+export async function listAssets(payload: { plant_id?: number } = {}): Promise<Asset[]> {
   const d = getDb()
   const clause = payload.plant_id ? `WHERE (a.plant_id IS NULL OR a.plant_id = @plant_id)` : ''
-  return d
+  return (await d
     .prepare(
       `SELECT a.*, p.name AS plant_name, b.name AS business_name
        FROM assets a
@@ -15,10 +15,10 @@ export function listAssets(payload: { plant_id?: number } = {}): Asset[] {
        ${clause}
        ORDER BY a.asset_type, a.name`
     )
-    .all(payload) as Asset[]
+    .all(payload)) as Asset[]
 }
 
-export function createAsset(p: {
+export async function createAsset(p: {
   name: string
   asset_type: string
   category: string
@@ -27,10 +27,10 @@ export function createAsset(p: {
   business_id?: number | null
   status: string
   remarks: string
-}): Asset {
+}): Promise<Asset> {
   const d = getDb()
   if (!p.name?.trim()) throw new Error('Name is required.')
-  const info = d
+  const info = await d
     .prepare(
       `INSERT INTO assets (name, asset_type, category, identifier, plant_id, business_id, status, remarks)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
@@ -45,10 +45,10 @@ export function createAsset(p: {
       p.status || 'active',
       p.remarks ?? ''
     )
-  return d.prepare(`SELECT * FROM assets WHERE id = ?`).get(info.lastInsertRowid) as Asset
+  return (await d.prepare(`SELECT * FROM assets WHERE id = ?`).get(info.lastInsertRowid)) as Asset
 }
 
-export function updateAsset(p: {
+export async function updateAsset(p: {
   id: number
   name: string
   asset_type: string
@@ -58,9 +58,9 @@ export function updateAsset(p: {
   business_id?: number | null
   status: string
   remarks: string
-}): Asset {
+}): Promise<Asset> {
   const d = getDb()
-  d.prepare(
+  await d.prepare(
     `UPDATE assets SET name=?, asset_type=?, category=?, identifier=?, plant_id=?, business_id=?, status=?, remarks=? WHERE id=?`
   ).run(
     properCase(p.name),
@@ -73,26 +73,26 @@ export function updateAsset(p: {
     p.remarks ?? '',
     p.id
   )
-  return d.prepare(`SELECT * FROM assets WHERE id = ?`).get(p.id) as Asset
+  return (await d.prepare(`SELECT * FROM assets WHERE id = ?`).get(p.id)) as Asset
 }
 
 /** Per-machine report: diesel, maintenance, rent earned, operator wages and net to its business. */
-export function assetReport(payload: { id: number }): AssetReport {
+export async function assetReport(payload: { id: number }): Promise<AssetReport> {
   const d = getDb()
-  const a = d
+  const a = (await d
     .prepare(
       `SELECT a.name, b.name AS business_name FROM assets a
        LEFT JOIN businesses b ON b.id = a.business_id WHERE a.id = ?`
     )
-    .get(payload.id) as { name: string; business_name: string | null } | undefined
+    .get(payload.id)) as { name: string; business_name: string | null } | undefined
   if (!a) throw new Error('Asset not found.')
   const litres = (
-    d.prepare(`SELECT COALESCE(SUM(litres),0) AS q FROM diesel_issues WHERE asset_id = ?`).get(payload.id) as {
+    (await d.prepare(`SELECT COALESCE(SUM(litres),0) AS q FROM diesel_issues WHERE asset_id = ?`).get(payload.id)) as {
       q: number
     }
   ).q
-  const dieselCost = litres * avgDieselRate()
-  const exp = d
+  const dieselCost = litres * (await avgDieselRate())
+  const exp = (await d
     .prepare(
       `SELECT
         COALESCE(SUM(CASE WHEN category='maintenance' THEN amount ELSE 0 END),0) AS maintenance,
@@ -100,9 +100,9 @@ export function assetReport(payload: { id: number }): AssetReport {
         COALESCE(SUM(CASE WHEN category NOT IN ('maintenance','tipper_rent','equipment_rent') THEN amount ELSE 0 END),0) AS other
        FROM plant_expenses WHERE asset_id = ?`
     )
-    .get(payload.id) as { maintenance: number; rent: number; other: number }
+    .get(payload.id)) as { maintenance: number; rent: number; other: number }
   const wages = (
-    d.prepare(`SELECT COALESCE(SUM(amount),0) AS q FROM wage_entries WHERE asset_id = ?`).get(payload.id) as {
+    (await d.prepare(`SELECT COALESCE(SUM(amount),0) AS q FROM wage_entries WHERE asset_id = ?`).get(payload.id)) as {
       q: number
     }
   ).q
@@ -122,14 +122,14 @@ export function assetReport(payload: { id: number }): AssetReport {
   }
 }
 
-export function deleteAsset(payload: { id: number }): { ok: boolean; error?: string } {
+export async function deleteAsset(payload: { id: number }): Promise<{ ok: boolean; error?: string }> {
   const d = getDb()
-  const used = d
+  const used = (await d
     .prepare(`SELECT COUNT(*) AS c FROM plant_expenses WHERE asset_id = ?`)
-    .get(payload.id) as { c: number }
+    .get(payload.id)) as { c: number }
   if (used.c > 0) {
     return { ok: false, error: 'Cannot delete: this asset has expense records.' }
   }
-  d.prepare(`DELETE FROM assets WHERE id = ?`).run(payload.id)
+  await d.prepare(`DELETE FROM assets WHERE id = ?`).run(payload.id)
   return { ok: true }
 }

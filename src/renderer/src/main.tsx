@@ -29,3 +29,13 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
     </QueryClientProvider>
   </React.StrictMode>
 )
+
+// Register the service worker for PWA install / offline shell (web only; the
+// Electron desktop build loads over file:// where service workers don't apply).
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      /* ignore registration failures */
+    })
+  })
+}

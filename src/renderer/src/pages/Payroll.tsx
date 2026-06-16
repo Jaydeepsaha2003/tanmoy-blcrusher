@@ -145,7 +145,7 @@ export function Payroll(): React.JSX.Element {
         }
       />
       <Page>
-        <div className="mb-5 grid grid-cols-3 gap-3">
+        <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Card><CardContent className="p-4"><div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Net Wages</div><div className="tnum mt-1 text-lg font-bold">{fmtMoney(totals.gross)}</div></CardContent></Card>
           <Card><CardContent className="p-4"><div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Paid</div><div className="tnum mt-1 text-lg font-bold text-success">{fmtMoney(totals.paid)}</div></CardContent></Card>
           <Card><CardContent className="p-4"><div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Outstanding</div><div className="tnum mt-1 text-lg font-bold text-destructive">{fmtMoney(totals.gross - totals.paid)}</div></CardContent></Card>
@@ -153,7 +153,7 @@ export function Payroll(): React.JSX.Element {
 
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <span className="text-sm text-muted-foreground">Period</span>
-          <Input type="month" className="w-44" value={period} onChange={(e) => setPeriod(e.target.value)} />
+          <Input type="month" className="w-full sm:w-44" value={period} onChange={(e) => setPeriod(e.target.value)} />
           {period && <Button variant="ghost" size="sm" onClick={() => setPeriod('')}>Show all</Button>}
         </div>
 
@@ -198,7 +198,7 @@ export function Payroll(): React.JSX.Element {
 
       {form && (
         <Modal open onClose={() => setForm(null)} title={form.id ? `Edit ${form.entry_no}` : 'Add Wages'} width="max-w-2xl">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Employee" required>
               <Select value={form.employee_id || ''} onChange={(e) => setForm({ ...form, employee_id: Number(e.target.value) })}>
                 {employees.map((x) => <option key={x.id} value={x.id}>{x.name} ({x.wage_type === 'monthly' ? `${fmtMoney(x.monthly_salary)}/mo` : `${fmtMoney(x.daily_wage)}/day`})</option>)}

@@ -132,7 +132,7 @@ export function Employees(): React.JSX.Element {
 
       {form && (
         <Modal open={open} onClose={() => setOpen(false)} title={form.id ? 'Edit Employee' : 'New Employee'} width="max-w-2xl">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Name" required>
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </Field>

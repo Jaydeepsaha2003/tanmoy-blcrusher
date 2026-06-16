@@ -19,7 +19,7 @@ const BILLED_TOTAL_SQL = `(COALESCE(di.amount,0)
   + CASE WHEN di.transport_billed = 1 THEN di.transport_charge ELSE 0 END
   + CASE WHEN di.other_billed = 1 THEN di.other_charge ELSE 0 END)`
 
-export function listDispatches(filter: DispatchFilter = {}): Dispatch[] {
+export async function listDispatches(filter: DispatchFilter = {}): Promise<Dispatch[]> {
   const d = getDb()
   const where: string[] = []
   const params: Record<string, unknown> = {}
@@ -55,7 +55,7 @@ export function listDispatches(filter: DispatchFilter = {}): Dispatch[] {
     params.to = filter.to
   }
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  return d
+  return (await d
     .prepare(
       `SELECT di.*, c.name AS customer_name, p.name AS plant_name,
         ${BILLED_TOTAL_SQL} AS billed_total
@@ -65,7 +65,7 @@ export function listDispatches(filter: DispatchFilter = {}): Dispatch[] {
        ${clause}
        ORDER BY di.date DESC, di.id DESC`
     )
-    .all(params) as Dispatch[]
+    .all(params)) as Dispatch[]
 }
 
 function computeAmount(rate: number | null, qty: number): number | null {
@@ -149,19 +149,19 @@ function normalize(p: DispatchInput): {
   }
 }
 
-export function createDispatch(p: DispatchInput): Dispatch {
+export async function createDispatch(p: DispatchInput): Promise<Dispatch> {
   const d = getDb()
   const { product, qtyCm, outsourced, fields } = normalize(p)
   if (!outsourced) {
-    const available = finishedBalance(d, p.plant_id, product)
+    const available = await finishedBalance(d, p.plant_id, product)
     if (qtyCm > available)
       throw new Error(
         `Not enough finished goods. Available ${product}: ${available} m³, requested: ${qtyCm} m³.`
       )
   }
-  const tx = d.transaction(() => {
-    const no = nextNumber('SALE', 'dispatch')
-    const info = d
+  const id = await d.transaction(async () => {
+    const no = await nextNumber('SALE', 'dispatch')
+    const info = await d
       .prepare(
         `INSERT INTO dispatches
           (dispatch_no, customer_id, plant_id, product_name, uom, quantity, qty_cm, rate, amount,
@@ -173,7 +173,7 @@ export function createDispatch(p: DispatchInput): Dispatch {
       )
       .run({ dispatch_no: no, ...fields })
     if (!outsourced) {
-      addMovement(d, {
+      await addMovement(d, {
         type: 'dispatch',
         material_type: 'finished',
         ref_no: no,
@@ -183,22 +183,21 @@ export function createDispatch(p: DispatchInput): Dispatch {
         date: p.date,
         note: 'Direct sale to customer'
       })
-      if (finishedBalance(d, p.plant_id, product) < 0) throw new Error('Stock cannot go negative.')
+      if ((await finishedBalance(d, p.plant_id, product)) < 0) throw new Error('Stock cannot go negative.')
     }
     return Number(info.lastInsertRowid)
   })
-  const id = tx()
-  return d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(id) as Dispatch
+  return (await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(id)) as Dispatch
 }
 
-export function updateDispatch(p: DispatchInput): Dispatch {
+export async function updateDispatch(p: DispatchInput): Promise<Dispatch> {
   const d = getDb()
   if (!p.id) throw new Error('Missing dispatch id.')
-  const old = d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(p.id) as Dispatch
+  const old = (await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(p.id)) as Dispatch
   if (!old) throw new Error('Dispatch not found.')
   const { product, qtyCm, outsourced, fields } = normalize(p)
-  const tx = d.transaction(() => {
-    d.prepare(
+  await d.transaction(async () => {
+    await d.prepare(
       `UPDATE dispatches SET customer_id=@customer_id, plant_id=@plant_id, product_name=@product_name,
         uom=@uom, quantity=@quantity, qty_cm=@qty_cm, rate=@rate, amount=@amount,
         transport_charge=@transport_charge, transport_billed=@transport_billed,
@@ -208,9 +207,9 @@ export function updateDispatch(p: DispatchInput): Dispatch {
         date=@date, remarks=@remarks WHERE id=@id`
     ).run({ id: p.id, ...fields })
     // Rebuild the stock movement to match the current outsourced flag.
-    d.prepare(`DELETE FROM stock_movements WHERE ref_no=? AND type='dispatch'`).run(old.dispatch_no)
+    await d.prepare(`DELETE FROM stock_movements WHERE ref_no=? AND type='dispatch'`).run(old.dispatch_no)
     if (!outsourced) {
-      addMovement(d, {
+      await addMovement(d, {
         type: 'dispatch',
         material_type: 'finished',
         ref_no: old.dispatch_no,
@@ -220,55 +219,58 @@ export function updateDispatch(p: DispatchInput): Dispatch {
         date: p.date,
         note: 'Direct sale to customer'
       })
-      if (finishedBalance(d, old.plant_id, old.product_name) < 0)
+      if ((await finishedBalance(d, old.plant_id, old.product_name)) < 0)
         throw new Error('Edit would make finished goods stock negative.')
-      if (finishedBalance(d, p.plant_id, product) < 0)
+      if ((await finishedBalance(d, p.plant_id, product)) < 0)
         throw new Error('Edit would make finished goods stock negative.')
     }
   })
-  tx()
-  return d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(p.id) as Dispatch
+  return (await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(p.id)) as Dispatch
 }
 
-export function setRate(payload: { id: number; rate: number }): Dispatch {
+export async function setRate(payload: { id: number; rate: number }): Promise<Dispatch> {
   const d = getDb()
-  const row = d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id) as Dispatch
+  const row = (await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id)) as Dispatch
   const amount = computeAmount(payload.rate, row.quantity)
-  d.prepare(`UPDATE dispatches SET rate=?, amount=? WHERE id=?`).run(payload.rate, amount, payload.id)
-  return d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id) as Dispatch
+  await d.prepare(`UPDATE dispatches SET rate=?, amount=? WHERE id=?`).run(payload.rate, amount, payload.id)
+  return (await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id)) as Dispatch
 }
 
-export function setDelivery(payload: { id: number; delivery_status: DeliveryStatus }): Dispatch {
+export async function setDelivery(payload: {
+  id: number
+  delivery_status: DeliveryStatus
+}): Promise<Dispatch> {
   const d = getDb()
-  d.prepare(`UPDATE dispatches SET delivery_status=? WHERE id=?`).run(
+  await d.prepare(`UPDATE dispatches SET delivery_status=? WHERE id=?`).run(
     payload.delivery_status,
     payload.id
   )
-  return d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id) as Dispatch
+  return (await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id)) as Dispatch
 }
 
-export function setPayment(payload: {
+export async function setPayment(payload: {
   id: number
   paid_amount: number
   payment_status: PaymentStatus
-}): Dispatch {
+}): Promise<Dispatch> {
   const d = getDb()
-  d.prepare(`UPDATE dispatches SET paid_amount=?, payment_status=? WHERE id=?`).run(
+  await d.prepare(`UPDATE dispatches SET paid_amount=?, payment_status=? WHERE id=?`).run(
     Number(payload.paid_amount) || 0,
     payload.payment_status,
     payload.id
   )
-  return d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id) as Dispatch
+  return (await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id)) as Dispatch
 }
 
-export function deleteDispatch(payload: { id: number }): { ok: boolean; error?: string } {
+export async function deleteDispatch(payload: {
+  id: number
+}): Promise<{ ok: boolean; error?: string }> {
   const d = getDb()
-  const old = d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id) as Dispatch
+  const old = (await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id)) as Dispatch
   if (!old) return { ok: false, error: 'Sale not found.' }
-  const tx = d.transaction(() => {
-    d.prepare(`DELETE FROM stock_movements WHERE ref_no=? AND type='dispatch'`).run(old.dispatch_no)
-    d.prepare(`DELETE FROM dispatches WHERE id = ?`).run(payload.id)
+  await d.transaction(async () => {
+    await d.prepare(`DELETE FROM stock_movements WHERE ref_no=? AND type='dispatch'`).run(old.dispatch_no)
+    await d.prepare(`DELETE FROM dispatches WHERE id = ?`).run(payload.id)
   })
-  tx()
   return { ok: true }
 }

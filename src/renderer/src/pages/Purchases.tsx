@@ -131,11 +131,11 @@ export function Purchases(): React.JSX.Element {
       />
       <Page>
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <Select className="w-48" value={filter.supplier_id ?? ''} onChange={(e) => setFilter({ ...filter, supplier_id: e.target.value ? Number(e.target.value) : undefined })}>
+          <Select className="w-full sm:w-48" value={filter.supplier_id ?? ''} onChange={(e) => setFilter({ ...filter, supplier_id: e.target.value ? Number(e.target.value) : undefined })}>
             <option value="">All suppliers</option>
             {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </Select>
-          <Select className="w-44" value={filter.payment_status ?? ''} onChange={(e) => setFilter({ ...filter, payment_status: e.target.value || undefined })}>
+          <Select className="w-full sm:w-44" value={filter.payment_status ?? ''} onChange={(e) => setFilter({ ...filter, payment_status: e.target.value || undefined })}>
             <option value="">All payments</option>
             <option value="paid">Paid</option>
             <option value="partial">Partial</option>
@@ -188,7 +188,7 @@ export function Purchases(): React.JSX.Element {
 
       {form && (
         <Modal open={open} onClose={() => setOpen(false)} title={form.id ? `Edit ${form.purchase_no}` : 'New Purchase'} width="max-w-2xl">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Supplier" required>
               <Select value={form.supplier_id || ''} onChange={(e) => setForm({ ...form, supplier_id: Number(e.target.value) })}>
                 {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}

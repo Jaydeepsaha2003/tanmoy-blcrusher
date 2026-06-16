@@ -51,8 +51,12 @@ export interface User {
   username: string
   name: string
   role: Role
+  /** Legacy/overall level kept for display; per-module edit is driven by edit_modules. */
   access_level: AccessLevel
+  /** Modules the user can view (a module in edit_modules is implicitly here too). */
   modules: ModuleKey[]
+  /** Modules the user can also edit (create/update/delete). Subset of modules. */
+  edit_modules: ModuleKey[]
   active: number | boolean
   created_at?: string
 }

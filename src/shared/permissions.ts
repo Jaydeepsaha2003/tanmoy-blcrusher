@@ -63,7 +63,9 @@ const PREFIX_MODULE: Record<string, ModuleKey> = {
 
 // Specific methods whose module differs from their prefix's default.
 const METHOD_MODULE: Record<string, ModuleKey> = {
-  'system.wipeData': 'settings',
+  'system.requestDelete': 'settings',
+  'system.cancelDelete': 'settings',
+  'system.deleteStatus': 'settings',
   'system.setWorkdays': 'settings',
   'system.getWorkdays': 'payroll', // read by the Payroll page
   'racks.createExpenseType': 'settings',
@@ -76,7 +78,19 @@ export function moduleForMethod(method: string): ModuleKey | null {
   return PREFIX_MODULE[prefix] ?? null
 }
 
-const WRITE_VERBS = ['create', 'update', 'delete', 'save', 'set', 'add', 'transfer', 'wipe', 'remove']
+const WRITE_VERBS = [
+  'create',
+  'update',
+  'delete',
+  'save',
+  'set',
+  'add',
+  'transfer',
+  'wipe',
+  'remove',
+  'request',
+  'cancel'
+]
 
 /** True if a method mutates data (used for view-vs-edit gating and auditing). */
 export function isWriteMethod(method: string): boolean {
@@ -98,7 +112,8 @@ export function canViewModule(user: User | null, key: ModuleKey): boolean {
 export function canEditModule(user: User | null, key: ModuleKey): boolean {
   if (!user) return false
   if (user.role === 'admin') return true
-  return canViewModule(user, key) && user.access_level === 'edit'
+  if (moduleDef(key)?.adminOnly) return false
+  return Array.isArray(user.edit_modules) && user.edit_modules.includes(key)
 }
 
 /** Authoritative check: may this user call this API method? */
@@ -113,29 +128,52 @@ export function can(user: User | null, method: string): boolean {
 
 export const STAFF_MODULES = MODULES.filter((m) => !m.adminOnly)
 
-// Convenience presets for the Users screen (admin can still fine-tune).
+// Convenience presets for the Users screen (admin can still fine-tune per module).
+// modules = viewable; edit_modules = also editable (subset of modules).
+const ALL_STAFF = STAFF_MODULES.map((m) => m.key)
+const ACCOUNTANT_MODS: ModuleKey[] = [
+  'dashboard',
+  'plantExpenses',
+  'diesel',
+  'payroll',
+  'ledgers',
+  'payments',
+  'reports'
+]
+const OPERATOR_MODS: ModuleKey[] = [
+  'dashboard',
+  'purchases',
+  'production',
+  'racks',
+  'dispatch',
+  'movements'
+]
 export const ROLE_PRESETS: Record<
   string,
-  { label: string; access_level: AccessLevel; modules: ModuleKey[] }
+  { label: string; access_level: AccessLevel; modules: ModuleKey[]; edit_modules: ModuleKey[] }
 > = {
   manager: {
-    label: 'Manager (full operations, no settings/users)',
+    label: 'Manager (edit all operations, no settings/users)',
     access_level: 'edit',
-    modules: STAFF_MODULES.map((m) => m.key)
+    modules: ALL_STAFF,
+    edit_modules: ALL_STAFF
   },
   accountant: {
-    label: 'Accountant (accounts & reports)',
+    label: 'Accountant (edit accounts & reports)',
     access_level: 'edit',
-    modules: ['dashboard', 'plantExpenses', 'diesel', 'payroll', 'ledgers', 'payments', 'reports']
+    modules: ACCOUNTANT_MODS,
+    edit_modules: ACCOUNTANT_MODS
   },
   operator: {
-    label: 'Operator (data entry: stock, production, racks, sales)',
+    label: 'Operator (edit stock, production, racks, sales)',
     access_level: 'edit',
-    modules: ['dashboard', 'purchases', 'production', 'racks', 'dispatch', 'movements']
+    modules: OPERATOR_MODS,
+    edit_modules: OPERATOR_MODS
   },
   viewer: {
-    label: 'Viewer (read-only)',
+    label: 'Viewer (read-only, all modules)',
     access_level: 'view',
-    modules: STAFF_MODULES.map((m) => m.key)
+    modules: ALL_STAFF,
+    edit_modules: []
   }
 }

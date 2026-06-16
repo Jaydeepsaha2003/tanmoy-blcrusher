@@ -1,4 +1,4 @@
-import { getDb } from '../db'
+import { getDb, dbKind } from '../db'
 import type { FinishedGood } from '@shared/types'
 import { properCase } from '@shared/types'
 import { setFinishedOpening } from './movements'
@@ -14,7 +14,7 @@ export interface FinishedFilter {
  * Finished goods stock per plant + product, derived from stock movements.
  * opening = sum of 'opening' movements; produced = production_output; dispatched = dispatch.
  */
-export function listFinishedGoods(filter: FinishedFilter = {}): FinishedGood[] {
+export async function listFinishedGoods(filter: FinishedFilter = {}): Promise<FinishedGood[]> {
   const d = getDb()
   const where: string[] = [`m.material_type = 'finished'`]
   const params: Record<string, unknown> = {}
@@ -31,7 +31,7 @@ export function listFinishedGoods(filter: FinishedFilter = {}): FinishedGood[] {
   const dateDisp = filter.from || filter.to ? buildDateClause(filter, params, 'dispd') : ''
   const dateLoad = filter.from || filter.to ? buildDateClause(filter, params, 'loadd') : ''
 
-  const rows = d
+  const rows = (await d
     .prepare(
       `SELECT m.plant_id, p.name AS plant_name, m.product_name,
         COALESCE(SUM(CASE WHEN m.type='opening' THEN m.change_qty ELSE 0 END),0) AS opening_qty,
@@ -45,7 +45,7 @@ export function listFinishedGoods(filter: FinishedFilter = {}): FinishedGood[] {
        GROUP BY m.plant_id, m.product_name
        ORDER BY p.name, m.product_name`
     )
-    .all(params) as FinishedGood[]
+    .all(params)) as FinishedGood[]
   return rows.map((r) => ({
     ...r,
     opening_qty: round(r.opening_qty),
@@ -74,32 +74,35 @@ function buildDateClause(
 }
 
 /** Distinct finished-goods products available (with positive balance) for a plant. */
-export function availableProducts(payload: {
+export async function availableProducts(payload: {
   plant_id: number
-}): { product_name: string; balance_qty: number }[] {
-  return listFinishedGoods({ plant_id: payload.plant_id })
+}): Promise<{ product_name: string; balance_qty: number }[]> {
+  return (await listFinishedGoods({ plant_id: payload.plant_id }))
     .filter((f) => f.balance_qty > 0)
     .map((f) => ({ product_name: f.product_name, balance_qty: f.balance_qty }))
 }
 
-export function setOpening(payload: {
+export async function setOpening(payload: {
   plant_id: number
   product_name: string
   opening_qty: number
   date?: string
-}): { ok: boolean } {
+}): Promise<{ ok: boolean }> {
   const d = getDb()
   const date = payload.date || new Date().toISOString().slice(0, 10)
   const product = properCase(payload.product_name)
-  const tx = d.transaction(() => {
-    d.prepare(
-      `INSERT INTO finished_goods_opening (plant_id, product_name, opening_qty)
-       VALUES (?, ?, ?)
-       ON CONFLICT(plant_id, product_name) DO UPDATE SET opening_qty = excluded.opening_qty`
+  await d.transaction(async () => {
+    await d.prepare(
+      dbKind() === 'mysql'
+        ? `INSERT INTO finished_goods_opening (plant_id, product_name, opening_qty)
+           VALUES (?, ?, ?)
+           ON DUPLICATE KEY UPDATE opening_qty = VALUES(opening_qty)`
+        : `INSERT INTO finished_goods_opening (plant_id, product_name, opening_qty)
+           VALUES (?, ?, ?)
+           ON CONFLICT(plant_id, product_name) DO UPDATE SET opening_qty = excluded.opening_qty`
     ).run(payload.plant_id, product, payload.opening_qty || 0)
-    setFinishedOpening(d, payload.plant_id, product, payload.opening_qty || 0, date)
+    await setFinishedOpening(d, payload.plant_id, product, payload.opening_qty || 0, date)
   })
-  tx()
   return { ok: true }
 }
 

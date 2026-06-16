@@ -200,13 +200,13 @@ export function PlantExpenses(): React.JSX.Element {
         </div>
 
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <Select className="w-52" value={catFilter} onChange={(e) => setCatFilter(e.target.value as ExpenseCategory | '')}>
+          <Select className="w-full sm:w-52" value={catFilter} onChange={(e) => setCatFilter(e.target.value as ExpenseCategory | '')}>
             <option value="">All categories</option>
             {CATS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
           </Select>
-          <Input type="date" className="w-36" value={from} onChange={(e) => setFrom(e.target.value)} />
+          <Input type="date" className="w-full sm:w-36" value={from} onChange={(e) => setFrom(e.target.value)} />
           <span className="text-muted-foreground">to</span>
-          <Input type="date" className="w-36" value={to} onChange={(e) => setTo(e.target.value)} />
+          <Input type="date" className="w-full sm:w-36" value={to} onChange={(e) => setTo(e.target.value)} />
         </div>
 
         {data.length === 0 ? (
@@ -246,7 +246,7 @@ export function PlantExpenses(): React.JSX.Element {
 
       {form && (
         <Modal open={open} onClose={() => setOpen(false)} title={form.id ? `Edit ${form.expense_no}` : 'New Plant Expense'} width="max-w-2xl">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Plant" required hint={plantId ? 'Locked to active plant' : undefined}>
               <Select value={form.plant_id || ''} disabled={!!plantId} onChange={(e) => setForm({ ...form, plant_id: Number(e.target.value) })}>
                 {plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}

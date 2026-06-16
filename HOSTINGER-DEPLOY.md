@@ -60,14 +60,21 @@ In **File Manager**, open the Application root you chose, upload your zip, and
 
 In the Node.js app panel, add:
 
+The app stores its data in your **Hostinger MySQL database** (create one in
+hPanel → Databases → MySQL, then set these). All five DB vars are required:
+
 | Variable | Value | Why |
 |---|---|---|
+| `DB_HOST` | `localhost` | MySQL runs on the same host as the app |
+| `DB_PORT` | `3306` | default MySQL port |
+| `DB_USER` | your MySQL username (e.g. `u728987841_blcrusher_data`) | |
+| `DB_PASSWORD` | your MySQL password | |
+| `DB_NAME` | your MySQL database name (e.g. `u728987841_blcrusher_data`) | |
 | `SECURE_COOKIE` | `1` | Hostinger serves HTTPS — keeps the session cookie TLS-only |
-| `BL_DB_DIR` | an absolute path **outside** the app root, e.g. `/home/uXXXXXXXX/blcrusher-data` | so re-uploading the app never overwrites your database |
 
-Create that `blcrusher-data` folder in File Manager first. (If you skip
-`BL_DB_DIR`, the database goes to `<app root>/data` — that works too, just don't
-delete it when you update the app.)
+On first start the app **creates all its tables automatically** in that database
+(and re-checks them on every deploy), then seeds the `admin` user. No SQL import
+or `BL_DB_DIR` needed — MySQL is managed and persistent.
 
 Make sure **SSL is enabled** for the domain (hPanel → Security → SSL).
 
@@ -75,11 +82,12 @@ Make sure **SSL is enabled** for the domain (hPanel → Security → SSL).
 
 ## Step 5 — Install & start
 
-1. In the Node.js app panel click **Run NPM Install** (installs the 3 runtime
-   deps; `better-sqlite3` downloads a prebuilt Node binary — no compiler needed).
-2. Click **Start** (or **Restart**).
-3. Open your domain. Log in with the default password **`admin123`** and
-   immediately change it in **Settings → Change Password**.
+1. In the Node.js app panel click **Run NPM Install** (installs `express`,
+   `cookie`, `mysql2` — all pure JavaScript, so no compiler/native build).
+2. Click **Start** (or **Restart**). On first start it creates the tables in
+   your MySQL database automatically.
+3. Open your domain. Log in with **`admin` / `admin123`** and immediately change
+   the password (sidebar → Change password).
 
 ---
 
@@ -87,7 +95,8 @@ Make sure **SSL is enabled** for the domain (hPanel → Security → SSL).
 
 1. `npm run package:web` on your PC again.
 2. Re-upload `dist-server/` and `out/renderer/` (and `package.json` if deps
-   changed). Your `BL_DB_DIR` data is untouched.
+   changed). Your MySQL data is untouched, and any new schema is applied
+   automatically on restart.
 3. **Run NPM Install** only if `package.json` changed, then **Restart**.
 
 ---

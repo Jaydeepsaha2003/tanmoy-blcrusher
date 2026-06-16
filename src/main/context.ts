@@ -1,15 +1,16 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import type { User } from '@shared/types'
 
-// The user behind the current API call. Both transports set this immediately
-// before invoking a handler and clear it afterwards. This is safe because every
-// handler runs synchronously to completion (better-sqlite3 is synchronous and
-// Node is single-threaded), so calls never interleave.
-let current: User | null = null
+// The user behind the current API call, scoped per async call chain so concurrent
+// web requests never see each other's user (a module-global would race once the
+// data layer is asynchronous).
+const store = new AsyncLocalStorage<User | null>()
 
-export function setCurrentUser(user: User | null): void {
-  current = user
+/** Run `fn` with `user` as the current user for the duration of the async chain. */
+export function runWithUser<T>(user: User | null, fn: () => Promise<T>): Promise<T> {
+  return store.run(user, fn)
 }
 
 export function getCurrentUser(): User | null {
-  return current
+  return store.getStore() ?? null
 }

@@ -2,16 +2,16 @@ import { getDb } from '../db'
 import type { ProductionSetting } from '@shared/types'
 import { properCase } from '@shared/types'
 
-export function listProductionSettings(payload: { plant_id: number }): ProductionSetting[] {
-  return getDb()
+export async function listProductionSettings(payload: { plant_id: number }): Promise<ProductionSetting[]> {
+  return (await getDb()
     .prepare(`SELECT * FROM production_settings WHERE plant_id = ? ORDER BY id`)
-    .all(payload.plant_id) as ProductionSetting[]
+    .all(payload.plant_id)) as ProductionSetting[]
 }
 
-export function saveProductionSettings(payload: {
+export async function saveProductionSettings(payload: {
   plant_id: number
   items: { product_name: string; output_percentage: number }[]
-}): { ok: boolean; error?: string } {
+}): Promise<{ ok: boolean; error?: string }> {
   const d = getDb()
   const items = payload.items
     .map((i) => ({
@@ -31,14 +31,13 @@ export function saveProductionSettings(payload: {
   if (Math.abs(total - 100) > 0.001)
     return { ok: false, error: `Total output must equal 100%. Current total is ${round(total)}%.` }
 
-  const tx = d.transaction(() => {
-    d.prepare(`DELETE FROM production_settings WHERE plant_id = ?`).run(payload.plant_id)
+  await d.transaction(async () => {
+    await d.prepare(`DELETE FROM production_settings WHERE plant_id = ?`).run(payload.plant_id)
     const stmt = d.prepare(
       `INSERT INTO production_settings (plant_id, product_name, output_percentage) VALUES (?, ?, ?)`
     )
-    for (const i of items) stmt.run(payload.plant_id, i.product_name, i.output_percentage)
+    for (const i of items) await stmt.run(payload.plant_id, i.product_name, i.output_percentage)
   })
-  tx()
   return { ok: true }
 }
 

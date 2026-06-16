@@ -74,7 +74,7 @@ export function Deliveries(): React.JSX.Element {
         description="Update delivery status and add rates after delivery"
       />
       <Page>
-        <div className="mb-4 flex gap-2">
+        <div className="mb-4 flex flex-wrap gap-2">
           <Button variant={view === 'all' ? 'default' : 'outline'} size="sm" onClick={() => setView('all')}>All</Button>
           <Button variant={view === 'pending' ? 'default' : 'outline'} size="sm" onClick={() => setView('pending')}>Pending Delivery</Button>
           <Button variant={view === 'rate_pending' ? 'default' : 'outline'} size="sm" onClick={() => setView('rate_pending')}>Delivered, Rate Pending</Button>

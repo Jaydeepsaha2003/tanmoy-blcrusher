@@ -185,7 +185,7 @@ export function Ledgers(): React.JSX.Element {
       />
       <Page>
         <div className="no-print mb-4 flex flex-wrap items-center gap-2">
-          <Select className="w-44" value={partyType} onChange={(e) => switchType(e.target.value as LedgerType)}>
+          <Select className="w-full sm:w-44" value={partyType} onChange={(e) => switchType(e.target.value as LedgerType)}>
             <option value="customer">Customers</option>
             <option value="supplier">Suppliers</option>
             <option value="transporter">Transporters</option>
@@ -196,7 +196,7 @@ export function Ledgers(): React.JSX.Element {
             <option value="rack">Racks</option>
           </Select>
           <Select
-            className="w-56"
+            className="w-full sm:w-56"
             value={partyId ?? ''}
             onChange={(e) => setPartyId(e.target.value ? Number(e.target.value) : undefined)}
           >
@@ -207,9 +207,9 @@ export function Ledgers(): React.JSX.Element {
           </Select>
           {partyId && (
             <>
-              <Input type="date" className="w-36" value={from} onChange={(e) => setFrom(e.target.value)} />
+              <Input type="date" className="w-full sm:w-36" value={from} onChange={(e) => setFrom(e.target.value)} />
               <span className="text-muted-foreground">to</span>
-              <Input type="date" className="w-36" value={to} onChange={(e) => setTo(e.target.value)} />
+              <Input type="date" className="w-full sm:w-36" value={to} onChange={(e) => setTo(e.target.value)} />
               <Button variant="ghost" size="sm" onClick={() => setPartyId(undefined)}>
                 <ArrowLeft size={15} /> All {partyLabel[partyType].toLowerCase()}s
               </Button>
@@ -336,7 +336,7 @@ export function Ledgers(): React.JSX.Element {
       {payForm && (
         <Modal open onClose={() => setPayForm(null)} title={`Record Payment — ${selected?.name ?? ''}`}>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Direction">
                 <Select value={payForm.direction} onChange={(e) => setPayForm({ ...payForm, direction: e.target.value })}>
                   <option value="in">Received from party</option>

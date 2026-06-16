@@ -43,6 +43,7 @@ export function SettingsPage(): React.JSX.Element {
     queryFn: api.racks.expenseTypes
   })
   const { data: plants = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
+  const { data: delStatus } = useQuery({ queryKey: ['deleteStatus'], queryFn: api.system.deleteStatus })
   const [plantForm, setPlantForm] = React.useState<Partial<Plant>>({ status: 'active' })
 
   const { data: workdays } = useQuery({ queryKey: ['workdays'], queryFn: api.system.getWorkdays })
@@ -102,26 +103,32 @@ export function SettingsPage(): React.JSX.Element {
     toast.success('Expense type removed.')
   }
 
-  async function wipe(): Promise<void> {
+  async function requestDelete(): Promise<void> {
     const ok = await confirmDialog({
-      title: 'Delete ALL data?',
+      title: 'Schedule data deletion?',
       message:
-        'This permanently deletes every record — plants, locations, suppliers, customers, transporters, purchases, productions, racks, sales, expenses, payments and the full movement history. This cannot be undone.',
-      confirmText: 'Yes, delete everything'
+        'This schedules permanent deletion of ALL records, to run 3 days from now. You can cancel any time before then from this screen. Continue?',
+      confirmText: 'Yes, schedule deletion'
     })
     if (!ok) return
     setWiping(true)
     try {
-      const res = await api.system.wipeData(wipePassword)
+      const res = await api.system.requestDelete(wipePassword)
       if (res.ok) {
-        qc.clear()
         setWipePassword('')
         setWipeConfirm('')
-        toast.success('All data deleted. The application is now a fresh installation.')
-      } else toast.error(res.error || 'Could not delete data.')
+        qc.invalidateQueries({ queryKey: ['deleteStatus'] })
+        toast.success('Data deletion scheduled — runs in 3 days. You can cancel it here.')
+      } else toast.error(res.error || 'Could not schedule deletion.')
     } finally {
       setWiping(false)
     }
+  }
+
+  async function cancelDelete(): Promise<void> {
+    await api.system.cancelDelete()
+    qc.invalidateQueries({ queryKey: ['deleteStatus'] })
+    toast.success('Scheduled deletion cancelled — your data is safe.')
   }
 
   async function submit(e: React.FormEvent): Promise<void> {
@@ -347,38 +354,56 @@ export function SettingsPage(): React.JSX.Element {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-start gap-2.5 rounded-lg bg-destructive/10 px-3.5 py-3 text-xs leading-relaxed text-destructive">
-              <AlertTriangle size={26} className="shrink-0" />
-              <span>
-                Permanently deletes <b>every record</b> in the application — masters, purchases,
-                productions, racks, sales, ledgers, payments and stock history. Document numbering
-                restarts from 000001. Your password is kept. <b>This cannot be undone</b> — export
-                your reports first.
-              </span>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Admin Password">
-                <Input
-                  type="password"
-                  value={wipePassword}
-                  onChange={(e) => setWipePassword(e.target.value)}
-                />
-              </Field>
-              <Field label={'Type "DELETE" to confirm'}>
-                <Input
-                  value={wipeConfirm}
-                  onChange={(e) => setWipeConfirm(e.target.value)}
-                  placeholder="DELETE"
-                />
-              </Field>
-            </div>
-            <Button
-              variant="destructive"
-              onClick={wipe}
-              disabled={wiping || !wipePassword || wipeConfirm !== 'DELETE'}
-            >
-              <Trash2 size={16} /> {wiping ? 'Deleting…' : 'Delete All Data'}
-            </Button>
+            {delStatus?.scheduled_at ? (
+              <>
+                <div className="flex items-start gap-2.5 rounded-lg bg-destructive/10 px-3.5 py-3 text-xs leading-relaxed text-destructive">
+                  <AlertTriangle size={26} className="shrink-0" />
+                  <span>
+                    Data deletion is <b>scheduled for {new Date(delStatus.scheduled_at).toLocaleString()}</b>
+                    {delStatus.requested_by ? ` (requested by ${delStatus.requested_by})` : ''}. All records
+                    will be permanently deleted then. Cancel below to keep your data.
+                  </span>
+                </div>
+                <Button variant="outline" onClick={cancelDelete}>
+                  Cancel scheduled deletion
+                </Button>
+              </>
+            ) : (
+              <>
+                <div className="flex items-start gap-2.5 rounded-lg bg-destructive/10 px-3.5 py-3 text-xs leading-relaxed text-destructive">
+                  <AlertTriangle size={26} className="shrink-0" />
+                  <span>
+                    Permanently deletes <b>every record</b> — masters, purchases, productions, racks, sales,
+                    ledgers, payments and stock history. To prevent accidents, deletion runs{' '}
+                    <b>3 days</b> after you request it, and can be cancelled any time in between. Users &amp;
+                    settings are kept; document numbering restarts.
+                  </span>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Your Password">
+                    <Input
+                      type="password"
+                      value={wipePassword}
+                      onChange={(e) => setWipePassword(e.target.value)}
+                    />
+                  </Field>
+                  <Field label={'Type "DELETE" to confirm'}>
+                    <Input
+                      value={wipeConfirm}
+                      onChange={(e) => setWipeConfirm(e.target.value)}
+                      placeholder="DELETE"
+                    />
+                  </Field>
+                </div>
+                <Button
+                  variant="destructive"
+                  onClick={requestDelete}
+                  disabled={wiping || !wipePassword || wipeConfirm !== 'DELETE'}
+                >
+                  <Trash2 size={16} /> {wiping ? 'Scheduling…' : 'Request deletion (in 3 days)'}
+                </Button>
+              </>
+            )}
           </CardContent>
         </Card>
 

@@ -16,7 +16,7 @@ export interface ExpenseFilter {
   to?: string
 }
 
-export function listPlantExpenses(filter: ExpenseFilter = {}): PlantExpense[] {
+export async function listPlantExpenses(filter: ExpenseFilter = {}): Promise<PlantExpense[]> {
   const d = getDb()
   const where: string[] = []
   const params: Record<string, unknown> = {}
@@ -37,7 +37,7 @@ export function listPlantExpenses(filter: ExpenseFilter = {}): PlantExpense[] {
     params.to = filter.to
   }
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  return d
+  return (await d
     .prepare(
       `SELECT e.*, p.name AS plant_name, a.name AS asset_name, o.name AS outsource_name
        FROM plant_expenses e
@@ -47,10 +47,10 @@ export function listPlantExpenses(filter: ExpenseFilter = {}): PlantExpense[] {
        ${clause}
        ORDER BY e.date DESC, e.id DESC`
     )
-    .all(params) as PlantExpense[]
+    .all(params)) as PlantExpense[]
 }
 
-export function expenseTotals(filter: ExpenseFilter = {}): ExpenseCategoryTotal[] {
+export async function expenseTotals(filter: ExpenseFilter = {}): Promise<ExpenseCategoryTotal[]> {
   const d = getDb()
   const where: string[] = []
   const params: Record<string, unknown> = {}
@@ -67,12 +67,12 @@ export function expenseTotals(filter: ExpenseFilter = {}): ExpenseCategoryTotal[
     params.to = filter.to
   }
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  return d
+  return (await d
     .prepare(
       `SELECT category, ROUND(COALESCE(SUM(amount),0),2) AS amount
        FROM plant_expenses ${clause} GROUP BY category ORDER BY amount DESC`
     )
-    .all(params) as ExpenseCategoryTotal[]
+    .all(params)) as ExpenseCategoryTotal[]
 }
 
 export interface ExpenseInput {
@@ -143,11 +143,11 @@ function resolve(p: ExpenseInput): Record<string, unknown> {
   }
 }
 
-export function createPlantExpense(p: ExpenseInput): PlantExpense {
+export async function createPlantExpense(p: ExpenseInput): Promise<PlantExpense> {
   const d = getDb()
   const fields = resolve(p)
-  const no = nextNumber('PEX', 'plant_expense')
-  const info = d
+  const no = await nextNumber('PEX', 'plant_expense')
+  const info = await d
     .prepare(
       `INSERT INTO plant_expenses
         (expense_no, plant_id, category, title, asset_id, outsource_id, meter_open, meter_close, units, rate, hours,
@@ -156,25 +156,25 @@ export function createPlantExpense(p: ExpenseInput): PlantExpense {
          @parts,@amount,@payment_status,@paid_amount,@date,@remarks)`
     )
     .run({ expense_no: no, ...fields })
-  return d.prepare(`SELECT * FROM plant_expenses WHERE id = ?`).get(info.lastInsertRowid) as PlantExpense
+  return (await d.prepare(`SELECT * FROM plant_expenses WHERE id = ?`).get(info.lastInsertRowid)) as PlantExpense
 }
 
-export function updatePlantExpense(p: ExpenseInput): PlantExpense {
+export async function updatePlantExpense(p: ExpenseInput): Promise<PlantExpense> {
   const d = getDb()
   if (!p.id) throw new Error('Missing expense id.')
   const fields = resolve(p)
-  d.prepare(
+  await d.prepare(
     `UPDATE plant_expenses SET plant_id=@plant_id, category=@category, title=@title, asset_id=@asset_id,
        outsource_id=@outsource_id,
        meter_open=@meter_open, meter_close=@meter_close, units=@units, rate=@rate, hours=@hours,
        parts=@parts, amount=@amount, payment_status=@payment_status, paid_amount=@paid_amount,
        date=@date, remarks=@remarks WHERE id=@id`
   ).run({ id: p.id, ...fields })
-  return d.prepare(`SELECT * FROM plant_expenses WHERE id = ?`).get(p.id) as PlantExpense
+  return (await d.prepare(`SELECT * FROM plant_expenses WHERE id = ?`).get(p.id)) as PlantExpense
 }
 
-export function deletePlantExpense(payload: { id: number }): { ok: boolean } {
+export async function deletePlantExpense(payload: { id: number }): Promise<{ ok: boolean }> {
   const d = getDb()
-  d.prepare(`DELETE FROM plant_expenses WHERE id = ?`).run(payload.id)
+  await d.prepare(`DELETE FROM plant_expenses WHERE id = ?`).run(payload.id)
   return { ok: true }
 }

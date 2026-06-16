@@ -2,7 +2,7 @@ import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, ShieldCheck, UserCog } from 'lucide-react'
 import { api } from '@/lib/api'
-import type { User, Role, AccessLevel, ModuleKey } from '@shared/types'
+import type { User, Role, ModuleKey } from '@shared/types'
 import { STAFF_MODULES, ROLE_PRESETS } from '@shared/permissions'
 import { PageHeader, Page } from '@/components/layout'
 import { usePerms } from '@/lib/user'
@@ -24,14 +24,16 @@ import {
 import { useToast } from '@/components/toast'
 import { confirmDialog } from '@/components/confirm'
 
+type ModState = 'none' | 'view' | 'edit'
+
 interface Form {
   id?: number
   username: string
   name: string
   password: string
   role: Role
-  access_level: AccessLevel
   modules: ModuleKey[]
+  edit_modules: ModuleKey[]
 }
 
 export function UsersPage(): React.JSX.Element {
@@ -52,7 +54,7 @@ export function UsersPage(): React.JSX.Element {
   })
 
   function openNew(): void {
-    setForm({ username: '', name: '', password: '', role: 'staff', access_level: 'edit', modules: [] })
+    setForm({ username: '', name: '', password: '', role: 'staff', modules: [], edit_modules: [] })
   }
   function openEdit(u: User): void {
     setForm({
@@ -61,8 +63,8 @@ export function UsersPage(): React.JSX.Element {
       name: u.name,
       password: '',
       role: u.role,
-      access_level: u.access_level,
-      modules: u.modules
+      modules: u.modules,
+      edit_modules: u.edit_modules
     })
   }
   async function remove(u: User): Promise<void> {
@@ -75,19 +77,29 @@ export function UsersPage(): React.JSX.Element {
     } else toast.error(res.error || 'Could not delete.')
   }
 
-  function toggleModule(m: ModuleKey): void {
+  function modState(m: ModuleKey): ModState {
+    if (!form) return 'none'
+    if (form.edit_modules.includes(m)) return 'edit'
+    if (form.modules.includes(m)) return 'view'
+    return 'none'
+  }
+  function setModState(m: ModuleKey, state: ModState): void {
     if (!form) return
-    setForm({
-      ...form,
-      modules: form.modules.includes(m) ? form.modules.filter((x) => x !== m) : [...form.modules, m]
-    })
+    const modules = form.modules.filter((x) => x !== m)
+    const edit_modules = form.edit_modules.filter((x) => x !== m)
+    if (state === 'view') modules.push(m)
+    if (state === 'edit') {
+      modules.push(m)
+      edit_modules.push(m)
+    }
+    setForm({ ...form, modules, edit_modules })
   }
 
   function applyPreset(key: string): void {
     if (!form) return
     const preset = ROLE_PRESETS[key]
     if (!preset) return
-    setForm({ ...form, role: 'staff', access_level: preset.access_level, modules: [...preset.modules] })
+    setForm({ ...form, role: 'staff', modules: [...preset.modules], edit_modules: [...preset.edit_modules] })
   }
 
   const canSave = form && form.username.trim().length >= 3 && (form.id || form.password.length >= 4)
@@ -96,7 +108,7 @@ export function UsersPage(): React.JSX.Element {
     <>
       <PageHeader
         title="Users"
-        description="Create staff logins and control what each person can access"
+        description="Create staff logins and control what each person can access — per module"
         actions={
           <Button onClick={openNew}>
             <Plus size={16} /> New User
@@ -125,7 +137,10 @@ export function UsersPage(): React.JSX.Element {
                   <TD className="font-medium">{u.name}</TD>
                   <TD>
                     {u.role === 'admin' ? (
-                      <Badge variant="default"><ShieldCheck size={12} className="mr-1 inline" />Admin</Badge>
+                      <Badge variant="default">
+                        <ShieldCheck size={12} className="mr-1 inline" />
+                        Admin
+                      </Badge>
                     ) : (
                       <Badge variant="muted">Staff</Badge>
                     )}
@@ -133,9 +148,15 @@ export function UsersPage(): React.JSX.Element {
                   <TD className="text-sm text-muted-foreground">
                     {u.role === 'admin'
                       ? 'Everything'
-                      : `${u.access_level === 'edit' ? 'Edit' : 'View'} · ${u.modules.length} module${u.modules.length === 1 ? '' : 's'}`}
+                      : `${u.modules.length} module${u.modules.length === 1 ? '' : 's'} · ${u.edit_modules.length} editable`}
                   </TD>
-                  <TD>{u.active ? <Badge variant="success">Active</Badge> : <Badge variant="destructive">Disabled</Badge>}</TD>
+                  <TD>
+                    {u.active ? (
+                      <Badge variant="success">Active</Badge>
+                    ) : (
+                      <Badge variant="destructive">Disabled</Badge>
+                    )}
+                  </TD>
                   <TD className="text-right">
                     <div className="flex justify-end gap-1.5">
                       <Button variant="ghost" size="icon" title="Edit" onClick={() => openEdit(u)}>
@@ -195,16 +216,6 @@ export function UsersPage(): React.JSX.Element {
 
             {form.role === 'staff' && (
               <>
-                <Field label="Access level">
-                  <Select
-                    value={form.access_level}
-                    onChange={(e) => setForm({ ...form, access_level: e.target.value as AccessLevel })}
-                  >
-                    <option value="view">View only (read)</option>
-                    <option value="edit">Edit (create / update / delete)</option>
-                  </Select>
-                </Field>
-
                 <div>
                   <div className="mb-1.5 flex items-center gap-2 text-sm font-medium text-foreground/80">
                     <UserCog size={15} /> Quick presets
@@ -220,23 +231,27 @@ export function UsersPage(): React.JSX.Element {
 
                 <div>
                   <div className="mb-1.5 text-sm font-medium text-foreground/80">
-                    Modules this user can access
+                    Access per module — choose for each what this user can do
                   </div>
-                  <div className="grid grid-cols-1 gap-1.5 rounded-lg border p-3 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-2 rounded-lg border p-3 sm:grid-cols-2">
                     {STAFF_MODULES.map((m) => (
-                      <label key={m.key} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 rounded border-input"
-                          checked={form.modules.includes(m.key)}
-                          onChange={() => toggleModule(m.key)}
-                        />
-                        {m.label}
-                      </label>
+                      <div key={m.key} className="flex items-center justify-between gap-2">
+                        <span className="text-sm">{m.label}</span>
+                        <Select
+                          className="w-28 shrink-0"
+                          value={modState(m.key)}
+                          onChange={(e) => setModState(m.key, e.target.value as ModState)}
+                        >
+                          <option value="none">No access</option>
+                          <option value="view">View</option>
+                          <option value="edit">Edit</option>
+                        </Select>
+                      </div>
                     ))}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Admin-only areas (Settings, Users &amp; Activity Log) are reserved for admins.
+                    View = read only · Edit = create/update/delete. Settings and Users &amp; Activity Log
+                    are reserved for admins.
                   </p>
                 </div>
               </>

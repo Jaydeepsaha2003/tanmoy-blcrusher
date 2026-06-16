@@ -174,7 +174,9 @@ export const handlers: Record<string, (payload: any) => unknown> = {
   'wages.update': payroll.updateWageEntry,
   'wages.delete': payroll.deleteWageEntry,
 
-  'system.wipeData': system.wipeAllData,
+  'system.requestDelete': system.requestDataDeletion,
+  'system.cancelDelete': system.cancelDataDeletion,
+  'system.deleteStatus': system.deletionStatus,
   'system.getWorkdays': system.getWorkdaySettings,
   'system.setWorkdays': system.setWorkdaySettings,
 

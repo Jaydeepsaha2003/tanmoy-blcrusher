@@ -276,8 +276,13 @@ export const api = {
     delete: (id: number) => call<{ ok: boolean }>('wages.delete', { id })
   },
   system: {
-    wipeData: (password: string) =>
-      call<{ ok: boolean; error?: string }>('system.wipeData', { password }),
+    requestDelete: (password: string) =>
+      call<{ ok: boolean; error?: string; scheduled_at?: number }>('system.requestDelete', { password }),
+    cancelDelete: () => call<{ ok: boolean }>('system.cancelDelete'),
+    deleteStatus: () =>
+      call<{ scheduled_at: number | null; requested_by: string | null; requested_at: number | null }>(
+        'system.deleteStatus'
+      ),
     getWorkdays: () => call<WorkdaySettings>('system.getWorkdays'),
     setWorkdays: (weekly_offs: number[]) =>
       call<{ ok: boolean }>('system.setWorkdays', { weekly_offs })

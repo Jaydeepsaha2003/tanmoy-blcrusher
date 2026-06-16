@@ -107,7 +107,7 @@ export function Racks(): React.JSX.Element {
       <Page>
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <Select
-            className="w-44"
+            className="w-full sm:w-44"
             value={filter.status ?? ''}
             onChange={(e) => setFilter({ status: e.target.value || undefined })}
           >
@@ -186,7 +186,7 @@ export function Racks(): React.JSX.Element {
               placeholder="e.g. RK-2026-001"
             />
           </Field>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Date">
               <Input
                 type="date"

@@ -646,7 +646,7 @@ export function RackDetail(): React.JSX.Element {
         <Modal open onClose={() => setLoadingForm(null)}
           title={loadingForm.id ? `Edit ${loadingForm.loading_no}` : 'Add Loading (Plant → Railway Yard)'}
           width="max-w-2xl">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Plant">
               <Select value={loadingForm.plant_id || ''} onChange={(e) =>
                 setLoadingForm({ ...loadingForm, plant_id: Number(e.target.value), product_name: '' })}>
@@ -751,7 +751,7 @@ export function RackDetail(): React.JSX.Element {
         <Modal open onClose={() => setUnloadForm(null)}
           title={unloadForm.id ? `Edit ${unloadForm.unloading_no}` : 'Add Unloading (Yard → Destination)'}
           width="max-w-2xl">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Product">
               <Select value={unloadForm.product_name} onChange={(e) =>
                 setUnloadForm({ ...unloadForm, product_name: e.target.value })}>
@@ -852,7 +852,7 @@ export function RackDetail(): React.JSX.Element {
                 {expenseTypes.map((t) => <option key={t} value={t} />)}
               </datalist>
             </Field>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Amount">
                 <Input type="number" step="0.01" value={expenseForm.amount} onChange={(e) =>
                   setExpenseForm({ ...expenseForm, amount: e.target.value })} />
@@ -882,7 +882,7 @@ export function RackDetail(): React.JSX.Element {
       {saleForm && (
         <Modal open onClose={() => setSaleForm(null)}
           title={saleForm.id ? `Edit ${saleForm.sale_no}` : 'New Sale from Rack'} width="max-w-2xl">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Customer">
               <Select value={saleForm.customer_id || ''} onChange={(e) =>
                 setSaleForm({ ...saleForm, customer_id: Number(e.target.value) })}>

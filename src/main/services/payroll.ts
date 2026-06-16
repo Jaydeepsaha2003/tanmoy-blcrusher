@@ -8,10 +8,10 @@ function money(n: number): number {
 }
 
 /** Working days in a YYYY-MM month, excluding the configured weekly-off weekdays. */
-export function workingDaysIn(period: string): number {
+export async function workingDaysIn(period: string): Promise<number> {
   const [y, m] = period.split('-').map(Number)
   if (!y || !m) return 0
-  const offs = new Set(getWorkdaySettings().weekly_offs)
+  const offs = new Set((await getWorkdaySettings()).weekly_offs)
   const days = new Date(y, m, 0).getDate()
   let count = 0
   for (let day = 1; day <= days; day++) {
@@ -20,26 +20,26 @@ export function workingDaysIn(period: string): number {
   return count
 }
 
-export function getWorkingDays(payload: { period: string }): { working_days: number } {
-  return { working_days: workingDaysIn(payload.period) }
+export async function getWorkingDays(payload: { period: string }): Promise<{ working_days: number }> {
+  return { working_days: await workingDaysIn(payload.period) }
 }
 
 /* ---------------- Employees ---------------- */
 
-export function listEmployees(payload: { plant_id?: number } = {}): Employee[] {
+export async function listEmployees(payload: { plant_id?: number } = {}): Promise<Employee[]> {
   const d = getDb()
   const clause = payload.plant_id ? `WHERE (e.plant_id IS NULL OR e.plant_id = @plant_id)` : ''
-  return d
+  return (await d
     .prepare(
       `SELECT e.*, p.name AS plant_name
        FROM employees e LEFT JOIN plants p ON p.id = e.plant_id
        ${clause}
        ORDER BY e.name`
     )
-    .all(payload) as Employee[]
+    .all(payload)) as Employee[]
 }
 
-export function createEmployee(p: {
+export async function createEmployee(p: {
   name: string
   designation: string
   wage_type: WageType
@@ -50,10 +50,10 @@ export function createEmployee(p: {
   contact: string
   status: string
   remarks: string
-}): Employee {
+}): Promise<Employee> {
   const d = getDb()
   if (!p.name?.trim()) throw new Error('Name is required.')
-  const info = d
+  const info = await d
     .prepare(
       `INSERT INTO employees (name, designation, wage_type, monthly_salary, daily_wage, ot_rate, plant_id, contact, status, remarks)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -70,10 +70,10 @@ export function createEmployee(p: {
       p.status || 'active',
       p.remarks ?? ''
     )
-  return d.prepare(`SELECT * FROM employees WHERE id = ?`).get(info.lastInsertRowid) as Employee
+  return (await d.prepare(`SELECT * FROM employees WHERE id = ?`).get(info.lastInsertRowid)) as Employee
 }
 
-export function updateEmployee(p: {
+export async function updateEmployee(p: {
   id: number
   name: string
   designation: string
@@ -85,9 +85,9 @@ export function updateEmployee(p: {
   contact: string
   status: string
   remarks: string
-}): Employee {
+}): Promise<Employee> {
   const d = getDb()
-  d.prepare(
+  await d.prepare(
     `UPDATE employees SET name=?, designation=?, wage_type=?, monthly_salary=?, daily_wage=?, ot_rate=?,
        plant_id=?, contact=?, status=?, remarks=? WHERE id=?`
   ).run(
@@ -103,16 +103,18 @@ export function updateEmployee(p: {
     p.remarks ?? '',
     p.id
   )
-  return d.prepare(`SELECT * FROM employees WHERE id = ?`).get(p.id) as Employee
+  return (await d.prepare(`SELECT * FROM employees WHERE id = ?`).get(p.id)) as Employee
 }
 
-export function deleteEmployee(payload: { id: number }): { ok: boolean; error?: string } {
+export async function deleteEmployee(payload: {
+  id: number
+}): Promise<{ ok: boolean; error?: string }> {
   const d = getDb()
-  const used = d.prepare(`SELECT COUNT(*) AS c FROM wage_entries WHERE employee_id = ?`).get(payload.id) as {
+  const used = (await d.prepare(`SELECT COUNT(*) AS c FROM wage_entries WHERE employee_id = ?`).get(payload.id)) as {
     c: number
   }
   if (used.c > 0) return { ok: false, error: 'Cannot delete: this employee has wage records.' }
-  d.prepare(`DELETE FROM employees WHERE id = ?`).run(payload.id)
+  await d.prepare(`DELETE FROM employees WHERE id = ?`).run(payload.id)
   return { ok: true }
 }
 
@@ -127,7 +129,7 @@ export interface WageFilter {
   to?: string
 }
 
-export function listWageEntries(filter: WageFilter = {}): WageEntry[] {
+export async function listWageEntries(filter: WageFilter = {}): Promise<WageEntry[]> {
   const d = getDb()
   const where: string[] = []
   const params: Record<string, unknown> = {}
@@ -148,7 +150,7 @@ export function listWageEntries(filter: WageFilter = {}): WageEntry[] {
     params.payment_status = filter.payment_status
   }
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  return d
+  return (await d
     .prepare(
       `SELECT w.*, e.name AS employee_name, e.designation, a.name AS asset_name
        FROM wage_entries w
@@ -157,7 +159,7 @@ export function listWageEntries(filter: WageFilter = {}): WageEntry[] {
        ${clause}
        ORDER BY w.period DESC, e.name`
     )
-    .all(params) as WageEntry[]
+    .all(params)) as WageEntry[]
 }
 
 export interface WageInput {
@@ -176,12 +178,12 @@ export interface WageInput {
   remarks: string
 }
 
-function resolve(p: WageInput): Record<string, unknown> {
+async function resolve(p: WageInput): Promise<Record<string, unknown>> {
   const d = getDb()
-  const emp = d.prepare(`SELECT * FROM employees WHERE id = ?`).get(p.employee_id) as Employee | undefined
+  const emp = (await d.prepare(`SELECT * FROM employees WHERE id = ?`).get(p.employee_id)) as Employee | undefined
   if (!emp) throw new Error('Employee not found.')
   if (!p.period) throw new Error('Pay period is required.')
-  const workingDays = workingDaysIn(p.period)
+  const workingDays = await workingDaysIn(p.period)
   const daysWorked = Number(p.days_worked) || 0
   const earned =
     emp.wage_type === 'monthly'
@@ -218,11 +220,11 @@ function resolve(p: WageInput): Record<string, unknown> {
   }
 }
 
-export function createWageEntry(p: WageInput): WageEntry {
+export async function createWageEntry(p: WageInput): Promise<WageEntry> {
   const d = getDb()
-  const fields = resolve(p)
-  const no = nextNumber('WGE', 'wage_entry')
-  const info = d
+  const fields = await resolve(p)
+  const no = await nextNumber('WGE', 'wage_entry')
+  const info = await d
     .prepare(
       `INSERT INTO wage_entries
         (entry_no, employee_id, plant_id, asset_id, period, wage_type, working_days, days_worked, earned,
@@ -231,24 +233,24 @@ export function createWageEntry(p: WageInput): WageEntry {
          @ot_hours,@ot_rate,@ot_amount,@deduction,@gross,@amount,@payment_status,@paid_amount,@date,@remarks)`
     )
     .run({ entry_no: no, ...fields })
-  return d.prepare(`SELECT * FROM wage_entries WHERE id = ?`).get(info.lastInsertRowid) as WageEntry
+  return (await d.prepare(`SELECT * FROM wage_entries WHERE id = ?`).get(info.lastInsertRowid)) as WageEntry
 }
 
-export function updateWageEntry(p: WageInput): WageEntry {
+export async function updateWageEntry(p: WageInput): Promise<WageEntry> {
   const d = getDb()
   if (!p.id) throw new Error('Missing wage entry id.')
-  const fields = resolve(p)
-  d.prepare(
+  const fields = await resolve(p)
+  await d.prepare(
     `UPDATE wage_entries SET employee_id=@employee_id, plant_id=@plant_id, asset_id=@asset_id, period=@period, wage_type=@wage_type,
        working_days=@working_days, days_worked=@days_worked, earned=@earned, ot_hours=@ot_hours, ot_rate=@ot_rate,
        ot_amount=@ot_amount, deduction=@deduction, gross=@gross, amount=@amount,
        payment_status=@payment_status, paid_amount=@paid_amount, date=@date, remarks=@remarks WHERE id=@id`
   ).run({ id: p.id, ...fields })
-  return d.prepare(`SELECT * FROM wage_entries WHERE id = ?`).get(p.id) as WageEntry
+  return (await d.prepare(`SELECT * FROM wage_entries WHERE id = ?`).get(p.id)) as WageEntry
 }
 
-export function deleteWageEntry(payload: { id: number }): { ok: boolean } {
+export async function deleteWageEntry(payload: { id: number }): Promise<{ ok: boolean }> {
   const d = getDb()
-  d.prepare(`DELETE FROM wage_entries WHERE id = ?`).run(payload.id)
+  await d.prepare(`DELETE FROM wage_entries WHERE id = ?`).run(payload.id)
   return { ok: true }
 }

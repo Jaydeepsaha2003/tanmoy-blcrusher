@@ -166,16 +166,16 @@ export function Dispatch(): React.JSX.Element {
       />
       <Page>
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <Select className="w-48" value={filter.customer_id ?? ''} onChange={(e) => setFilter({ ...filter, customer_id: e.target.value ? Number(e.target.value) : undefined })}>
+          <Select className="w-full sm:w-48" value={filter.customer_id ?? ''} onChange={(e) => setFilter({ ...filter, customer_id: e.target.value ? Number(e.target.value) : undefined })}>
             <option value="">All customers</option>
             {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </Select>
-          <Select className="w-44" value={filter.delivery_status ?? ''} onChange={(e) => setFilter({ ...filter, delivery_status: e.target.value || undefined })}>
+          <Select className="w-full sm:w-44" value={filter.delivery_status ?? ''} onChange={(e) => setFilter({ ...filter, delivery_status: e.target.value || undefined })}>
             <option value="">All deliveries</option>
             <option value="pending">Pending</option>
             <option value="delivered">Delivered</option>
           </Select>
-          <Select className="w-44" value={filter.payment_status ?? ''} onChange={(e) => setFilter({ ...filter, payment_status: e.target.value || undefined })}>
+          <Select className="w-full sm:w-44" value={filter.payment_status ?? ''} onChange={(e) => setFilter({ ...filter, payment_status: e.target.value || undefined })}>
             <option value="">All payments</option>
             <option value="unpaid">Unpaid</option>
             <option value="partial">Partial</option>
