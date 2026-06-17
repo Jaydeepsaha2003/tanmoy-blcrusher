@@ -113,6 +113,14 @@ export function createMysqlAdapter(): Adapter {
         namedPlaceholders: true,
         dateStrings: true
       })
+      // Relax ONLY_FULL_GROUP_BY so our SQLite-style GROUP BY queries (which
+      // select non-grouped joined columns) work on MySQL too. Keep strict typing.
+      const corePool = (pool as any).pool ?? pool
+      if (corePool && typeof corePool.on === 'function') {
+        corePool.on('connection', (conn: any) => {
+          conn.query("SET SESSION sql_mode='STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION'", () => {})
+        })
+      }
     },
     async exec(sql, params, conn): Promise<ExecResult> {
       const runner: any = conn ?? pool

@@ -1,6 +1,6 @@
 import { getDb, nextNumber } from '../db'
-import type { Purchase, PaymentStatus } from '@shared/types'
-import { derivePaymentStatus } from '@shared/types'
+import type { Purchase, PaymentStatus, Uom } from '@shared/types'
+import { derivePaymentStatus, toCm } from '@shared/types'
 import { addMovement, rawLocationBalance } from './movements'
 
 export interface PurchaseFilter {
@@ -54,11 +54,16 @@ function computeAmount(rate: number | null, qty: number): number | null {
   return Math.round((rate * qty + Number.EPSILON) * 100) / 100
 }
 
+function roundQty(n: number): number {
+  return Math.round((n + Number.EPSILON) * 1000) / 1000
+}
+
 export interface PurchaseInput {
   id?: number
   supplier_id: number
   plant_id: number
   stock_location_id: number
+  uom: Uom
   quantity: number
   rate: number | null
   paid_amount: number
@@ -70,21 +75,25 @@ export interface PurchaseInput {
 export async function createPurchase(p: PurchaseInput): Promise<Purchase> {
   const d = getDb()
   if (!(p.quantity > 0)) throw new Error('Quantity must be greater than 0.')
+  const uom: Uom = (['CM', 'TON', 'CFT'] as const).includes(p.uom) ? p.uom : 'CM'
+  const qtyCm = roundQty(toCm(p.quantity, uom))
   const amount = computeAmount(p.rate, p.quantity)
   const id = await d.transaction(async () => {
     const no = await nextNumber('PUR', 'purchase')
     const info = await d
       .prepare(
         `INSERT INTO purchases
-          (purchase_no, supplier_id, plant_id, stock_location_id, quantity, rate, amount, paid_amount, payment_status, date, remarks)
-         VALUES (@purchase_no,@supplier_id,@plant_id,@stock_location_id,@quantity,@rate,@amount,@paid_amount,@payment_status,@date,@remarks)`
+          (purchase_no, supplier_id, plant_id, stock_location_id, uom, quantity, qty_cm, rate, amount, paid_amount, payment_status, date, remarks)
+         VALUES (@purchase_no,@supplier_id,@plant_id,@stock_location_id,@uom,@quantity,@qty_cm,@rate,@amount,@paid_amount,@payment_status,@date,@remarks)`
       )
       .run({
         purchase_no: no,
         supplier_id: p.supplier_id,
         plant_id: p.plant_id,
         stock_location_id: p.stock_location_id,
+        uom,
         quantity: p.quantity,
+        qty_cm: qtyCm,
         rate: p.rate,
         amount,
         paid_amount: p.paid_amount || 0,
@@ -98,7 +107,7 @@ export async function createPurchase(p: PurchaseInput): Promise<Purchase> {
       ref_no: no,
       plant_id: p.plant_id,
       stock_location_id: p.stock_location_id,
-      change_qty: p.quantity,
+      change_qty: qtyCm,
       date: p.date,
       note: 'Raw material received'
     })
@@ -113,18 +122,22 @@ export async function updatePurchase(p: PurchaseInput): Promise<Purchase> {
   if (!(p.quantity > 0)) throw new Error('Quantity must be greater than 0.')
   const old = (await d.prepare(`SELECT * FROM purchases WHERE id = ?`).get(p.id)) as Purchase
   if (!old) throw new Error('Purchase not found.')
+  const uom: Uom = (['CM', 'TON', 'CFT'] as const).includes(p.uom) ? p.uom : 'CM'
+  const qtyCm = roundQty(toCm(p.quantity, uom))
   const amount = computeAmount(p.rate, p.quantity)
   await d.transaction(async () => {
     await d.prepare(
       `UPDATE purchases SET supplier_id=@supplier_id, plant_id=@plant_id, stock_location_id=@stock_location_id,
-         quantity=@quantity, rate=@rate, amount=@amount, paid_amount=@paid_amount,
+         uom=@uom, quantity=@quantity, qty_cm=@qty_cm, rate=@rate, amount=@amount, paid_amount=@paid_amount,
          payment_status=@payment_status, date=@date, remarks=@remarks WHERE id=@id`
     ).run({
       id: p.id,
       supplier_id: p.supplier_id,
       plant_id: p.plant_id,
       stock_location_id: p.stock_location_id,
+      uom,
       quantity: p.quantity,
+      qty_cm: qtyCm,
       rate: p.rate,
       amount,
       paid_amount: p.paid_amount || 0,
@@ -132,11 +145,11 @@ export async function updatePurchase(p: PurchaseInput): Promise<Purchase> {
       date: p.date,
       remarks: p.remarks ?? ''
     })
-    // Re-point the linked stock movement.
+    // Re-point the linked stock movement (in base m³).
     await d.prepare(
       `UPDATE stock_movements SET plant_id=?, stock_location_id=?, change_qty=?, date=?
        WHERE ref_no=? AND type='purchase'`
-    ).run(p.plant_id, p.stock_location_id, p.quantity, p.date, old.purchase_no)
+    ).run(p.plant_id, p.stock_location_id, qtyCm, p.date, old.purchase_no)
 
     if ((await rawLocationBalance(d, old.stock_location_id)) < 0)
       throw new Error('Edit would make the original location stock negative.')

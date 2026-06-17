@@ -265,7 +265,7 @@ export async function issuesByAsset(payload: { plant_id?: number } = {}): Promis
         ROUND(COALESCE(SUM(di.litres),0),2) AS litres
        FROM diesel_issues di LEFT JOIN assets a ON a.id = di.asset_id
        ${clause}
-       GROUP BY di.asset_id ORDER BY litres DESC`
+       GROUP BY di.asset_id, a.name ORDER BY litres DESC`
     )
     .all(payload)) as { asset_id: number | null; asset_name: string; litres: number }[]
 }

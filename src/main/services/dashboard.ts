@@ -25,7 +25,7 @@ export async function getDashboard(payload: { plant_id?: number } = {}): Promise
     .prepare(
       `SELECT m.plant_id, p.name AS plant_name, ROUND(COALESCE(SUM(m.change_qty),0),3) AS qty
        FROM stock_movements m JOIN plants p ON p.id = m.plant_id
-       WHERE m.material_type='raw'${mAnd} GROUP BY m.plant_id ORDER BY p.name`
+       WHERE m.material_type='raw'${mAnd} GROUP BY m.plant_id, p.name ORDER BY p.name`
     )
     .all()) as DashboardData['rawByPlant']
   const rawByLocation = (await d
@@ -35,7 +35,7 @@ export async function getDashboard(payload: { plant_id?: number } = {}): Promise
        JOIN plants p ON p.id = l.plant_id
        LEFT JOIN stock_movements m ON m.stock_location_id = l.id AND m.material_type='raw'
        ${pid ? `WHERE l.plant_id = ${pid}` : ''}
-       GROUP BY l.id ORDER BY p.name, l.name`
+       GROUP BY l.id, l.name, p.name ORDER BY p.name, l.name`
     )
     .all()) as DashboardData['rawByLocation']
 
@@ -46,7 +46,7 @@ export async function getDashboard(payload: { plant_id?: number } = {}): Promise
     .prepare(
       `SELECT m.plant_id, p.name AS plant_name, ROUND(COALESCE(SUM(m.change_qty),0),3) AS qty
        FROM stock_movements m JOIN plants p ON p.id = m.plant_id
-       WHERE m.material_type='finished'${mAnd} GROUP BY m.plant_id ORDER BY p.name`
+       WHERE m.material_type='finished'${mAnd} GROUP BY m.plant_id, p.name ORDER BY p.name`
     )
     .all()) as DashboardData['finishedByPlant']
   const finishedByProduct = (await d
@@ -58,7 +58,7 @@ export async function getDashboard(payload: { plant_id?: number } = {}): Promise
     .all()) as DashboardData['finishedByProduct']
 
   const totalPurchased = num(
-    (await d.prepare(`SELECT COALESCE(SUM(quantity),0) AS q FROM purchases${plWhere}`).get()) as { q: number }
+    (await d.prepare(`SELECT COALESCE(SUM(qty_cm),0) AS q FROM purchases${plWhere}`).get()) as { q: number }
   )
   const totalConsumed = num(
     (await d.prepare(`SELECT COALESCE(SUM(raw_qty),0) AS q FROM productions${plWhere}`).get()) as { q: number }

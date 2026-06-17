@@ -412,6 +412,13 @@ const MYSQL_MIGRATIONS: Migration[] = [
     id: '002_user_edit_modules',
     sql: `ALTER TABLE users ADD COLUMN edit_modules TEXT;
 UPDATE users SET edit_modules = modules WHERE access_level = 'edit'`
+  },
+  {
+    // Multi-UOM purchases. Existing rows were in m³, so qty_cm mirrors quantity.
+    id: '003_purchase_uom',
+    sql: `ALTER TABLE purchases ADD COLUMN uom VARCHAR(8) NOT NULL DEFAULT 'CM';
+ALTER TABLE purchases ADD COLUMN qty_cm DOUBLE NOT NULL DEFAULT 0;
+UPDATE purchases SET qty_cm = quantity WHERE qty_cm = 0`
   }
 ]
 
@@ -459,6 +466,10 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   await addColumn('sessions', 'user_id', 'INTEGER')
   await addColumn('users', 'edit_modules', `TEXT NOT NULL DEFAULT '[]'`)
   await adapter.execRaw(`UPDATE users SET edit_modules = modules WHERE access_level = 'edit' AND (edit_modules IS NULL OR edit_modules = '' OR edit_modules = '[]')`)
+  // Multi-UOM purchases: existing rows were recorded in m³, so qty_cm mirrors quantity.
+  await addColumn('purchases', 'uom', `TEXT NOT NULL DEFAULT 'CM'`)
+  await addColumn('purchases', 'qty_cm', 'REAL NOT NULL DEFAULT 0')
+  await adapter.execRaw(`UPDATE purchases SET qty_cm = quantity WHERE qty_cm = 0 AND quantity <> 0`)
 }
 
 async function seedDefaults(adapter: Adapter): Promise<void> {

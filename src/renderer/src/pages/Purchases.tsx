@@ -22,7 +22,7 @@ import {
 import { useToast } from '@/components/toast'
 import { confirmDialog } from '@/components/confirm'
 import { usePlant } from '@/lib/plant'
-import { derivePaymentStatus } from '@shared/types'
+import { derivePaymentStatus, toCm, UOMS } from '@shared/types'
 import { fmtQty, fmtMoney, fmtDate, today, downloadExcel } from '@/lib/utils'
 
 const payBadge: Record<PaymentStatus, 'success' | 'warning' | 'destructive'> = {
@@ -67,6 +67,7 @@ export function Purchases(): React.JSX.Element {
       supplier_id: suppliers[0]?.id,
       plant_id: plantId ?? plants[0]?.id,
       stock_location_id: undefined,
+      uom: 'CM',
       quantity: '',
       rate: '',
       paid_amount: 0,
@@ -105,10 +106,10 @@ export function Purchases(): React.JSX.Element {
     downloadExcel(
       'purchases',
       'Purchases',
-      ['Purchase No', 'Date', 'Supplier', 'Plant', 'Location', 'Qty (m³)', 'Rate', 'Amount', 'Paid', 'Status'],
+      ['Purchase No', 'Date', 'Supplier', 'Plant', 'Location', 'UOM', 'Quantity', 'Qty (m³)', 'Rate', 'Amount', 'Paid', 'Status'],
       data.map((p) => [
         p.purchase_no, fmtDate(p.date), p.supplier_name, p.plant_name, p.stock_location_name,
-        p.quantity, p.rate ?? '', p.amount ?? '', p.paid_amount, p.payment_status
+        p.uom, p.quantity, p.qty_cm, p.rate ?? '', p.amount ?? '', p.paid_amount, p.payment_status
       ])
     )
   }
@@ -153,7 +154,7 @@ export function Purchases(): React.JSX.Element {
                 <TH>Date</TH>
                 <TH>Supplier</TH>
                 <TH>Plant / Location</TH>
-                <TH className="text-right">Qty (m³)</TH>
+                <TH className="text-right">Quantity</TH>
                 <TH className="text-right">Rate</TH>
                 <TH className="text-right">Amount</TH>
                 <TH>Payment</TH>
@@ -167,7 +168,12 @@ export function Purchases(): React.JSX.Element {
                   <TD>{fmtDate(p.date)}</TD>
                   <TD className="font-medium">{p.supplier_name}</TD>
                   <TD className="text-muted-foreground">{p.plant_name} / {p.stock_location_name}</TD>
-                  <TD className="text-right">{fmtQty(p.quantity)}</TD>
+                  <TD className="text-right">
+                    {fmtQty(p.quantity)} {p.uom}
+                    {p.uom !== 'CM' && (
+                      <span className="ml-1 text-[11px] text-muted-foreground">({fmtQty(p.qty_cm)} m³)</span>
+                    )}
+                  </TD>
                   <TD className="text-right">{p.rate == null ? '-' : fmtMoney(p.rate)}</TD>
                   <TD className="text-right">{fmtMoney(p.amount)}</TD>
                   <TD><Badge variant={payBadge[p.payment_status]}>{p.payment_status}</Badge></TD>
@@ -208,10 +214,27 @@ export function Purchases(): React.JSX.Element {
                 {formLocations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
               </Select>
             </Field>
-            <Field label="Quantity (m³)" required>
+            <Field label="Unit (UOM)" required>
+              <Select value={form.uom || 'CM'} onChange={(e) => setForm({ ...form, uom: e.target.value })}>
+                {UOMS.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field
+              label={`Quantity (${form.uom || 'CM'})`}
+              required
+              hint={
+                form.uom && form.uom !== 'CM'
+                  ? `= ${fmtQty(toCm(Number(form.quantity) || 0, form.uom))} m³ added to stock`
+                  : 'Added to stock in m³'
+              }
+            >
               <Input type="number" step="0.001" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
             </Field>
-            <Field label="Rate per m³" required>
+            <Field label={`Rate per ${form.uom || 'CM'}`} required>
               <Input type="number" step="0.01" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} placeholder="Enter rate" />
             </Field>
             <Field label="Amount" required hint="Auto-calculated: rate × quantity">

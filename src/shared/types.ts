@@ -197,7 +197,9 @@ export interface Purchase {
   plant_name?: string
   stock_location_id: number
   stock_location_name?: string
+  uom: Uom
   quantity: number
+  qty_cm: number
   rate: number | null
   amount: number | null
   paid_amount: number
