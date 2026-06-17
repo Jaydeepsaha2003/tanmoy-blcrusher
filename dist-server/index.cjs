@@ -4869,7 +4869,7 @@ async function getDashboard(payload = {}) {
        UNION ALL
        SELECT substr(date,1,7) AS month, COALESCE(amount,0) AS amount FROM dispatches WHERE amount IS NOT NULL`;
   const monthlySales = (await d.prepare(
-    `SELECT month, SUM(amount) AS amount FROM (${monthlySrc}) GROUP BY month ORDER BY month DESC LIMIT 6`
+    `SELECT month, SUM(amount) AS amount FROM (${monthlySrc}) AS t GROUP BY month ORDER BY month DESC LIMIT 6`
   ).all()).map((r) => ({ month: r.month, amount: money4({ q: r.amount }) })).reverse();
   const custRow = await (pid ? d.prepare(
     `SELECT COALESCE(SUM(COALESCE(amount,0)
