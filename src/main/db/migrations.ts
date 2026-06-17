@@ -507,13 +507,26 @@ export async function runMigrations(adapter: Adapter, kind: DbKind): Promise<voi
     )
     for (const m of MYSQL_MIGRATIONS) {
       const done = (await adapter.exec('SELECT id FROM schema_migrations WHERE id = ?', [m.id], null)).rows
-      if (done.length === 0) {
-        await adapter.execRaw(m.sql)
-        await adapter.exec('INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)', [
-          m.id,
-          new Date().toISOString()
-        ], null)
+      if (done.length > 0) continue
+      const statements = m.sql
+        .split(';')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+      for (const stmt of statements) {
+        try {
+          await adapter.exec(stmt, undefined, null)
+        } catch (e) {
+          const msg = String((e as Error)?.message || '')
+          // Tolerate "already applied" errors so a re-run after a partial/failed
+          // attempt still succeeds (MySQL DDL auto-commits and can't roll back).
+          if (/duplicate column|already exists|duplicate key name|check that column/i.test(msg)) continue
+          throw e
+        }
       }
+      await adapter.exec('INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)', [
+        m.id,
+        new Date().toISOString()
+      ], null)
     }
   }
   await seedDefaults(adapter)

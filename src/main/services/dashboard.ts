@@ -141,7 +141,7 @@ export async function getDashboard(payload: { plant_id?: number } = {}): Promise
   const monthlySales = (
     (await d
       .prepare(
-        `SELECT month, SUM(amount) AS amount FROM (${monthlySrc}) GROUP BY month ORDER BY month DESC LIMIT 6`
+        `SELECT month, SUM(amount) AS amount FROM (${monthlySrc}) AS t GROUP BY month ORDER BY month DESC LIMIT 6`
       )
       .all()) as { month: string; amount: number }[]
   )
