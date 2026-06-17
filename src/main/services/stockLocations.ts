@@ -56,6 +56,26 @@ export async function createStockLocation(p: {
   return (await d.prepare(`SELECT * FROM stock_locations WHERE id = ?`).get(id)) as StockLocation
 }
 
+/**
+ * Returns a usable stock-location id for a plant. If the plant has none, a
+ * default location named after the plant is created (so the plant itself acts
+ * as the location when the user never set one up).
+ */
+export async function ensureDefaultLocation(plantId: number): Promise<number> {
+  const d = getDb()
+  const existing = (await d
+    .prepare(`SELECT id FROM stock_locations WHERE plant_id = ? ORDER BY id LIMIT 1`)
+    .get(plantId)) as { id: number } | undefined
+  if (existing) return existing.id
+  const plant = (await d.prepare(`SELECT name FROM plants WHERE id = ?`).get(plantId)) as
+    | { name: string }
+    | undefined
+  const info = await d
+    .prepare(`INSERT INTO stock_locations (plant_id, name, opening_qty, remarks) VALUES (?, ?, 0, ?)`)
+    .run(plantId, plant?.name ?? 'Main', 'Default location')
+  return Number(info.lastInsertRowid)
+}
+
 export async function updateStockLocation(p: {
   id: number
   plant_id: number

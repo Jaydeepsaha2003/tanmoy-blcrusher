@@ -1,6 +1,7 @@
 import { getDb } from '../db'
 import type { Plant } from '@shared/types'
 import { properCase } from '@shared/types'
+import { ensureDefaultLocation } from './stockLocations'
 
 export async function listPlants(): Promise<Plant[]> {
   return (await getDb().prepare(`SELECT * FROM plants ORDER BY name`).all()) as Plant[]
@@ -16,7 +17,11 @@ export async function createPlant(p: {
   const info = await d
     .prepare(`INSERT INTO plants (name, code, location, status) VALUES (?, ?, ?, ?)`)
     .run(p.name.trim().toUpperCase(), p.code.trim().toUpperCase(), properCase(p.location), p.status ?? 'active')
-  return (await d.prepare(`SELECT * FROM plants WHERE id = ?`).get(info.lastInsertRowid)) as Plant
+  const plantId = Number(info.lastInsertRowid)
+  // Give every plant a default stock location (the plant itself), so purchases
+  // and production work even if the user never creates a separate location.
+  await ensureDefaultLocation(plantId)
+  return (await d.prepare(`SELECT * FROM plants WHERE id = ?`).get(plantId)) as Plant
 }
 
 export async function updatePlant(p: {

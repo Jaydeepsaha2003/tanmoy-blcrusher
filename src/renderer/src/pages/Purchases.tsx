@@ -208,9 +208,17 @@ export function Purchases(): React.JSX.Element {
                 {plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </Select>
             </Field>
-            <Field label="Stock Location" required>
-              <Select value={form.stock_location_id || ''} onChange={(e) => setForm({ ...form, stock_location_id: Number(e.target.value) })}>
-                <option value="">Select location…</option>
+            <Field
+              label="Stock Location"
+              hint="Leave blank to use the plant itself as the default location"
+            >
+              <Select
+                value={form.stock_location_id || ''}
+                onChange={(e) =>
+                  setForm({ ...form, stock_location_id: e.target.value ? Number(e.target.value) : undefined })
+                }
+              >
+                <option value="">Plant default (auto)</option>
                 {formLocations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
               </Select>
             </Field>
@@ -258,7 +266,7 @@ export function Purchases(): React.JSX.Element {
           </div>
           <div className="mt-5 flex justify-end gap-2">
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={submit} disabled={!form.supplier_id || !form.stock_location_id || !(Number(form.quantity) > 0) || !(Number(form.rate) > 0)}>
+            <Button onClick={submit} disabled={!form.supplier_id || !(Number(form.quantity) > 0) || !(Number(form.rate) > 0)}>
               Save Purchase
             </Button>
           </div>

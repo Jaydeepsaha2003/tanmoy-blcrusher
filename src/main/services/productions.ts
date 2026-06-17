@@ -1,6 +1,7 @@
 import { getDb, nextNumber } from '../db'
 import type { Production, ProductionOutput, ProductionSetting } from '@shared/types'
 import { addMovement, rawLocationBalance, finishedBalance } from './movements'
+import { ensureDefaultLocation } from './stockLocations'
 
 export interface ProductionFilter {
   plant_id?: number
@@ -60,13 +61,14 @@ export async function previewProduction(payload: {
 
 export async function createProduction(p: {
   plant_id: number
-  stock_location_id: number
+  stock_location_id?: number
   raw_qty: number
   date: string
   remarks: string
 }): Promise<Production> {
   const d = getDb()
   if (!(p.raw_qty > 0)) throw new Error('Raw material quantity must be greater than 0.')
+  const locId = p.stock_location_id || (await ensureDefaultLocation(p.plant_id))
 
   const settings = (await d
     .prepare(`SELECT * FROM production_settings WHERE plant_id = ? ORDER BY id`)
@@ -74,7 +76,7 @@ export async function createProduction(p: {
   if (settings.length === 0)
     throw new Error('No production settings defined for this plant. Set them up first.')
 
-  const available = await rawLocationBalance(d, p.stock_location_id)
+  const available = await rawLocationBalance(d, locId)
   if (p.raw_qty > available)
     throw new Error(
       `Not enough raw material. Available: ${available} m³, requested: ${p.raw_qty} m³.`
@@ -87,7 +89,7 @@ export async function createProduction(p: {
         `INSERT INTO productions (production_no, plant_id, stock_location_id, raw_qty, date, remarks)
          VALUES (?, ?, ?, ?, ?, ?)`
       )
-      .run(no, p.plant_id, p.stock_location_id, p.raw_qty, p.date, p.remarks ?? '')
+      .run(no, p.plant_id, locId, p.raw_qty, p.date, p.remarks ?? '')
     const productionId = Number(info.lastInsertRowid)
 
     await addMovement(d, {
@@ -95,7 +97,7 @@ export async function createProduction(p: {
       material_type: 'raw',
       ref_no: no,
       plant_id: p.plant_id,
-      stock_location_id: p.stock_location_id,
+      stock_location_id: locId,
       change_qty: -p.raw_qty,
       date: p.date,
       note: 'Raw material consumed in production'
@@ -122,7 +124,7 @@ export async function createProduction(p: {
       }
     }
 
-    if ((await rawLocationBalance(d, p.stock_location_id)) < 0)
+    if ((await rawLocationBalance(d, locId)) < 0)
       throw new Error('Stock cannot go negative.')
     return productionId
   })

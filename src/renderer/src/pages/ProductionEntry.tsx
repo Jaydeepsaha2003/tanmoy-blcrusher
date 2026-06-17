@@ -146,10 +146,19 @@ export function ProductionEntry(): React.JSX.Element {
             </Field>
             <Field
               label="Stock Location"
-              hint={selectedLoc ? `Available: ${fmtQty(selectedLoc.balance_qty)} m³` : undefined}
+              hint={
+                selectedLoc
+                  ? `Available: ${fmtQty(selectedLoc.balance_qty)} m³`
+                  : 'Leave blank to use the plant itself as the default location'
+              }
             >
-              <Select value={form.stock_location_id || ''} onChange={(e) => setForm({ ...form, stock_location_id: Number(e.target.value) })}>
-                <option value="">Select location…</option>
+              <Select
+                value={form.stock_location_id || ''}
+                onChange={(e) =>
+                  setForm({ ...form, stock_location_id: e.target.value ? Number(e.target.value) : undefined })
+                }
+              >
+                <option value="">Plant default (auto)</option>
                 {formLocations.map((l) => <option key={l.id} value={l.id}>{l.name} ({fmtQty(l.balance_qty)} m³)</option>)}
               </Select>
             </Field>
@@ -190,7 +199,7 @@ export function ProductionEntry(): React.JSX.Element {
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
             <Button
               onClick={() => save.mutate({ ...form, raw_qty: Number(form.raw_qty) })}
-              disabled={!form.stock_location_id || !(Number(form.raw_qty) > 0) || preview.length === 0}
+              disabled={!(Number(form.raw_qty) > 0) || preview.length === 0}
             >
               Submit Production
             </Button>

@@ -2,6 +2,7 @@ import { getDb, nextNumber } from '../db'
 import type { Purchase, PaymentStatus, Uom } from '@shared/types'
 import { derivePaymentStatus, toCm } from '@shared/types'
 import { addMovement, rawLocationBalance } from './movements'
+import { ensureDefaultLocation } from './stockLocations'
 
 export interface PurchaseFilter {
   supplier_id?: number
@@ -62,7 +63,7 @@ export interface PurchaseInput {
   id?: number
   supplier_id: number
   plant_id: number
-  stock_location_id: number
+  stock_location_id?: number
   uom: Uom
   quantity: number
   rate: number | null
@@ -75,6 +76,7 @@ export interface PurchaseInput {
 export async function createPurchase(p: PurchaseInput): Promise<Purchase> {
   const d = getDb()
   if (!(p.quantity > 0)) throw new Error('Quantity must be greater than 0.')
+  const locId = p.stock_location_id || (await ensureDefaultLocation(p.plant_id))
   const uom: Uom = (['CM', 'TON', 'CFT'] as const).includes(p.uom) ? p.uom : 'CM'
   const qtyCm = roundQty(toCm(p.quantity, uom))
   const amount = computeAmount(p.rate, p.quantity)
@@ -90,7 +92,7 @@ export async function createPurchase(p: PurchaseInput): Promise<Purchase> {
         purchase_no: no,
         supplier_id: p.supplier_id,
         plant_id: p.plant_id,
-        stock_location_id: p.stock_location_id,
+        stock_location_id: locId,
         uom,
         quantity: p.quantity,
         qty_cm: qtyCm,
@@ -106,7 +108,7 @@ export async function createPurchase(p: PurchaseInput): Promise<Purchase> {
       material_type: 'raw',
       ref_no: no,
       plant_id: p.plant_id,
-      stock_location_id: p.stock_location_id,
+      stock_location_id: locId,
       change_qty: qtyCm,
       date: p.date,
       note: 'Raw material received'
@@ -122,6 +124,7 @@ export async function updatePurchase(p: PurchaseInput): Promise<Purchase> {
   if (!(p.quantity > 0)) throw new Error('Quantity must be greater than 0.')
   const old = (await d.prepare(`SELECT * FROM purchases WHERE id = ?`).get(p.id)) as Purchase
   if (!old) throw new Error('Purchase not found.')
+  const locId = p.stock_location_id || old.stock_location_id || (await ensureDefaultLocation(p.plant_id))
   const uom: Uom = (['CM', 'TON', 'CFT'] as const).includes(p.uom) ? p.uom : 'CM'
   const qtyCm = roundQty(toCm(p.quantity, uom))
   const amount = computeAmount(p.rate, p.quantity)
@@ -134,7 +137,7 @@ export async function updatePurchase(p: PurchaseInput): Promise<Purchase> {
       id: p.id,
       supplier_id: p.supplier_id,
       plant_id: p.plant_id,
-      stock_location_id: p.stock_location_id,
+      stock_location_id: locId,
       uom,
       quantity: p.quantity,
       qty_cm: qtyCm,
@@ -149,11 +152,11 @@ export async function updatePurchase(p: PurchaseInput): Promise<Purchase> {
     await d.prepare(
       `UPDATE stock_movements SET plant_id=?, stock_location_id=?, change_qty=?, date=?
        WHERE ref_no=? AND type='purchase'`
-    ).run(p.plant_id, p.stock_location_id, qtyCm, p.date, old.purchase_no)
+    ).run(p.plant_id, locId, qtyCm, p.date, old.purchase_no)
 
     if ((await rawLocationBalance(d, old.stock_location_id)) < 0)
       throw new Error('Edit would make the original location stock negative.')
-    if ((await rawLocationBalance(d, p.stock_location_id)) < 0)
+    if ((await rawLocationBalance(d, locId)) < 0)
       throw new Error('Edit would make the location stock negative.')
   })
   return (await d.prepare(`SELECT * FROM purchases WHERE id = ?`).get(p.id)) as Purchase
