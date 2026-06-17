@@ -59189,10 +59189,24 @@ function Purchases() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Supplier", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: form.supplier_id || "", onChange: (e3) => setForm({ ...form, supplier_id: Number(e3.target.value) }), children: suppliers.map((s2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: s2.id, children: s2.name }, s2.id)) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Purchase Date", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: form.date, onChange: (e3) => setForm({ ...form, date: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", required: true, hint: plantId ? "Locked to active plant" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: form.plant_id || "", disabled: !!plantId, onChange: (e3) => setForm({ ...form, plant_id: Number(e3.target.value), stock_location_id: void 0 }), children: plants.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.id, children: p2.name }, p2.id)) }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Stock Location", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: form.stock_location_id || "", onChange: (e3) => setForm({ ...form, stock_location_id: Number(e3.target.value) }), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Select location…" }),
-          formLocations.map((l2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: l2.id, children: l2.name }, l2.id))
-        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Field,
+          {
+            label: "Stock Location",
+            hint: "Leave blank to use the plant itself as the default location",
+            children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              Select,
+              {
+                value: form.stock_location_id || "",
+                onChange: (e3) => setForm({ ...form, stock_location_id: e3.target.value ? Number(e3.target.value) : void 0 }),
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Plant default (auto)" }),
+                  formLocations.map((l2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: l2.id, children: l2.name }, l2.id))
+                ]
+              }
+            )
+          }
+        ),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Unit (UOM)", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: form.uom || "CM", onChange: (e3) => setForm({ ...form, uom: e3.target.value }), children: UOMS.map((u2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: u2, children: u2 }, u2)) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           Field,
@@ -59211,7 +59225,7 @@ function Purchases() {
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 flex justify-end gap-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setOpen(false), children: "Cancel" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: submit, disabled: !form.supplier_id || !form.stock_location_id || !(Number(form.quantity) > 0) || !(Number(form.rate) > 0), children: "Save Purchase" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: submit, disabled: !form.supplier_id || !(Number(form.quantity) > 0) || !(Number(form.rate) > 0), children: "Save Purchase" })
       ] })
     ] })
   ] });
@@ -59403,16 +59417,23 @@ function ProductionEntry() {
           Field,
           {
             label: "Stock Location",
-            hint: selectedLoc ? `Available: ${fmtQty(selectedLoc.balance_qty)} m³` : void 0,
-            children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: form.stock_location_id || "", onChange: (e3) => setForm({ ...form, stock_location_id: Number(e3.target.value) }), children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Select location…" }),
-              formLocations.map((l2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: l2.id, children: [
-                l2.name,
-                " (",
-                fmtQty(l2.balance_qty),
-                " m³)"
-              ] }, l2.id))
-            ] })
+            hint: selectedLoc ? `Available: ${fmtQty(selectedLoc.balance_qty)} m³` : "Leave blank to use the plant itself as the default location",
+            children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              Select,
+              {
+                value: form.stock_location_id || "",
+                onChange: (e3) => setForm({ ...form, stock_location_id: e3.target.value ? Number(e3.target.value) : void 0 }),
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Plant default (auto)" }),
+                  formLocations.map((l2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: l2.id, children: [
+                    l2.name,
+                    " (",
+                    fmtQty(l2.balance_qty),
+                    " m³)"
+                  ] }, l2.id))
+                ]
+              }
+            )
           }
         ),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Raw Material Qty (m³)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.raw_qty, onChange: (e3) => setForm({ ...form, raw_qty: e3.target.value }) }) }),
@@ -59443,7 +59464,7 @@ function ProductionEntry() {
           Button,
           {
             onClick: () => save.mutate({ ...form, raw_qty: Number(form.raw_qty) }),
-            disabled: !form.stock_location_id || !(Number(form.raw_qty) > 0) || preview.length === 0,
+            disabled: !(Number(form.raw_qty) > 0) || preview.length === 0,
             children: "Submit Production"
           }
         )

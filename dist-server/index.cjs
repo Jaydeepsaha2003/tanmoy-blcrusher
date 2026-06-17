@@ -1489,38 +1489,6 @@ async function changePassword(payload) {
   return changeOwnPassword(payload);
 }
 
-// src/main/services/plants.ts
-async function listPlants() {
-  return await getDb().prepare(`SELECT * FROM plants ORDER BY name`).all();
-}
-async function createPlant(p) {
-  const d = getDb();
-  const info = await d.prepare(`INSERT INTO plants (name, code, location, status) VALUES (?, ?, ?, ?)`).run(p.name.trim().toUpperCase(), p.code.trim().toUpperCase(), properCase(p.location), p.status ?? "active");
-  return await d.prepare(`SELECT * FROM plants WHERE id = ?`).get(info.lastInsertRowid);
-}
-async function updatePlant(p) {
-  const d = getDb();
-  await d.prepare(`UPDATE plants SET name=?, code=?, location=?, status=? WHERE id=?`).run(
-    p.name.trim().toUpperCase(),
-    p.code.trim().toUpperCase(),
-    properCase(p.location),
-    p.status ?? "active",
-    p.id
-  );
-  return await d.prepare(`SELECT * FROM plants WHERE id = ?`).get(p.id);
-}
-async function deletePlant(payload) {
-  const d = getDb();
-  const used = await d.prepare(`SELECT COUNT(*) AS c FROM stock_movements WHERE plant_id = ?`).get(payload.id);
-  if (used.c > 0) {
-    return { ok: false, error: "Cannot delete: this plant has stock movements / transactions." };
-  }
-  await d.prepare(`DELETE FROM production_settings WHERE plant_id = ?`).run(payload.id);
-  await d.prepare(`DELETE FROM stock_locations WHERE plant_id = ?`).run(payload.id);
-  await d.prepare(`DELETE FROM plants WHERE id = ?`).run(payload.id);
-  return { ok: true };
-}
-
 // src/main/services/movements.ts
 async function addMovement(d, m) {
   await d.prepare(
@@ -1737,6 +1705,14 @@ async function createStockLocation(p) {
   });
   return await d.prepare(`SELECT * FROM stock_locations WHERE id = ?`).get(id);
 }
+async function ensureDefaultLocation(plantId) {
+  const d = getDb();
+  const existing = await d.prepare(`SELECT id FROM stock_locations WHERE plant_id = ? ORDER BY id LIMIT 1`).get(plantId);
+  if (existing) return existing.id;
+  const plant = await d.prepare(`SELECT name FROM plants WHERE id = ?`).get(plantId);
+  const info = await d.prepare(`INSERT INTO stock_locations (plant_id, name, opening_qty, remarks) VALUES (?, ?, 0, ?)`).run(plantId, plant?.name ?? "Main", "Default location");
+  return Number(info.lastInsertRowid);
+}
 async function updateStockLocation(p) {
   const d = getDb();
   await d.transaction(async () => {
@@ -1765,6 +1741,40 @@ async function deleteStockLocation(payload) {
 }
 function round2(n) {
   return Math.round((n + Number.EPSILON) * 1e3) / 1e3;
+}
+
+// src/main/services/plants.ts
+async function listPlants() {
+  return await getDb().prepare(`SELECT * FROM plants ORDER BY name`).all();
+}
+async function createPlant(p) {
+  const d = getDb();
+  const info = await d.prepare(`INSERT INTO plants (name, code, location, status) VALUES (?, ?, ?, ?)`).run(p.name.trim().toUpperCase(), p.code.trim().toUpperCase(), properCase(p.location), p.status ?? "active");
+  const plantId = Number(info.lastInsertRowid);
+  await ensureDefaultLocation(plantId);
+  return await d.prepare(`SELECT * FROM plants WHERE id = ?`).get(plantId);
+}
+async function updatePlant(p) {
+  const d = getDb();
+  await d.prepare(`UPDATE plants SET name=?, code=?, location=?, status=? WHERE id=?`).run(
+    p.name.trim().toUpperCase(),
+    p.code.trim().toUpperCase(),
+    properCase(p.location),
+    p.status ?? "active",
+    p.id
+  );
+  return await d.prepare(`SELECT * FROM plants WHERE id = ?`).get(p.id);
+}
+async function deletePlant(payload) {
+  const d = getDb();
+  const used = await d.prepare(`SELECT COUNT(*) AS c FROM stock_movements WHERE plant_id = ?`).get(payload.id);
+  if (used.c > 0) {
+    return { ok: false, error: "Cannot delete: this plant has stock movements / transactions." };
+  }
+  await d.prepare(`DELETE FROM production_settings WHERE plant_id = ?`).run(payload.id);
+  await d.prepare(`DELETE FROM stock_locations WHERE plant_id = ?`).run(payload.id);
+  await d.prepare(`DELETE FROM plants WHERE id = ?`).run(payload.id);
+  return { ok: true };
 }
 
 // src/main/services/suppliers.ts
@@ -1943,6 +1953,7 @@ function roundQty(n) {
 async function createPurchase(p) {
   const d = getDb();
   if (!(p.quantity > 0)) throw new Error("Quantity must be greater than 0.");
+  const locId = p.stock_location_id || await ensureDefaultLocation(p.plant_id);
   const uom = ["CM", "TON", "CFT"].includes(p.uom) ? p.uom : "CM";
   const qtyCm = roundQty(toCm(p.quantity, uom));
   const amount = computeAmount(p.rate, p.quantity);
@@ -1956,7 +1967,7 @@ async function createPurchase(p) {
       purchase_no: no,
       supplier_id: p.supplier_id,
       plant_id: p.plant_id,
-      stock_location_id: p.stock_location_id,
+      stock_location_id: locId,
       uom,
       quantity: p.quantity,
       qty_cm: qtyCm,
@@ -1972,7 +1983,7 @@ async function createPurchase(p) {
       material_type: "raw",
       ref_no: no,
       plant_id: p.plant_id,
-      stock_location_id: p.stock_location_id,
+      stock_location_id: locId,
       change_qty: qtyCm,
       date: p.date,
       note: "Raw material received"
@@ -1987,6 +1998,7 @@ async function updatePurchase(p) {
   if (!(p.quantity > 0)) throw new Error("Quantity must be greater than 0.");
   const old = await d.prepare(`SELECT * FROM purchases WHERE id = ?`).get(p.id);
   if (!old) throw new Error("Purchase not found.");
+  const locId = p.stock_location_id || old.stock_location_id || await ensureDefaultLocation(p.plant_id);
   const uom = ["CM", "TON", "CFT"].includes(p.uom) ? p.uom : "CM";
   const qtyCm = roundQty(toCm(p.quantity, uom));
   const amount = computeAmount(p.rate, p.quantity);
@@ -1999,7 +2011,7 @@ async function updatePurchase(p) {
       id: p.id,
       supplier_id: p.supplier_id,
       plant_id: p.plant_id,
-      stock_location_id: p.stock_location_id,
+      stock_location_id: locId,
       uom,
       quantity: p.quantity,
       qty_cm: qtyCm,
@@ -2013,10 +2025,10 @@ async function updatePurchase(p) {
     await d.prepare(
       `UPDATE stock_movements SET plant_id=?, stock_location_id=?, change_qty=?, date=?
        WHERE ref_no=? AND type='purchase'`
-    ).run(p.plant_id, p.stock_location_id, qtyCm, p.date, old.purchase_no);
+    ).run(p.plant_id, locId, qtyCm, p.date, old.purchase_no);
     if (await rawLocationBalance(d, old.stock_location_id) < 0)
       throw new Error("Edit would make the original location stock negative.");
-    if (await rawLocationBalance(d, p.stock_location_id) < 0)
+    if (await rawLocationBalance(d, locId) < 0)
       throw new Error("Edit would make the location stock negative.");
   });
   return await d.prepare(`SELECT * FROM purchases WHERE id = ?`).get(p.id);
@@ -2122,10 +2134,11 @@ async function previewProduction(payload) {
 async function createProduction(p) {
   const d = getDb();
   if (!(p.raw_qty > 0)) throw new Error("Raw material quantity must be greater than 0.");
+  const locId = p.stock_location_id || await ensureDefaultLocation(p.plant_id);
   const settings = await d.prepare(`SELECT * FROM production_settings WHERE plant_id = ? ORDER BY id`).all(p.plant_id);
   if (settings.length === 0)
     throw new Error("No production settings defined for this plant. Set them up first.");
-  const available = await rawLocationBalance(d, p.stock_location_id);
+  const available = await rawLocationBalance(d, locId);
   if (p.raw_qty > available)
     throw new Error(
       `Not enough raw material. Available: ${available} m\xB3, requested: ${p.raw_qty} m\xB3.`
@@ -2135,14 +2148,14 @@ async function createProduction(p) {
     const info = await d.prepare(
       `INSERT INTO productions (production_no, plant_id, stock_location_id, raw_qty, date, remarks)
          VALUES (?, ?, ?, ?, ?, ?)`
-    ).run(no, p.plant_id, p.stock_location_id, p.raw_qty, p.date, p.remarks ?? "");
+    ).run(no, p.plant_id, locId, p.raw_qty, p.date, p.remarks ?? "");
     const productionId = Number(info.lastInsertRowid);
     await addMovement(d, {
       type: "production_consume",
       material_type: "raw",
       ref_no: no,
       plant_id: p.plant_id,
-      stock_location_id: p.stock_location_id,
+      stock_location_id: locId,
       change_qty: -p.raw_qty,
       date: p.date,
       note: "Raw material consumed in production"
@@ -2167,7 +2180,7 @@ async function createProduction(p) {
         });
       }
     }
-    if (await rawLocationBalance(d, p.stock_location_id) < 0)
+    if (await rawLocationBalance(d, locId) < 0)
       throw new Error("Stock cannot go negative.");
     return productionId;
   });
