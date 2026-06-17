@@ -1086,13 +1086,21 @@ async function runMigrations(adapter2, kind) {
     );
     for (const m of MYSQL_MIGRATIONS) {
       const done = (await adapter2.exec("SELECT id FROM schema_migrations WHERE id = ?", [m.id], null)).rows;
-      if (done.length === 0) {
-        await adapter2.execRaw(m.sql);
-        await adapter2.exec("INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)", [
-          m.id,
-          (/* @__PURE__ */ new Date()).toISOString()
-        ], null);
+      if (done.length > 0) continue;
+      const statements = m.sql.split(";").map((s) => s.trim()).filter((s) => s.length > 0);
+      for (const stmt of statements) {
+        try {
+          await adapter2.exec(stmt, void 0, null);
+        } catch (e) {
+          const msg = String(e?.message || "");
+          if (/duplicate column|already exists|duplicate key name|check that column/i.test(msg)) continue;
+          throw e;
+        }
       }
+      await adapter2.exec("INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)", [
+        m.id,
+        (/* @__PURE__ */ new Date()).toISOString()
+      ], null);
     }
   }
   await seedDefaults(adapter2);
