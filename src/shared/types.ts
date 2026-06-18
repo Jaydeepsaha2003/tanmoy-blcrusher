@@ -147,10 +147,9 @@ export interface Plant {
   created_at: string
 }
 
+/** Products are a global master list (shared across all plants). */
 export interface Product {
   id: number
-  plant_id: number
-  plant_name?: string
   name: string
   description: string
   status: Status
@@ -160,8 +159,6 @@ export interface Product {
 export interface CustomerRate {
   id: number
   customer_id: number
-  plant_id: number
-  plant_name?: string
   product_name: string
   uom: Uom
   rate: number
@@ -173,10 +170,7 @@ export interface PublicRateList {
   customer_name: string
   business_name: string
   updated_at: string | null
-  groups: {
-    plant_name: string
-    rates: { product_name: string; uom: Uom; rate: number }[]
-  }[]
+  rates: { product_name: string; uom: Uom; rate: number }[]
 }
 
 export interface StockLocation {

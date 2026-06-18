@@ -14,7 +14,6 @@ import { ProductionSettings } from './pages/ProductionSettings'
 import { ProductionEntry } from './pages/ProductionEntry'
 import { FinishedGoods } from './pages/FinishedGoods'
 import { Products } from './pages/Products'
-import { RateList } from './pages/RateList'
 import { Customers } from './pages/Customers'
 import { Dispatch } from './pages/Dispatch'
 import { Transporters } from './pages/Transporters'
@@ -64,7 +63,6 @@ function AppRoutes(): React.JSX.Element {
       <Route path="/production" element={<Guard module="production"><ProductionEntry /></Guard>} />
       <Route path="/finished-goods" element={<Guard module="production"><FinishedGoods /></Guard>} />
       <Route path="/products" element={<Guard module="masters"><Products /></Guard>} />
-      <Route path="/rate-list" element={<Guard module="masters"><RateList /></Guard>} />
       <Route path="/customers" element={<Guard module="masters"><Customers /></Guard>} />
       <Route path="/transporters" element={<Guard module="masters"><Transporters /></Guard>} />
       <Route path="/companies" element={<Guard module="masters"><Companies /></Guard>} />

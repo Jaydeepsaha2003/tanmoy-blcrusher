@@ -40,7 +40,6 @@ import {
   ShieldCheck,
   ScrollText,
   Package,
-  Tags,
   Menu
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -85,8 +84,7 @@ export const NAV: NavGroup[] = [
     heading: 'Direct Sales',
     items: [
       { to: '/dispatch', label: 'Direct Sale', icon: Send, module: 'dispatch' },
-      { to: '/deliveries', label: 'Delivery Status', icon: ClipboardCheck, module: 'dispatch' },
-      { to: '/rate-list', label: 'Rate List', icon: Tags, module: 'masters' }
+      { to: '/deliveries', label: 'Delivery Status', icon: ClipboardCheck, module: 'dispatch' }
     ]
   },
   {

@@ -116,17 +116,15 @@ export const api = {
     delete: (id: number) => call<{ ok: boolean; error?: string }>('customers.delete', { id })
   },
   products: {
-    list: (plant_id?: number) => call<Product[]>('products.list', { plant_id }),
+    list: () => call<Product[]>('products.list'),
     create: (p: Partial<Product>) => call<Product>('products.create', p),
     update: (p: Partial<Product>) => call<Product>('products.update', p),
     delete: (id: number) => call<{ ok: boolean; error?: string }>('products.delete', { id })
   },
   rates: {
     list: (customer_id: number) => call<CustomerRate[]>('rates.list', { customer_id }),
-    save: (
-      customer_id: number,
-      items: { plant_id: number; product_name: string; uom: string; rate: number }[]
-    ) => call<{ ok: boolean; error?: string }>('rates.save', { customer_id, items }),
+    save: (customer_id: number, items: { product_name: string; uom: string; rate: number }[]) =>
+      call<{ ok: boolean; error?: string }>('rates.save', { customer_id, items }),
     shareLink: (customer_id: number) =>
       call<{ token: string; path: string }>('rates.createShareLink', { customer_id }),
     removeShareLink: (customer_id: number) =>

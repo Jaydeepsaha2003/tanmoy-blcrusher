@@ -42,7 +42,7 @@ export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttribute
     <input
       ref={ref}
       className={cn(
-        'flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50',
+        'flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1 text-sm shadow-sm transition-all placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-50',
         className
       )}
       {...props}
@@ -59,7 +59,7 @@ export const Textarea = React.forwardRef<
   <textarea
     ref={ref}
     className={cn(
-      'flex min-h-[64px] w-full rounded-md border border-input bg-card px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50',
+      'flex min-h-[68px] w-full rounded-lg border border-input bg-card px-3 py-2 text-sm shadow-sm transition-all placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-50',
       className
     )}
     {...props}
@@ -75,7 +75,7 @@ export const Select = React.forwardRef<
   <select
     ref={ref}
     className={cn(
-      'flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50',
+      'flex h-9 w-full cursor-pointer rounded-lg border border-input bg-card px-3 py-1 text-sm shadow-sm transition-all focus-visible:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-50',
       className
     )}
     {...props}
@@ -92,7 +92,7 @@ export function Label({
 }: React.LabelHTMLAttributes<HTMLLabelElement>): React.JSX.Element {
   return (
     <label
-      className={cn('text-sm font-medium text-foreground/80 mb-1.5 block', className)}
+      className={cn('mb-1.5 block text-[13px] font-semibold text-foreground/75', className)}
       {...props}
     />
   )
@@ -242,23 +242,24 @@ export function Modal({
   }, [open, onClose])
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-3 pt-8 sm:p-4 sm:pt-16">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-3 pt-8 backdrop-blur-sm sm:p-4 sm:pt-16">
       <div
         className={cn(
-          'relative w-full rounded-xl border bg-card shadow-xl animate-in',
+          'animate-in relative w-full rounded-2xl border bg-card shadow-2xl ring-1 ring-black/5',
           width
         )}
       >
-        <div className="flex items-center justify-between border-b px-5 py-3.5">
-          <h2 className="text-base font-semibold">{title}</h2>
+        <div className="flex items-center justify-between border-b px-6 py-4">
+          <h2 className="text-[17px] font-semibold tracking-tight">{title}</h2>
           <button
             onClick={onClose}
-            className="rounded-md p-1 text-muted-foreground hover:bg-accent"
+            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            aria-label="Close"
           >
             <X size={18} />
           </button>
         </div>
-        <div className="p-5">{children}</div>
+        <div className="p-6">{children}</div>
       </div>
     </div>
   )

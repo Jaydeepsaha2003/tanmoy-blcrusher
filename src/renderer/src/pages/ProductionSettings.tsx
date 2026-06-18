@@ -32,11 +32,7 @@ export function ProductionSettings(): React.JSX.Element {
     queryFn: () => api.productionSettings.list(plantId!),
     enabled: !!plantId
   })
-  const { data: products = [] } = useQuery({
-    queryKey: ['products', plantId],
-    queryFn: () => api.products.list(plantId),
-    enabled: !!plantId
-  })
+  const { data: products = [] } = useQuery({ queryKey: ['products'], queryFn: () => api.products.list() })
 
   const [rows, setRows] = React.useState<Row[]>([])
   React.useEffect(() => {
@@ -112,7 +108,7 @@ export function ProductionSettings(): React.JSX.Element {
 
                 {products.length === 0 && (
                   <p className="mt-2 text-xs text-destructive">
-                    No products for this plant yet. Add them in the <b>Products</b> menu first.
+                    No products yet. Add them in the <b>Products</b> menu first.
                   </p>
                 )}
 

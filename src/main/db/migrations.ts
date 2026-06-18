@@ -524,34 +524,40 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
 }
 
 /**
- * Seed the Products master from existing production settings (plant-wise), so a
- * fresh upgrade already lists every product the user has been producing. Safe to
- * run on every boot — only inserts products that don't already exist.
+ * Keep the global Products master in sync: import any product names that exist
+ * in production settings but not yet in products, and de-duplicate products by
+ * name (products are global, not plant-specific). Safe to run on every boot.
  */
 async function importProductsFromSettings(adapter: Adapter): Promise<void> {
-  const rows = (
+  // De-dupe existing products by name (keep the lowest id). Handles upgrades
+  // from the earlier plant-scoped products, where the same name could repeat.
+  const all = (await adapter.exec(`SELECT id, name FROM products ORDER BY id`, undefined, null))
+    .rows as { id: number; name: string }[]
+  const keep = new Map<string, number>()
+  for (const p of all) {
+    const key = (p.name || '').trim().toLowerCase()
+    if (!key) continue
+    if (!keep.has(key)) keep.set(key, p.id)
+    else await adapter.exec(`DELETE FROM products WHERE id = ?`, [p.id], null)
+  }
+  // Import distinct production-settings product names that aren't products yet.
+  const names = (
     await adapter.exec(
-      `SELECT DISTINCT ps.plant_id AS plant_id, ps.product_name AS product_name
-       FROM production_settings ps`,
+      `SELECT DISTINCT product_name FROM production_settings`,
       undefined,
       null
     )
-  ).rows as { plant_id: number; product_name: string }[]
-  for (const r of rows) {
-    if (!r.product_name) continue
-    const existing = (
-      await adapter.exec(
-        `SELECT id FROM products WHERE plant_id = ? AND LOWER(name) = LOWER(?)`,
-        [r.plant_id, r.product_name],
-        null
-      )
-    ).rows
-    if (existing.length > 0) continue
+  ).rows as { product_name: string }[]
+  for (const r of names) {
+    const name = (r.product_name || '').trim()
+    if (!name) continue
+    if (keep.has(name.toLowerCase())) continue
     await adapter.exec(
-      `INSERT INTO products (plant_id, name, description, status) VALUES (?, ?, '', 'active')`,
-      [r.plant_id, r.product_name],
+      `INSERT INTO products (plant_id, name, description, status) VALUES (0, ?, '', 'active')`,
+      [name],
       null
     )
+    keep.set(name.toLowerCase(), 0)
   }
 }
 

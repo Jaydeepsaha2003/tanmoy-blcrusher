@@ -45,13 +45,15 @@ body,
 body {
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
-  font-family: 'Segoe UI Variable Text', 'Segoe UI', 'Inter', system-ui, -apple-system,
-    BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+  font-family: 'Inter', 'Inter var', 'Segoe UI Variable Text', 'Segoe UI', system-ui,
+    -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
   font-size: 14px;
   line-height: 1.5;
+  letter-spacing: -0.006em;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss01';
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'ss01';
   user-select: none;
 }
 

@@ -13,34 +13,32 @@ export async function listCustomerRates(payload: { customer_id: number }): Promi
   if (!payload.customer_id) return []
   return (await getDb()
     .prepare(
-      `SELECT cr.*, pl.name AS plant_name
-       FROM customer_rates cr
-       JOIN plants pl ON pl.id = cr.plant_id
-       WHERE cr.customer_id = ?
-       ORDER BY pl.name, cr.product_name, cr.uom`
+      `SELECT id, customer_id, product_name, uom, rate, updated_at
+       FROM customer_rates
+       WHERE customer_id = ?
+       ORDER BY product_name, uom`
     )
     .all(payload.customer_id)) as CustomerRate[]
 }
 
-/** Bulk-replace the whole rate list for one customer. */
+/** Bulk-replace the whole rate list for one customer (products are global). */
 export async function saveCustomerRates(payload: {
   customer_id: number
-  items: { plant_id: number; product_name: string; uom: Uom; rate: number }[]
+  items: { product_name: string; uom: Uom; rate: number }[]
 }): Promise<{ ok: boolean; error?: string }> {
   const d = getDb()
   if (!payload.customer_id) return { ok: false, error: 'Select a customer.' }
   const items = (payload.items ?? [])
     .map((i) => ({
-      plant_id: Number(i.plant_id),
       product_name: properCase(i.product_name),
       uom: (VALID_UOM as string[]).includes(i.uom) ? i.uom : 'CM',
       rate: Number(i.rate) || 0
     }))
-    .filter((i) => i.plant_id && i.product_name)
-  // Guard against duplicate product+uom rows for the same plant.
+    .filter((i) => i.product_name)
+  // Guard against duplicate product+uom rows.
   const seen = new Set<string>()
   for (const i of items) {
-    const key = `${i.plant_id}|${i.product_name.toLowerCase()}|${i.uom}`
+    const key = `${i.product_name.toLowerCase()}|${i.uom}`
     if (seen.has(key)) {
       return { ok: false, error: `Duplicate rate for ${i.product_name} (${i.uom}).` }
     }
@@ -49,12 +47,13 @@ export async function saveCustomerRates(payload: {
   const ts = nowIso()
   await d.transaction(async () => {
     await d.prepare(`DELETE FROM customer_rates WHERE customer_id = ?`).run(payload.customer_id)
+    // plant_id column is legacy/global now — written as 0.
     const stmt = d.prepare(
       `INSERT INTO customer_rates (customer_id, plant_id, product_name, uom, rate, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)`
+       VALUES (?, 0, ?, ?, ?, ?)`
     )
     for (const i of items) {
-      await stmt.run(payload.customer_id, i.plant_id, i.product_name, i.uom, i.rate, ts)
+      await stmt.run(payload.customer_id, i.product_name, i.uom, i.rate, ts)
     }
   })
   return { ok: true }
@@ -119,31 +118,26 @@ export async function publicRateList(payload: { token: string }): Promise<Public
   if (!customer) return null
   const rows = (await d
     .prepare(
-      `SELECT cr.product_name, cr.uom, cr.rate, cr.updated_at, pl.name AS plant_name
-       FROM customer_rates cr
-       JOIN plants pl ON pl.id = cr.plant_id
-       WHERE cr.customer_id = ?
-       ORDER BY pl.name, cr.product_name, cr.uom`
+      `SELECT product_name, uom, rate, updated_at
+       FROM customer_rates
+       WHERE customer_id = ?
+       ORDER BY product_name, uom`
     )
     .all(customer.id)) as {
     product_name: string
     uom: Uom
     rate: number
     updated_at: string
-    plant_name: string
   }[]
 
-  const groupMap = new Map<string, { product_name: string; uom: Uom; rate: number }[]>()
   let updated: string | null = null
   for (const r of rows) {
-    if (!groupMap.has(r.plant_name)) groupMap.set(r.plant_name, [])
-    groupMap.get(r.plant_name)!.push({ product_name: r.product_name, uom: r.uom, rate: r.rate })
     if (r.updated_at && (!updated || r.updated_at > updated)) updated = r.updated_at
   }
   return {
     customer_name: customer.name,
     business_name: await getBusinessNameInternal(),
     updated_at: updated,
-    groups: [...groupMap.entries()].map(([plant_name, rates]) => ({ plant_name, rates }))
+    rates: rows.map((r) => ({ product_name: r.product_name, uom: r.uom, rate: r.rate }))
   }
 }
