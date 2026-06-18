@@ -209,7 +209,28 @@ CREATE TABLE IF NOT EXISTS plants (
   code       TEXT NOT NULL,
   location   TEXT NOT NULL DEFAULT '',
   status     TEXT NOT NULL DEFAULT 'active',
+  ton_per_cm REAL NOT NULL DEFAULT 1.6,
+  cft_per_cm REAL NOT NULL DEFAULT 35.31,
   created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS products (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  plant_id    INTEGER NOT NULL REFERENCES plants(id),
+  name        TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  status      TEXT NOT NULL DEFAULT 'active',
+  created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS customer_rates (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id  INTEGER NOT NULL REFERENCES customers(id),
+  plant_id     INTEGER NOT NULL REFERENCES plants(id),
+  product_name TEXT NOT NULL,
+  uom          TEXT NOT NULL DEFAULT 'CM',
+  rate         REAL NOT NULL DEFAULT 0,
+  updated_at   TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS stock_locations (
@@ -231,12 +252,13 @@ CREATE TABLE IF NOT EXISTS suppliers (
 );
 
 CREATE TABLE IF NOT EXISTS customers (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  name       TEXT NOT NULL,
-  contact    TEXT NOT NULL DEFAULT '',
-  address    TEXT NOT NULL DEFAULT '',
-  remarks    TEXT NOT NULL DEFAULT '',
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  name        TEXT NOT NULL,
+  contact     TEXT NOT NULL DEFAULT '',
+  address     TEXT NOT NULL DEFAULT '',
+  remarks     TEXT NOT NULL DEFAULT '',
+  share_token TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS purchases (
@@ -582,6 +604,9 @@ CREATE INDEX IF NOT EXISTS idx_poutputs_prod ON production_outputs(production_id
 CREATE INDEX IF NOT EXISTS idx_dispatch_customer ON dispatches(customer_id);
 CREATE INDEX IF NOT EXISTS idx_move_plant ON stock_movements(plant_id);
 CREATE INDEX IF NOT EXISTS idx_move_loc ON stock_movements(stock_location_id);
+CREATE INDEX IF NOT EXISTS idx_products_plant ON products(plant_id);
+CREATE INDEX IF NOT EXISTS idx_crates_customer ON customer_rates(customer_id);
+CREATE INDEX IF NOT EXISTS idx_customers_token ON customers(share_token);
 `;
 
 // src/main/crypto.ts
@@ -648,7 +673,26 @@ CREATE TABLE IF NOT EXISTS plants (
   code       VARCHAR(64) NOT NULL,
   location   VARCHAR(255) NOT NULL DEFAULT '',
   status     VARCHAR(32) NOT NULL DEFAULT 'active',
+  ton_per_cm DOUBLE NOT NULL DEFAULT 1.6,
+  cft_per_cm DOUBLE NOT NULL DEFAULT 35.31,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS products (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  plant_id    INT NOT NULL,
+  name        VARCHAR(255) NOT NULL,
+  description TEXT,
+  status      VARCHAR(32) NOT NULL DEFAULT 'active',
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS customer_rates (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  customer_id  INT NOT NULL,
+  plant_id     INT NOT NULL,
+  product_name VARCHAR(255) NOT NULL,
+  uom          VARCHAR(8) NOT NULL DEFAULT 'CM',
+  rate         DOUBLE NOT NULL DEFAULT 0,
+  updated_at   VARCHAR(32) NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS stock_locations (
   id          INT AUTO_INCREMENT PRIMARY KEY,
@@ -669,14 +713,15 @@ CREATE TABLE IF NOT EXISTS suppliers (
   plant_id   INT
 );
 CREATE TABLE IF NOT EXISTS customers (
-  id         INT AUTO_INCREMENT PRIMARY KEY,
-  name       VARCHAR(255) NOT NULL,
-  contact    VARCHAR(255) NOT NULL DEFAULT '',
-  address    TEXT,
-  remarks    TEXT,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  company_id INT,
-  plant_id   INT
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  name        VARCHAR(255) NOT NULL,
+  contact     VARCHAR(255) NOT NULL DEFAULT '',
+  address     TEXT,
+  remarks     TEXT,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  company_id  INT,
+  plant_id    INT,
+  share_token VARCHAR(64)
 );
 CREATE TABLE IF NOT EXISTS transporters (
   id         INT AUTO_INCREMENT PRIMARY KEY,
@@ -1012,6 +1057,33 @@ UPDATE users SET edit_modules = modules WHERE access_level = 'edit'`
     sql: `ALTER TABLE purchases ADD COLUMN uom VARCHAR(8) NOT NULL DEFAULT 'CM';
 ALTER TABLE purchases ADD COLUMN qty_cm DOUBLE NOT NULL DEFAULT 0;
 UPDATE purchases SET qty_cm = quantity WHERE qty_cm = 0`
+  },
+  {
+    // Per-plant UOM/density factors, Products master, per-customer rate lists,
+    // and a public share token on customers (for the no-login rate page).
+    id: "004_products_rates_density",
+    sql: `ALTER TABLE plants ADD COLUMN ton_per_cm DOUBLE NOT NULL DEFAULT 1.6;
+ALTER TABLE plants ADD COLUMN cft_per_cm DOUBLE NOT NULL DEFAULT 35.31;
+ALTER TABLE customers ADD COLUMN share_token VARCHAR(64);
+CREATE TABLE IF NOT EXISTS products (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  plant_id    INT NOT NULL,
+  name        VARCHAR(255) NOT NULL,
+  description TEXT,
+  status      VARCHAR(32) NOT NULL DEFAULT 'active',
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS customer_rates (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  customer_id  INT NOT NULL,
+  plant_id     INT NOT NULL,
+  product_name VARCHAR(255) NOT NULL,
+  uom          VARCHAR(8) NOT NULL DEFAULT 'CM',
+  rate         DOUBLE NOT NULL DEFAULT 0,
+  updated_at   VARCHAR(32) NOT NULL DEFAULT ''
+);
+CREATE INDEX idx_products_plant ON products(plant_id);
+CREATE INDEX idx_crates_customer ON customer_rates(customer_id)`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -1058,6 +1130,31 @@ async function sqliteLegacyMigrate(adapter2) {
   await addColumn("purchases", "uom", `TEXT NOT NULL DEFAULT 'CM'`);
   await addColumn("purchases", "qty_cm", "REAL NOT NULL DEFAULT 0");
   await adapter2.execRaw(`UPDATE purchases SET qty_cm = quantity WHERE qty_cm = 0 AND quantity <> 0`);
+  await addColumn("plants", "ton_per_cm", "REAL NOT NULL DEFAULT 1.6");
+  await addColumn("plants", "cft_per_cm", "REAL NOT NULL DEFAULT 35.31");
+  await addColumn("customers", "share_token", "TEXT");
+}
+async function importProductsFromSettings(adapter2) {
+  const rows = (await adapter2.exec(
+    `SELECT DISTINCT ps.plant_id AS plant_id, ps.product_name AS product_name
+       FROM production_settings ps`,
+    void 0,
+    null
+  )).rows;
+  for (const r of rows) {
+    if (!r.product_name) continue;
+    const existing = (await adapter2.exec(
+      `SELECT id FROM products WHERE plant_id = ? AND LOWER(name) = LOWER(?)`,
+      [r.plant_id, r.product_name],
+      null
+    )).rows;
+    if (existing.length > 0) continue;
+    await adapter2.exec(
+      `INSERT INTO products (plant_id, name, description, status) VALUES (?, ?, '', 'active')`,
+      [r.plant_id, r.product_name],
+      null
+    );
+  }
 }
 async function seedDefaults(adapter2) {
   const pwRow = (await adapter2.exec("SELECT value FROM settings WHERE `key` = 'admin_password'", void 0, null)).rows[0];
@@ -1104,6 +1201,7 @@ async function runMigrations(adapter2, kind) {
     }
   }
   await seedDefaults(adapter2);
+  await importProductsFromSettings(adapter2);
 }
 
 // src/main/db/index.ts
@@ -1206,9 +1304,17 @@ function getCurrentUser() {
 // src/shared/types.ts
 var TON_PER_CM = 1.6;
 var CFT_PER_CM = 35.31;
-function toCm(qty, uom) {
-  if (uom === "TON") return qty / TON_PER_CM;
-  if (uom === "CFT") return qty / CFT_PER_CM;
+function tonFactor(f) {
+  const v = Number(f?.ton_per_cm);
+  return v > 0 ? v : TON_PER_CM;
+}
+function cftFactor(f) {
+  const v = Number(f?.cft_per_cm);
+  return v > 0 ? v : CFT_PER_CM;
+}
+function toCm(qty, uom, f) {
+  if (uom === "TON") return qty / tonFactor(f);
+  if (uom === "CFT") return qty / cftFactor(f);
   return qty;
 }
 function properCase(s) {
@@ -1248,6 +1354,8 @@ var PREFIX_MODULE = {
   locations: "masters",
   suppliers: "masters",
   customers: "masters",
+  products: "masters",
+  rates: "masters",
   transporters: "masters",
   companies: "masters",
   businesses: "masters",
@@ -1275,6 +1383,8 @@ var METHOD_MODULE = {
   "system.cancelDelete": "settings",
   "system.deleteStatus": "settings",
   "system.setWorkdays": "settings",
+  "rates.getBusinessName": "settings",
+  "rates.setBusinessName": "settings",
   "system.getWorkdays": "payroll",
   // read by the Payroll page
   "racks.createExpenseType": "settings",
@@ -1747,23 +1857,49 @@ function round2(n) {
 async function listPlants() {
   return await getDb().prepare(`SELECT * FROM plants ORDER BY name`).all();
 }
+function posOr(value, fallback) {
+  const n = Number(value);
+  return n > 0 ? n : fallback;
+}
 async function createPlant(p) {
   const d = getDb();
-  const info = await d.prepare(`INSERT INTO plants (name, code, location, status) VALUES (?, ?, ?, ?)`).run(p.name.trim().toUpperCase(), p.code.trim().toUpperCase(), properCase(p.location), p.status ?? "active");
+  const info = await d.prepare(
+    `INSERT INTO plants (name, code, location, status, ton_per_cm, cft_per_cm) VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(
+    p.name.trim().toUpperCase(),
+    p.code.trim().toUpperCase(),
+    properCase(p.location),
+    p.status ?? "active",
+    posOr(p.ton_per_cm, TON_PER_CM),
+    posOr(p.cft_per_cm, CFT_PER_CM)
+  );
   const plantId = Number(info.lastInsertRowid);
   await ensureDefaultLocation(plantId);
   return await d.prepare(`SELECT * FROM plants WHERE id = ?`).get(plantId);
 }
 async function updatePlant(p) {
   const d = getDb();
-  await d.prepare(`UPDATE plants SET name=?, code=?, location=?, status=? WHERE id=?`).run(
+  await d.prepare(
+    `UPDATE plants SET name=?, code=?, location=?, status=?,
+         ton_per_cm=COALESCE(?, ton_per_cm), cft_per_cm=COALESCE(?, cft_per_cm) WHERE id=?`
+  ).run(
     p.name.trim().toUpperCase(),
     p.code.trim().toUpperCase(),
     properCase(p.location),
     p.status ?? "active",
+    p.ton_per_cm != null && Number(p.ton_per_cm) > 0 ? Number(p.ton_per_cm) : null,
+    p.cft_per_cm != null && Number(p.cft_per_cm) > 0 ? Number(p.cft_per_cm) : null,
     p.id
   );
   return await d.prepare(`SELECT * FROM plants WHERE id = ?`).get(p.id);
+}
+async function plantUomFactors(plantId) {
+  if (!plantId) return { ton_per_cm: TON_PER_CM, cft_per_cm: CFT_PER_CM };
+  const row = await getDb().prepare(`SELECT ton_per_cm, cft_per_cm FROM plants WHERE id = ?`).get(plantId);
+  return {
+    ton_per_cm: posOr(row?.ton_per_cm, TON_PER_CM),
+    cft_per_cm: posOr(row?.cft_per_cm, CFT_PER_CM)
+  };
 }
 async function deletePlant(payload) {
   const d = getDb();
@@ -1907,6 +2043,156 @@ async function deleteCustomer(payload) {
   return { ok: true };
 }
 
+// src/main/services/products.ts
+async function listProducts(payload = {}) {
+  const d = getDb();
+  const clause = payload.plant_id ? "WHERE p.plant_id = @plant_id" : "";
+  return await d.prepare(
+    `SELECT p.*, pl.name AS plant_name
+       FROM products p
+       JOIN plants pl ON pl.id = p.plant_id
+       ${clause}
+       ORDER BY pl.name, p.name`
+  ).all(payload);
+}
+async function createProduct(p) {
+  const d = getDb();
+  if (!p.plant_id) throw new Error("Select a plant for this product.");
+  const name = properCase(p.name);
+  if (!name) throw new Error("Product name is required.");
+  const dup = await d.prepare(`SELECT id FROM products WHERE plant_id = ? AND LOWER(name) = LOWER(?)`).get(p.plant_id, name);
+  if (dup) throw new Error("A product with this name already exists for this plant.");
+  const info = await d.prepare(`INSERT INTO products (plant_id, name, description, status) VALUES (?, ?, ?, ?)`).run(p.plant_id, name, p.description ?? "", p.status ?? "active");
+  return await d.prepare(`SELECT * FROM products WHERE id = ?`).get(info.lastInsertRowid);
+}
+async function updateProduct(p) {
+  const d = getDb();
+  const name = properCase(p.name);
+  if (!name) throw new Error("Product name is required.");
+  const dup = await d.prepare(`SELECT id FROM products WHERE plant_id = ? AND LOWER(name) = LOWER(?) AND id <> ?`).get(p.plant_id, name, p.id);
+  if (dup) throw new Error("A product with this name already exists for this plant.");
+  await d.prepare(`UPDATE products SET plant_id=?, name=?, description=?, status=? WHERE id=?`).run(p.plant_id, name, p.description ?? "", p.status ?? "active", p.id);
+  return await d.prepare(`SELECT * FROM products WHERE id = ?`).get(p.id);
+}
+async function deleteProduct(payload) {
+  const d = getDb();
+  const prod = await d.prepare(`SELECT * FROM products WHERE id = ?`).get(payload.id);
+  if (!prod) return { ok: false, error: "Product not found." };
+  const used = await d.prepare(
+    `SELECT COUNT(*) AS c FROM production_settings WHERE plant_id = ? AND LOWER(product_name) = LOWER(?)`
+  ).get(prod.plant_id, prod.name);
+  if (used.c > 0) {
+    return {
+      ok: false,
+      error: "Cannot delete: this product is used in Production Settings for its plant."
+    };
+  }
+  await d.prepare(`DELETE FROM products WHERE id = ?`).run(payload.id);
+  return { ok: true };
+}
+
+// src/main/services/rates.ts
+var import_node_crypto2 = require("node:crypto");
+var VALID_UOM = ["CM", "TON", "CFT"];
+function nowIso() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+async function listCustomerRates(payload) {
+  if (!payload.customer_id) return [];
+  return await getDb().prepare(
+    `SELECT cr.*, pl.name AS plant_name
+       FROM customer_rates cr
+       JOIN plants pl ON pl.id = cr.plant_id
+       WHERE cr.customer_id = ?
+       ORDER BY pl.name, cr.product_name, cr.uom`
+  ).all(payload.customer_id);
+}
+async function saveCustomerRates(payload) {
+  const d = getDb();
+  if (!payload.customer_id) return { ok: false, error: "Select a customer." };
+  const items = (payload.items ?? []).map((i) => ({
+    plant_id: Number(i.plant_id),
+    product_name: properCase(i.product_name),
+    uom: VALID_UOM.includes(i.uom) ? i.uom : "CM",
+    rate: Number(i.rate) || 0
+  })).filter((i) => i.plant_id && i.product_name);
+  const seen = /* @__PURE__ */ new Set();
+  for (const i of items) {
+    const key = `${i.plant_id}|${i.product_name.toLowerCase()}|${i.uom}`;
+    if (seen.has(key)) {
+      return { ok: false, error: `Duplicate rate for ${i.product_name} (${i.uom}).` };
+    }
+    seen.add(key);
+  }
+  const ts = nowIso();
+  await d.transaction(async () => {
+    await d.prepare(`DELETE FROM customer_rates WHERE customer_id = ?`).run(payload.customer_id);
+    const stmt = d.prepare(
+      `INSERT INTO customer_rates (customer_id, plant_id, product_name, uom, rate, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    );
+    for (const i of items) {
+      await stmt.run(payload.customer_id, i.plant_id, i.product_name, i.uom, i.rate, ts);
+    }
+  });
+  return { ok: true };
+}
+async function customerShareLink(payload) {
+  const d = getDb();
+  const row = await d.prepare(`SELECT share_token FROM customers WHERE id = ?`).get(payload.customer_id);
+  if (!row) throw new Error("Customer not found.");
+  let token = row.share_token;
+  if (!token) {
+    token = (0, import_node_crypto2.randomBytes)(16).toString("hex");
+    await d.prepare(`UPDATE customers SET share_token = ? WHERE id = ?`).run(token, payload.customer_id);
+  }
+  return { token, path: `/rates/${token}` };
+}
+async function revokeShareLink(payload) {
+  await getDb().prepare(`UPDATE customers SET share_token = NULL WHERE id = ?`).run(payload.customer_id);
+  return { ok: true };
+}
+async function getBusinessNameInternal() {
+  const row = await getDb().prepare("SELECT value FROM settings WHERE `key` = ?").get("business_name");
+  return (row?.value || "").trim() || "BL Crushing";
+}
+async function getBusinessName() {
+  return { business_name: await getBusinessNameInternal() };
+}
+async function setBusinessName(payload) {
+  const value = (payload.business_name ?? "").trim();
+  const sql = dbKind() === "mysql" ? "INSERT INTO settings (`key`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)" : "INSERT INTO settings (`key`, value) VALUES (?, ?) ON CONFLICT(`key`) DO UPDATE SET value = excluded.value";
+  await getDb().prepare(sql).run("business_name", value);
+  return { ok: true };
+}
+async function publicRateList(payload) {
+  const token = (payload.token ?? "").trim();
+  if (!token) return null;
+  const d = getDb();
+  const customer = await d.prepare(`SELECT id, name FROM customers WHERE share_token = ?`).get(token);
+  if (!customer) return null;
+  const rows = await d.prepare(
+    `SELECT cr.product_name, cr.uom, cr.rate, cr.updated_at, pl.name AS plant_name
+       FROM customer_rates cr
+       JOIN plants pl ON pl.id = cr.plant_id
+       WHERE cr.customer_id = ?
+       ORDER BY pl.name, cr.product_name, cr.uom`
+  ).all(customer.id);
+  const groupMap = /* @__PURE__ */ new Map();
+  let updated = null;
+  for (const r of rows) {
+    if (!groupMap.has(r.plant_name)) groupMap.set(r.plant_name, []);
+    groupMap.get(r.plant_name).push({ product_name: r.product_name, uom: r.uom, rate: r.rate });
+    if (r.updated_at && (!updated || r.updated_at > updated)) updated = r.updated_at;
+  }
+  return {
+    customer_name: customer.name,
+    business_name: await getBusinessNameInternal(),
+    updated_at: updated,
+    groups: [...groupMap.entries()].map(([plant_name, rates]) => ({ plant_name, rates }))
+  };
+}
+
 // src/main/services/purchases.ts
 async function listPurchases(filter = {}) {
   const d = getDb();
@@ -1955,7 +2241,7 @@ async function createPurchase(p) {
   if (!(p.quantity > 0)) throw new Error("Quantity must be greater than 0.");
   const locId = p.stock_location_id || await ensureDefaultLocation(p.plant_id);
   const uom = ["CM", "TON", "CFT"].includes(p.uom) ? p.uom : "CM";
-  const qtyCm = roundQty(toCm(p.quantity, uom));
+  const qtyCm = roundQty(toCm(p.quantity, uom, await plantUomFactors(p.plant_id)));
   const amount = computeAmount(p.rate, p.quantity);
   const id = await d.transaction(async () => {
     const no = await nextNumber("PUR", "purchase");
@@ -2000,7 +2286,7 @@ async function updatePurchase(p) {
   if (!old) throw new Error("Purchase not found.");
   const locId = p.stock_location_id || old.stock_location_id || await ensureDefaultLocation(p.plant_id);
   const uom = ["CM", "TON", "CFT"].includes(p.uom) ? p.uom : "CM";
-  const qtyCm = roundQty(toCm(p.quantity, uom));
+  const qtyCm = roundQty(toCm(p.quantity, uom, await plantUomFactors(p.plant_id)));
   const amount = computeAmount(p.rate, p.quantity);
   await d.transaction(async () => {
     await d.prepare(
@@ -2347,11 +2633,11 @@ function computeAmount2(rate, qty) {
 function roundQty2(n) {
   return Math.round((n + Number.EPSILON) * 1e3) / 1e3;
 }
-function normalize(p) {
+function normalize(p, factors) {
   if (!(Number(p.quantity) > 0)) throw new Error("Quantity must be greater than 0.");
   if (!["CM", "TON", "CFT"].includes(p.uom)) throw new Error("Invalid unit of measure.");
   const product = properCase(p.product_name);
-  const qtyCm = roundQty2(toCm(Number(p.quantity), p.uom));
+  const qtyCm = roundQty2(toCm(Number(p.quantity), p.uom, factors));
   const amount = computeAmount2(p.rate, Number(p.quantity));
   const transport = Number(p.transport_charge) || 0;
   const other = Number(p.other_charge) || 0;
@@ -2391,7 +2677,7 @@ function normalize(p) {
 }
 async function createDispatch(p) {
   const d = getDb();
-  const { product, qtyCm, outsourced, fields } = normalize(p);
+  const { product, qtyCm, outsourced, fields } = normalize(p, await plantUomFactors(p.plant_id));
   if (!outsourced) {
     const available = await finishedBalance(d, p.plant_id, product);
     if (qtyCm > available)
@@ -2432,7 +2718,7 @@ async function updateDispatch(p) {
   if (!p.id) throw new Error("Missing dispatch id.");
   const old = await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(p.id);
   if (!old) throw new Error("Dispatch not found.");
-  const { product, qtyCm, outsourced, fields } = normalize(p);
+  const { product, qtyCm, outsourced, fields } = normalize(p, await plantUomFactors(p.plant_id));
   await d.transaction(async () => {
     await d.prepare(
       `UPDATE dispatches SET customer_id=@customer_id, plant_id=@plant_id, product_name=@product_name,
@@ -2634,6 +2920,10 @@ async function deleteCompany(payload) {
 }
 
 // src/main/services/racks.ts
+async function rackPlantFactors(d, rackId) {
+  const row = await d.prepare(`SELECT plant_id FROM rack_loadings WHERE rack_id = ? ORDER BY id LIMIT 1`).get(rackId);
+  return plantUomFactors(row?.plant_id);
+}
 var RACK_STATUSES = ["loading", "in_transit", "reached", "closed"];
 function roundQty3(n) {
   return Math.round((n + Number.EPSILON) * 1e3) / 1e3;
@@ -3129,10 +3419,10 @@ async function listExpenses(filter = {}) {
        ORDER BY e.date DESC, e.id DESC`
   ).all(params);
 }
-function resolveSale(p) {
+function resolveSale(p, factors) {
   if (!(Number(p.quantity) > 0)) throw new Error("Quantity must be greater than 0.");
   if (!["CM", "TON", "CFT"].includes(p.uom)) throw new Error("Invalid unit of measure.");
-  const qtyCm = roundQty3(toCm(Number(p.quantity), p.uom));
+  const qtyCm = roundQty3(toCm(Number(p.quantity), p.uom, factors));
   return { qtyCm, amount: computeAmount3(p.rate, Number(p.quantity)) };
 }
 async function addSale(p) {
@@ -3142,7 +3432,7 @@ async function addSale(p) {
   if (rack.status === "loading" || rack.status === "in_transit")
     throw new Error(`Sales start once the rack has reached its destination. Mark rack "${rack.rack_no}" as Reached first.`);
   if (rack.status === "closed") throw new Error("Rack is closed. Re-open it to add sales.");
-  const { qtyCm, amount } = resolveSale(p);
+  const { qtyCm, amount } = resolveSale(p, await rackPlantFactors(d, p.rack_id));
   const available = await rackSellable(d, p.rack_id, p.product_name);
   if (qtyCm > available)
     throw new Error(
@@ -3177,7 +3467,7 @@ async function updateSale(p) {
   if (!p.id) throw new Error("Missing sale id.");
   const old = await d.prepare(`SELECT * FROM rack_sales WHERE id = ?`).get(p.id);
   if (!old) throw new Error("Sale not found.");
-  const { qtyCm, amount } = resolveSale(p);
+  const { qtyCm, amount } = resolveSale(p, await rackPlantFactors(d, old.rack_id));
   const available = await rackSellable(d, old.rack_id, p.product_name, p.id);
   if (qtyCm > available)
     throw new Error(
@@ -4972,6 +5262,16 @@ var handlers = {
   "customers.create": createCustomer,
   "customers.update": updateCustomer,
   "customers.delete": deleteCustomer,
+  "products.list": listProducts,
+  "products.create": createProduct,
+  "products.update": updateProduct,
+  "products.delete": deleteProduct,
+  "rates.list": listCustomerRates,
+  "rates.save": saveCustomerRates,
+  "rates.createShareLink": customerShareLink,
+  "rates.removeShareLink": revokeShareLink,
+  "rates.getBusinessName": getBusinessName,
+  "rates.setBusinessName": setBusinessName,
   "purchases.list": listPurchases,
   "purchases.create": createPurchase,
   "purchases.update": updatePurchase,
@@ -5084,11 +5384,11 @@ var handlers = {
 };
 
 // src/main/services/sessions.ts
-var import_node_crypto2 = require("node:crypto");
+var import_node_crypto3 = require("node:crypto");
 var SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1e3;
 async function createSession(userId) {
   const d = getDb();
-  const token = (0, import_node_crypto2.randomBytes)(32).toString("hex");
+  const token = (0, import_node_crypto3.randomBytes)(32).toString("hex");
   const now = Date.now();
   await d.prepare(
     `INSERT INTO sessions (token, created_at, expires_at, user_id) VALUES (?, ?, ?, ?)`
@@ -5200,6 +5500,85 @@ app2.post("/api/call", async (req, res) => {
     return res.json({ result });
   } catch (err) {
     return res.status(400).json({ error: err.message || "Operation failed" });
+  }
+});
+function esc(s) {
+  return String(s ?? "").replace(
+    /[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+  );
+}
+function fmtRate(n) {
+  return Number(n).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+}
+function renderRatePage(data) {
+  const updated = data.updated_at ? new Date(data.updated_at).toLocaleDateString("en-IN") : "";
+  const sections = data.groups.length ? data.groups.map(
+    (g) => `
+        <section class="card">
+          <h2>${esc(g.plant_name)}</h2>
+          <table>
+            <thead><tr><th>Product</th><th>Unit</th><th class="r">Rate</th></tr></thead>
+            <tbody>
+              ${g.rates.map(
+      (r) => `<tr><td>${esc(r.product_name)}</td><td>${esc(r.uom)}</td><td class="r">\u20B9 ${fmtRate(r.rate)}</td></tr>`
+    ).join("")}
+            </tbody>
+          </table>
+        </section>`
+  ).join("") : `<section class="card"><p class="muted">No rates have been published yet. Please contact us.</p></section>`;
+  return `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="robots" content="noindex,nofollow"/>
+<title>${esc(data.business_name)} \u2014 Rate List</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:#f4f5f7; color:#1f2430; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 20px 16px 48px; }
+  header { text-align:center; padding: 22px 0 10px; }
+  header .biz { font-size: 22px; font-weight: 800; letter-spacing:-.01em; }
+  header .sub { color:#6b7280; font-size: 13px; margin-top:2px; }
+  .pill { display:inline-block; margin-top:12px; background:#1f6feb; color:#fff; font-weight:600; font-size:13px; padding:6px 14px; border-radius:999px; }
+  .card { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:14px 16px; margin-top:16px; box-shadow:0 1px 2px rgba(0,0,0,.04); }
+  .card h2 { margin:0 0 10px; font-size:15px; font-weight:700; color:#111827; }
+  table { width:100%; border-collapse: collapse; font-size:14px; }
+  th, td { text-align:left; padding:9px 8px; border-bottom:1px solid #f0f1f3; }
+  th { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:#6b7280; }
+  tr:last-child td { border-bottom:none; }
+  .r { text-align:right; font-variant-numeric: tabular-nums; font-weight:600; white-space:nowrap; }
+  .muted { color:#6b7280; }
+  footer { text-align:center; color:#9aa1ab; font-size:12px; margin-top:24px; }
+</style>
+</head><body>
+  <div class="wrap">
+    <header>
+      <div class="biz">${esc(data.business_name)}</div>
+      <div class="sub">Rate List for ${esc(data.customer_name)}</div>
+      <div class="pill">Current Prices</div>
+    </header>
+    ${sections}
+    <footer>
+      ${updated ? `Rates last updated ${esc(updated)}. ` : ""}Prices are indicative and subject to change.
+    </footer>
+  </div>
+</body></html>`;
+}
+app2.get("/rates/:token", async (req, res) => {
+  try {
+    const data = await publicRateList({ token: req.params.token });
+    if (!data) {
+      res.status(404).type("html").send(
+        '<!doctype html><meta charset="utf-8"/><body style="font-family:system-ui;text-align:center;padding:48px;color:#374151"><h2>Rate list not found</h2><p>This link is invalid or has been revoked.</p></body>'
+      );
+      return;
+    }
+    res.set("Cache-Control", "no-store");
+    res.type("html").send(renderRatePage(data));
+  } catch {
+    res.status(500).type("text").send("Unable to load rate list.");
   }
 });
 app2.use(import_express.default.static(STATIC_DIR));
