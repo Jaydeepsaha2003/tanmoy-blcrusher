@@ -16,6 +16,8 @@ import {
 } from '../src/main/services/sessions'
 import { initDb } from '../src/main/db'
 import { maybeRunScheduledDeletion } from '../src/main/services/system'
+import { publicRateList } from '../src/main/services/rates'
+import type { PublicRateList } from '../src/shared/types'
 
 // Throttle the "is a scheduled deletion due?" check on request activity.
 let lastDeletionCheck = 0
@@ -127,6 +129,101 @@ app.post('/api/call', async (req, res) => {
     return res.json({ result })
   } catch (err) {
     return res.status(400).json({ error: (err as Error).message || 'Operation failed' })
+  }
+})
+
+function esc(s: unknown): string {
+  return String(s ?? '').replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string
+  )
+}
+
+function fmtRate(n: number): string {
+  return Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })
+}
+
+function renderRatePage(data: PublicRateList): string {
+  const updated = data.updated_at ? new Date(data.updated_at).toLocaleDateString('en-IN') : ''
+  const sections = data.groups.length
+    ? data.groups
+        .map(
+          (g) => `
+        <section class="card">
+          <h2>${esc(g.plant_name)}</h2>
+          <table>
+            <thead><tr><th>Product</th><th>Unit</th><th class="r">Rate</th></tr></thead>
+            <tbody>
+              ${g.rates
+                .map(
+                  (r) =>
+                    `<tr><td>${esc(r.product_name)}</td><td>${esc(r.uom)}</td><td class="r">₹ ${fmtRate(r.rate)}</td></tr>`
+                )
+                .join('')}
+            </tbody>
+          </table>
+        </section>`
+        )
+        .join('')
+    : `<section class="card"><p class="muted">No rates have been published yet. Please contact us.</p></section>`
+
+  return `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="robots" content="noindex,nofollow"/>
+<title>${esc(data.business_name)} — Rate List</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:#f4f5f7; color:#1f2430; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 20px 16px 48px; }
+  header { text-align:center; padding: 22px 0 10px; }
+  header .biz { font-size: 22px; font-weight: 800; letter-spacing:-.01em; }
+  header .sub { color:#6b7280; font-size: 13px; margin-top:2px; }
+  .pill { display:inline-block; margin-top:12px; background:#1f6feb; color:#fff; font-weight:600; font-size:13px; padding:6px 14px; border-radius:999px; }
+  .card { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:14px 16px; margin-top:16px; box-shadow:0 1px 2px rgba(0,0,0,.04); }
+  .card h2 { margin:0 0 10px; font-size:15px; font-weight:700; color:#111827; }
+  table { width:100%; border-collapse: collapse; font-size:14px; }
+  th, td { text-align:left; padding:9px 8px; border-bottom:1px solid #f0f1f3; }
+  th { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:#6b7280; }
+  tr:last-child td { border-bottom:none; }
+  .r { text-align:right; font-variant-numeric: tabular-nums; font-weight:600; white-space:nowrap; }
+  .muted { color:#6b7280; }
+  footer { text-align:center; color:#9aa1ab; font-size:12px; margin-top:24px; }
+</style>
+</head><body>
+  <div class="wrap">
+    <header>
+      <div class="biz">${esc(data.business_name)}</div>
+      <div class="sub">Rate List for ${esc(data.customer_name)}</div>
+      <div class="pill">Current Prices</div>
+    </header>
+    ${sections}
+    <footer>
+      ${updated ? `Rates last updated ${esc(updated)}. ` : ''}Prices are indicative and subject to change.
+    </footer>
+  </div>
+</body></html>`
+}
+
+// Public, no-login rate page (random token per customer). Registered before the
+// static handler so it always renders live data, not the SPA shell.
+app.get('/rates/:token', async (req, res) => {
+  try {
+    const data = await publicRateList({ token: req.params.token })
+    if (!data) {
+      res
+        .status(404)
+        .type('html')
+        .send(
+          '<!doctype html><meta charset="utf-8"/><body style="font-family:system-ui;text-align:center;padding:48px;color:#374151"><h2>Rate list not found</h2><p>This link is invalid or has been revoked.</p></body>'
+        )
+      return
+    }
+    res.set('Cache-Control', 'no-store')
+    res.type('html').send(renderRatePage(data))
+  } catch {
+    res.status(500).type('text').send('Unable to load rate list.')
   }
 })
 

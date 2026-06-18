@@ -1,10 +1,15 @@
 import { getDb } from '../db'
-import type { Plant } from '@shared/types'
-import { properCase } from '@shared/types'
+import type { Plant, UomFactors } from '@shared/types'
+import { properCase, TON_PER_CM, CFT_PER_CM } from '@shared/types'
 import { ensureDefaultLocation } from './stockLocations'
 
 export async function listPlants(): Promise<Plant[]> {
   return (await getDb().prepare(`SELECT * FROM plants ORDER BY name`).all()) as Plant[]
+}
+
+function posOr(value: unknown, fallback: number): number {
+  const n = Number(value)
+  return n > 0 ? n : fallback
 }
 
 export async function createPlant(p: {
@@ -12,11 +17,22 @@ export async function createPlant(p: {
   code: string
   location: string
   status: string
+  ton_per_cm?: number
+  cft_per_cm?: number
 }): Promise<Plant> {
   const d = getDb()
   const info = await d
-    .prepare(`INSERT INTO plants (name, code, location, status) VALUES (?, ?, ?, ?)`)
-    .run(p.name.trim().toUpperCase(), p.code.trim().toUpperCase(), properCase(p.location), p.status ?? 'active')
+    .prepare(
+      `INSERT INTO plants (name, code, location, status, ton_per_cm, cft_per_cm) VALUES (?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      p.name.trim().toUpperCase(),
+      p.code.trim().toUpperCase(),
+      properCase(p.location),
+      p.status ?? 'active',
+      posOr(p.ton_per_cm, TON_PER_CM),
+      posOr(p.cft_per_cm, CFT_PER_CM)
+    )
   const plantId = Number(info.lastInsertRowid)
   // Give every plant a default stock location (the plant itself), so purchases
   // and production work even if the user never creates a separate location.
@@ -30,16 +46,38 @@ export async function updatePlant(p: {
   code: string
   location: string
   status: string
+  ton_per_cm?: number
+  cft_per_cm?: number
 }): Promise<Plant> {
   const d = getDb()
-  await d.prepare(`UPDATE plants SET name=?, code=?, location=?, status=? WHERE id=?`).run(
-    p.name.trim().toUpperCase(),
-    p.code.trim().toUpperCase(),
-    properCase(p.location),
-    p.status ?? 'active',
-    p.id
-  )
+  // COALESCE keeps the existing factor when the caller doesn't send one.
+  await d
+    .prepare(
+      `UPDATE plants SET name=?, code=?, location=?, status=?,
+         ton_per_cm=COALESCE(?, ton_per_cm), cft_per_cm=COALESCE(?, cft_per_cm) WHERE id=?`
+    )
+    .run(
+      p.name.trim().toUpperCase(),
+      p.code.trim().toUpperCase(),
+      properCase(p.location),
+      p.status ?? 'active',
+      p.ton_per_cm != null && Number(p.ton_per_cm) > 0 ? Number(p.ton_per_cm) : null,
+      p.cft_per_cm != null && Number(p.cft_per_cm) > 0 ? Number(p.cft_per_cm) : null,
+      p.id
+    )
   return (await d.prepare(`SELECT * FROM plants WHERE id = ?`).get(p.id)) as Plant
+}
+
+/** Per-plant UOM conversion factors (falls back to defaults when unset). */
+export async function plantUomFactors(plantId?: number | null): Promise<UomFactors> {
+  if (!plantId) return { ton_per_cm: TON_PER_CM, cft_per_cm: CFT_PER_CM }
+  const row = (await getDb()
+    .prepare(`SELECT ton_per_cm, cft_per_cm FROM plants WHERE id = ?`)
+    .get(plantId)) as { ton_per_cm: number; cft_per_cm: number } | undefined
+  return {
+    ton_per_cm: posOr(row?.ton_per_cm, TON_PER_CM),
+    cft_per_cm: posOr(row?.cft_per_cm, CFT_PER_CM)
+  }
 }
 
 export async function deletePlant(payload: { id: number }): Promise<{ ok: boolean; error?: string }> {

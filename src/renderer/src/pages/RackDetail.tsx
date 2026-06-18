@@ -144,6 +144,8 @@ export function RackDetail(): React.JSX.Element {
   const { rack, loadings, unloadings, expenses, sales, products } = data
   const step = nextStep[rack.status]
   const isClosed = rack.status === 'closed'
+  // Best-effort per-plant UOM factors from the rack's first loading plant.
+  const rackFactors = plants.find((pl) => pl.id === loadings[0]?.plant_id)
 
   async function removeLoading(l: RackLoading): Promise<void> {
     const ok = await confirmDialog({
@@ -255,7 +257,7 @@ export function RackDetail(): React.JSX.Element {
       (unloadForm.id ? unloadings.find((u) => u.id === unloadForm.id)?.total_cm ?? 0 : 0)
     : 0
 
-  const saleQtyCm = saleForm ? toCm(Number(saleForm.quantity) || 0, saleForm.uom) : 0
+  const saleQtyCm = saleForm ? toCm(Number(saleForm.quantity) || 0, saleForm.uom, rackFactors) : 0
   const saleAmount =
     saleForm && saleForm.rate !== '' ? (Number(saleForm.quantity) || 0) * Number(saleForm.rate) : null
   const saleAvailable = saleForm
@@ -357,8 +359,8 @@ export function RackDetail(): React.JSX.Element {
                       <TD className={`text-right font-semibold ${isClosed && leftover > 0 ? 'text-warning' : ''}`}>
                         {fmtQty(isClosed ? leftover : p.balance_cm)}
                       </TD>
-                      <TD className="text-right text-muted-foreground">{fmtQty(fromCm(p.balance_cm, 'TON'))}</TD>
-                      <TD className="text-right text-muted-foreground">{fmtQty(fromCm(p.balance_cm, 'CFT'))}</TD>
+                      <TD className="text-right text-muted-foreground">{fmtQty(fromCm(p.balance_cm, 'TON', rackFactors))}</TD>
+                      <TD className="text-right text-muted-foreground">{fmtQty(fromCm(p.balance_cm, 'CFT', rackFactors))}</TD>
                     </TR>
                   )
                 })}
@@ -697,7 +699,7 @@ export function RackDetail(): React.JSX.Element {
               <Input type="number" step="0.001" value={loadingForm.per_trip_cm} onChange={(e) =>
                 setLoadingForm({ ...loadingForm, per_trip_cm: e.target.value })} />
             </Field>
-            <Field label="Total Quantity (m³)" hint={`= trips × per trip${loadingTotal > 0 ? ` · ${fmtQty(fromCm(loadingTotal, 'TON'))} ton · ${fmtQty(fromCm(loadingTotal, 'CFT'))} cft` : ''}`}>
+            <Field label="Total Quantity (m³)" hint={`= trips × per trip${loadingTotal > 0 ? ` · ${fmtQty(fromCm(loadingTotal, 'TON', rackFactors))} ton · ${fmtQty(fromCm(loadingTotal, 'CFT', rackFactors))} cft` : ''}`}>
               <Input value={fmtQty(loadingTotal)} disabled />
             </Field>
             <Field label="Rate per m³ (transport)">
@@ -910,7 +912,7 @@ export function RackDetail(): React.JSX.Element {
               </Select>
             </Field>
             <Field label={`Quantity (${saleForm.uom})`}
-              hint={saleQtyCm > 0 ? `= ${fmtQty(saleQtyCm)} m³ · ${fmtQty(fromCm(saleQtyCm, 'TON'))} ton · ${fmtQty(fromCm(saleQtyCm, 'CFT'))} cft` : undefined}>
+              hint={saleQtyCm > 0 ? `= ${fmtQty(saleQtyCm)} m³ · ${fmtQty(fromCm(saleQtyCm, 'TON', rackFactors))} ton · ${fmtQty(fromCm(saleQtyCm, 'CFT', rackFactors))} cft` : undefined}>
               <Input type="number" step="0.001" value={saleForm.quantity} onChange={(e) =>
                 setSaleForm({ ...saleForm, quantity: e.target.value })} />
             </Field>

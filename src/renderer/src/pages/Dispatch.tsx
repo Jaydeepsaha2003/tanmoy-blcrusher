@@ -137,7 +137,8 @@ export function Dispatch(): React.JSX.Element {
     )
   }
 
-  const qtyCm = form ? toCm(Number(form.quantity) || 0, form.uom) : 0
+  const formPlant = plants.find((pl) => pl.id === form?.plant_id)
+  const qtyCm = form ? toCm(Number(form.quantity) || 0, form.uom, formPlant) : 0
   const goods = form && form.rate !== '' ? (Number(form.quantity) || 0) * Number(form.rate) : 0
   const billedExtra = form
     ? (form.transport_billed ? Number(form.transport_charge) || 0 : 0) +

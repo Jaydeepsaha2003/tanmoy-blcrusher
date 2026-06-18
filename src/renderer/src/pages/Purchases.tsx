@@ -49,6 +49,7 @@ export function Purchases(): React.JSX.Element {
   const [form, setForm] = React.useState<any>(null)
 
   const formLocations = locations.filter((l) => l.plant_id === form?.plant_id)
+  const formPlant = plants.find((pl) => pl.id === form?.plant_id)
 
   const save = useMutation({
     mutationFn: (p: any) => (p.id ? api.purchases.update(p) : api.purchases.create(p)),
@@ -236,7 +237,7 @@ export function Purchases(): React.JSX.Element {
               required
               hint={
                 form.uom && form.uom !== 'CM'
-                  ? `= ${fmtQty(toCm(Number(form.quantity) || 0, form.uom))} m³ added to stock`
+                  ? `= ${fmtQty(toCm(Number(form.quantity) || 0, form.uom, formPlant))} m³ added to stock`
                   : 'Added to stock in m³'
               }
             >

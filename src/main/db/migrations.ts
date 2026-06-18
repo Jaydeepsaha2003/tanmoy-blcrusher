@@ -49,7 +49,26 @@ CREATE TABLE IF NOT EXISTS plants (
   code       VARCHAR(64) NOT NULL,
   location   VARCHAR(255) NOT NULL DEFAULT '',
   status     VARCHAR(32) NOT NULL DEFAULT 'active',
+  ton_per_cm DOUBLE NOT NULL DEFAULT 1.6,
+  cft_per_cm DOUBLE NOT NULL DEFAULT 35.31,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS products (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  plant_id    INT NOT NULL,
+  name        VARCHAR(255) NOT NULL,
+  description TEXT,
+  status      VARCHAR(32) NOT NULL DEFAULT 'active',
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS customer_rates (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  customer_id  INT NOT NULL,
+  plant_id     INT NOT NULL,
+  product_name VARCHAR(255) NOT NULL,
+  uom          VARCHAR(8) NOT NULL DEFAULT 'CM',
+  rate         DOUBLE NOT NULL DEFAULT 0,
+  updated_at   VARCHAR(32) NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS stock_locations (
   id          INT AUTO_INCREMENT PRIMARY KEY,
@@ -70,14 +89,15 @@ CREATE TABLE IF NOT EXISTS suppliers (
   plant_id   INT
 );
 CREATE TABLE IF NOT EXISTS customers (
-  id         INT AUTO_INCREMENT PRIMARY KEY,
-  name       VARCHAR(255) NOT NULL,
-  contact    VARCHAR(255) NOT NULL DEFAULT '',
-  address    TEXT,
-  remarks    TEXT,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  company_id INT,
-  plant_id   INT
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  name        VARCHAR(255) NOT NULL,
+  contact     VARCHAR(255) NOT NULL DEFAULT '',
+  address     TEXT,
+  remarks     TEXT,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  company_id  INT,
+  plant_id    INT,
+  share_token VARCHAR(64)
 );
 CREATE TABLE IF NOT EXISTS transporters (
   id         INT AUTO_INCREMENT PRIMARY KEY,
@@ -419,6 +439,33 @@ UPDATE users SET edit_modules = modules WHERE access_level = 'edit'`
     sql: `ALTER TABLE purchases ADD COLUMN uom VARCHAR(8) NOT NULL DEFAULT 'CM';
 ALTER TABLE purchases ADD COLUMN qty_cm DOUBLE NOT NULL DEFAULT 0;
 UPDATE purchases SET qty_cm = quantity WHERE qty_cm = 0`
+  },
+  {
+    // Per-plant UOM/density factors, Products master, per-customer rate lists,
+    // and a public share token on customers (for the no-login rate page).
+    id: '004_products_rates_density',
+    sql: `ALTER TABLE plants ADD COLUMN ton_per_cm DOUBLE NOT NULL DEFAULT 1.6;
+ALTER TABLE plants ADD COLUMN cft_per_cm DOUBLE NOT NULL DEFAULT 35.31;
+ALTER TABLE customers ADD COLUMN share_token VARCHAR(64);
+CREATE TABLE IF NOT EXISTS products (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  plant_id    INT NOT NULL,
+  name        VARCHAR(255) NOT NULL,
+  description TEXT,
+  status      VARCHAR(32) NOT NULL DEFAULT 'active',
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS customer_rates (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  customer_id  INT NOT NULL,
+  plant_id     INT NOT NULL,
+  product_name VARCHAR(255) NOT NULL,
+  uom          VARCHAR(8) NOT NULL DEFAULT 'CM',
+  rate         DOUBLE NOT NULL DEFAULT 0,
+  updated_at   VARCHAR(32) NOT NULL DEFAULT ''
+);
+CREATE INDEX idx_products_plant ON products(plant_id);
+CREATE INDEX idx_crates_customer ON customer_rates(customer_id)`
   }
 ]
 
@@ -470,6 +517,42 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   await addColumn('purchases', 'uom', `TEXT NOT NULL DEFAULT 'CM'`)
   await addColumn('purchases', 'qty_cm', 'REAL NOT NULL DEFAULT 0')
   await adapter.execRaw(`UPDATE purchases SET qty_cm = quantity WHERE qty_cm = 0 AND quantity <> 0`)
+  // Per-plant UOM/density factors and the customer share token.
+  await addColumn('plants', 'ton_per_cm', 'REAL NOT NULL DEFAULT 1.6')
+  await addColumn('plants', 'cft_per_cm', 'REAL NOT NULL DEFAULT 35.31')
+  await addColumn('customers', 'share_token', 'TEXT')
+}
+
+/**
+ * Seed the Products master from existing production settings (plant-wise), so a
+ * fresh upgrade already lists every product the user has been producing. Safe to
+ * run on every boot — only inserts products that don't already exist.
+ */
+async function importProductsFromSettings(adapter: Adapter): Promise<void> {
+  const rows = (
+    await adapter.exec(
+      `SELECT DISTINCT ps.plant_id AS plant_id, ps.product_name AS product_name
+       FROM production_settings ps`,
+      undefined,
+      null
+    )
+  ).rows as { plant_id: number; product_name: string }[]
+  for (const r of rows) {
+    if (!r.product_name) continue
+    const existing = (
+      await adapter.exec(
+        `SELECT id FROM products WHERE plant_id = ? AND LOWER(name) = LOWER(?)`,
+        [r.plant_id, r.product_name],
+        null
+      )
+    ).rows
+    if (existing.length > 0) continue
+    await adapter.exec(
+      `INSERT INTO products (plant_id, name, description, status) VALUES (?, ?, '', 'active')`,
+      [r.plant_id, r.product_name],
+      null
+    )
+  }
 }
 
 async function seedDefaults(adapter: Adapter): Promise<void> {
@@ -530,4 +613,5 @@ export async function runMigrations(adapter: Adapter, kind: DbKind): Promise<voi
     }
   }
   await seedDefaults(adapter)
+  await importProductsFromSettings(adapter)
 }

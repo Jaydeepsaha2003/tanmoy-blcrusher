@@ -3,6 +3,7 @@ import type { Purchase, PaymentStatus, Uom } from '@shared/types'
 import { derivePaymentStatus, toCm } from '@shared/types'
 import { addMovement, rawLocationBalance } from './movements'
 import { ensureDefaultLocation } from './stockLocations'
+import { plantUomFactors } from './plants'
 
 export interface PurchaseFilter {
   supplier_id?: number
@@ -78,7 +79,7 @@ export async function createPurchase(p: PurchaseInput): Promise<Purchase> {
   if (!(p.quantity > 0)) throw new Error('Quantity must be greater than 0.')
   const locId = p.stock_location_id || (await ensureDefaultLocation(p.plant_id))
   const uom: Uom = (['CM', 'TON', 'CFT'] as const).includes(p.uom) ? p.uom : 'CM'
-  const qtyCm = roundQty(toCm(p.quantity, uom))
+  const qtyCm = roundQty(toCm(p.quantity, uom, await plantUomFactors(p.plant_id)))
   const amount = computeAmount(p.rate, p.quantity)
   const id = await d.transaction(async () => {
     const no = await nextNumber('PUR', 'purchase')
@@ -126,7 +127,7 @@ export async function updatePurchase(p: PurchaseInput): Promise<Purchase> {
   if (!old) throw new Error('Purchase not found.')
   const locId = p.stock_location_id || old.stock_location_id || (await ensureDefaultLocation(p.plant_id))
   const uom: Uom = (['CM', 'TON', 'CFT'] as const).includes(p.uom) ? p.uom : 'CM'
-  const qtyCm = roundQty(toCm(p.quantity, uom))
+  const qtyCm = roundQty(toCm(p.quantity, uom, await plantUomFactors(p.plant_id)))
   const amount = computeAmount(p.rate, p.quantity)
   await d.transaction(async () => {
     await d.prepare(

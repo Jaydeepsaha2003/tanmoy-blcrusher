@@ -8,11 +8,21 @@ import type {
   RackSale,
   RackDetailData,
   RackProductBalance,
-  Uom
+  Uom,
+  UomFactors
 } from '@shared/types'
 import { toCm, properCase } from '@shared/types'
 import { addMovement, finishedBalance } from './movements'
+import { plantUomFactors } from './plants'
 import type { Db } from '../db'
+
+/** Best-effort per-plant factors for a rack, taken from its first loading's plant. */
+async function rackPlantFactors(d: Db, rackId: number): Promise<UomFactors> {
+  const row = (await d
+    .prepare(`SELECT plant_id FROM rack_loadings WHERE rack_id = ? ORDER BY id LIMIT 1`)
+    .get(rackId)) as { plant_id: number } | undefined
+  return plantUomFactors(row?.plant_id)
+}
 
 const RACK_STATUSES: RackStatus[] = ['loading', 'in_transit', 'reached', 'closed']
 
@@ -727,10 +737,10 @@ export interface SaleInput {
   remarks: string
 }
 
-function resolveSale(p: SaleInput): { qtyCm: number; amount: number | null } {
+function resolveSale(p: SaleInput, factors?: UomFactors): { qtyCm: number; amount: number | null } {
   if (!(Number(p.quantity) > 0)) throw new Error('Quantity must be greater than 0.')
   if (!['CM', 'TON', 'CFT'].includes(p.uom)) throw new Error('Invalid unit of measure.')
-  const qtyCm = roundQty(toCm(Number(p.quantity), p.uom))
+  const qtyCm = roundQty(toCm(Number(p.quantity), p.uom, factors))
   // Rate is per selected UOM, so amount = rate × quantity in that UOM.
   return { qtyCm, amount: computeAmount(p.rate, Number(p.quantity)) }
 }
@@ -742,7 +752,7 @@ export async function addSale(p: SaleInput): Promise<RackSale> {
   if (rack.status === 'loading' || rack.status === 'in_transit')
     throw new Error(`Sales start once the rack has reached its destination. Mark rack "${rack.rack_no}" as Reached first.`)
   if (rack.status === 'closed') throw new Error('Rack is closed. Re-open it to add sales.')
-  const { qtyCm, amount } = resolveSale(p)
+  const { qtyCm, amount } = resolveSale(p, await rackPlantFactors(d, p.rack_id))
   const available = await rackSellable(d, p.rack_id, p.product_name)
   if (qtyCm > available)
     throw new Error(
@@ -780,7 +790,7 @@ export async function updateSale(p: SaleInput): Promise<RackSale> {
   if (!p.id) throw new Error('Missing sale id.')
   const old = (await d.prepare(`SELECT * FROM rack_sales WHERE id = ?`).get(p.id)) as RackSale | undefined
   if (!old) throw new Error('Sale not found.')
-  const { qtyCm, amount } = resolveSale(p)
+  const { qtyCm, amount } = resolveSale(p, await rackPlantFactors(d, old.rack_id))
   const available = await rackSellable(d, old.rack_id, p.product_name, p.id)
   if (qtyCm > available)
     throw new Error(

@@ -32,6 +32,11 @@ export function ProductionSettings(): React.JSX.Element {
     queryFn: () => api.productionSettings.list(plantId!),
     enabled: !!plantId
   })
+  const { data: products = [] } = useQuery({
+    queryKey: ['products', plantId],
+    queryFn: () => api.products.list(plantId),
+    enabled: !!plantId
+  })
 
   const [rows, setRows] = React.useState<Row[]>([])
   React.useEffect(() => {
@@ -89,7 +94,14 @@ export function ProductionSettings(): React.JSX.Element {
                   </div>
                   {rows.map((r, i) => (
                     <div key={i} className="grid grid-cols-[1fr_140px_40px] gap-2">
-                      <Input value={r.product_name} placeholder="e.g. 30/40" onChange={(e) => update(i, { product_name: e.target.value })} />
+                      <Select value={r.product_name} onChange={(e) => update(i, { product_name: e.target.value })}>
+                        <option value="">Select product…</option>
+                        {/* Keep a stale value selectable so an existing setting still shows. */}
+                        {r.product_name && !products.some((p) => p.name === r.product_name) && (
+                          <option value={r.product_name}>{r.product_name}</option>
+                        )}
+                        {products.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}
+                      </Select>
                       <Input type="number" step="0.01" value={r.output_percentage} onChange={(e) => update(i, { output_percentage: e.target.value })} />
                       <Button variant="ghost" size="icon" onClick={() => setRows((rs) => rs.filter((_, idx) => idx !== i))}>
                         <Trash2 size={15} className="text-destructive" />
@@ -98,10 +110,17 @@ export function ProductionSettings(): React.JSX.Element {
                   ))}
                 </div>
 
+                {products.length === 0 && (
+                  <p className="mt-2 text-xs text-destructive">
+                    No products for this plant yet. Add them in the <b>Products</b> menu first.
+                  </p>
+                )}
+
                 <Button
                   variant="outline"
                   size="sm"
                   className="mt-3"
+                  disabled={products.length === 0}
                   onClick={() => setRows((rs) => [...rs, { product_name: '', output_percentage: '' }])}
                 >
                   <Plus size={15} /> Add Product

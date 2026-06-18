@@ -39,6 +39,8 @@ import {
   Handshake,
   ShieldCheck,
   ScrollText,
+  Package,
+  Tags,
   Menu
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -69,6 +71,7 @@ export const NAV: NavGroup[] = [
   {
     heading: 'Production',
     items: [
+      { to: '/products', label: 'Products', icon: Package, module: 'masters' },
       { to: '/production-settings', label: 'Production Settings', icon: Settings2, module: 'production' },
       { to: '/production', label: 'Production Entry', icon: Cog, module: 'production' },
       { to: '/finished-goods', label: 'Finished Goods', icon: Boxes, module: 'production' }
@@ -82,7 +85,8 @@ export const NAV: NavGroup[] = [
     heading: 'Direct Sales',
     items: [
       { to: '/dispatch', label: 'Direct Sale', icon: Send, module: 'dispatch' },
-      { to: '/deliveries', label: 'Delivery Status', icon: ClipboardCheck, module: 'dispatch' }
+      { to: '/deliveries', label: 'Delivery Status', icon: ClipboardCheck, module: 'dispatch' },
+      { to: '/rate-list', label: 'Rate List', icon: Tags, module: 'masters' }
     ]
   },
   {

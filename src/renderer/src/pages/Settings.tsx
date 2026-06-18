@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { KeyRound, Trash2, AlertTriangle, Receipt, Plus, X, Factory, Pencil } from 'lucide-react'
+import { KeyRound, Trash2, AlertTriangle, Receipt, Plus, X, Factory, Pencil, Scale, Building2 } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { Plant } from '@shared/types'
 import { PageHeader, Page } from '@/components/layout'
@@ -45,6 +45,20 @@ export function SettingsPage(): React.JSX.Element {
   const { data: plants = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
   const { data: delStatus } = useQuery({ queryKey: ['deleteStatus'], queryFn: api.system.deleteStatus })
   const [plantForm, setPlantForm] = React.useState<Partial<Plant>>({ status: 'active' })
+
+  const { data: bizNameData } = useQuery({ queryKey: ['businessName'], queryFn: api.rates.getBusinessName })
+  const [businessName, setBusinessName] = React.useState('')
+  React.useEffect(() => {
+    if (bizNameData?.business_name != null) setBusinessName(bizNameData.business_name)
+  }, [bizNameData])
+  const saveBusinessName = useMutation({
+    mutationFn: (name: string) => api.rates.setBusinessName(name),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['businessName'] })
+      toast.success('Business name saved.')
+    },
+    onError: (e: Error) => toast.error(e.message)
+  })
 
   const { data: workdays } = useQuery({ queryKey: ['workdays'], queryFn: api.system.getWorkdays })
   const offDays = new Set(workdays?.weekly_offs ?? [0])
@@ -270,6 +284,33 @@ export function SettingsPage(): React.JSX.Element {
               </p>
             </CardContent>
           </Card>
+          {/* Business name (public rate page header) */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Building2 size={18} /> Business Name
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                Shown as the heading on the public rate pages you share with customers.
+              </p>
+              <div className="flex items-end gap-2">
+                <div className="flex-1">
+                  <Field label="Name on shared rate pages">
+                    <Input
+                      value={businessName}
+                      onChange={(e) => setBusinessName(e.target.value)}
+                      placeholder="e.g. BL Crushing"
+                    />
+                  </Field>
+                </div>
+                <Button onClick={() => saveBusinessName.mutate(businessName)} disabled={!businessName.trim()}>
+                  Save
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Plants */}
@@ -282,9 +323,10 @@ export function SettingsPage(): React.JSX.Element {
           <CardContent className="space-y-4">
             <p className="text-xs text-muted-foreground">
               Add or edit your crushing plants. Switch the active plant any time from the selector at
-              the top-right of every screen.
+              the top-right of every screen. The <b>density</b> and <b>CFT</b> factors below convert
+              TON and CFT to/from m³ for that plant's purchases and sales.
             </p>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
               <Field label="Plant Name">
                 <Input value={plantForm.name || ''} onChange={(e) => setPlantForm({ ...plantForm, name: e.target.value })} />
               </Field>
@@ -294,20 +336,42 @@ export function SettingsPage(): React.JSX.Element {
               <Field label="Location">
                 <Input value={plantForm.location || ''} onChange={(e) => setPlantForm({ ...plantForm, location: e.target.value })} />
               </Field>
+              <Field label="Density (TON/m³)" hint="Default 1.6">
+                <Input
+                  type="number"
+                  step="0.001"
+                  value={plantForm.ton_per_cm ?? ''}
+                  placeholder="1.6"
+                  onChange={(e) =>
+                    setPlantForm({ ...plantForm, ton_per_cm: e.target.value === '' ? undefined : Number(e.target.value) })
+                  }
+                />
+              </Field>
+              <Field label="CFT per m³" hint="Default 35.31">
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={plantForm.cft_per_cm ?? ''}
+                  placeholder="35.31"
+                  onChange={(e) =>
+                    setPlantForm({ ...plantForm, cft_per_cm: e.target.value === '' ? undefined : Number(e.target.value) })
+                  }
+                />
+              </Field>
               <Field label="Status">
                 <Select value={plantForm.status || 'active'} onChange={(e) => setPlantForm({ ...plantForm, status: e.target.value as Plant['status'] })}>
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
                 </Select>
               </Field>
-              <div className="flex items-end gap-2">
-                <Button onClick={() => savePlant.mutate(plantForm)} disabled={!plantForm.name?.trim() || !plantForm.code?.trim()}>
-                  {plantForm.id ? 'Update' : <><Plus size={16} /> Add</>}
-                </Button>
-                {plantForm.id && (
-                  <Button variant="ghost" onClick={() => setPlantForm({ status: 'active' })}>Cancel</Button>
-                )}
-              </div>
+            </div>
+            <div className="flex items-end gap-2">
+              <Button onClick={() => savePlant.mutate(plantForm)} disabled={!plantForm.name?.trim() || !plantForm.code?.trim()}>
+                {plantForm.id ? 'Update Plant' : <><Plus size={16} /> Add Plant</>}
+              </Button>
+              {plantForm.id && (
+                <Button variant="ghost" onClick={() => setPlantForm({ status: 'active' })}>Cancel</Button>
+              )}
             </div>
 
             {plants.length === 0 ? (
@@ -319,6 +383,7 @@ export function SettingsPage(): React.JSX.Element {
                     <TH>Name</TH>
                     <TH>Code</TH>
                     <TH>Location</TH>
+                    <TH className="flex items-center gap-1"><Scale size={13} /> TON·CFT / m³</TH>
                     <TH>Status</TH>
                     <TH className="text-right">Actions</TH>
                   </TR>
@@ -329,6 +394,9 @@ export function SettingsPage(): React.JSX.Element {
                       <TD className="font-medium">{p.name}</TD>
                       <TD className="font-mono text-xs">{p.code}</TD>
                       <TD className="text-muted-foreground">{p.location || '-'}</TD>
+                      <TD className="font-mono text-xs text-muted-foreground">
+                        {(p.ton_per_cm ?? 1.6)} · {(p.cft_per_cm ?? 35.31)}
+                      </TD>
                       <TD className="capitalize text-muted-foreground">{p.status}</TD>
                       <TD className="text-right">
                         <Button variant="ghost" size="icon" onClick={() => setPlantForm(p)}>

@@ -50,7 +50,28 @@ CREATE TABLE IF NOT EXISTS plants (
   code       TEXT NOT NULL,
   location   TEXT NOT NULL DEFAULT '',
   status     TEXT NOT NULL DEFAULT 'active',
+  ton_per_cm REAL NOT NULL DEFAULT 1.6,
+  cft_per_cm REAL NOT NULL DEFAULT 35.31,
   created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS products (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  plant_id    INTEGER NOT NULL REFERENCES plants(id),
+  name        TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  status      TEXT NOT NULL DEFAULT 'active',
+  created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS customer_rates (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id  INTEGER NOT NULL REFERENCES customers(id),
+  plant_id     INTEGER NOT NULL REFERENCES plants(id),
+  product_name TEXT NOT NULL,
+  uom          TEXT NOT NULL DEFAULT 'CM',
+  rate         REAL NOT NULL DEFAULT 0,
+  updated_at   TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS stock_locations (
@@ -72,12 +93,13 @@ CREATE TABLE IF NOT EXISTS suppliers (
 );
 
 CREATE TABLE IF NOT EXISTS customers (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  name       TEXT NOT NULL,
-  contact    TEXT NOT NULL DEFAULT '',
-  address    TEXT NOT NULL DEFAULT '',
-  remarks    TEXT NOT NULL DEFAULT '',
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  name        TEXT NOT NULL,
+  contact     TEXT NOT NULL DEFAULT '',
+  address     TEXT NOT NULL DEFAULT '',
+  remarks     TEXT NOT NULL DEFAULT '',
+  share_token TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS purchases (
@@ -423,4 +445,7 @@ CREATE INDEX IF NOT EXISTS idx_poutputs_prod ON production_outputs(production_id
 CREATE INDEX IF NOT EXISTS idx_dispatch_customer ON dispatches(customer_id);
 CREATE INDEX IF NOT EXISTS idx_move_plant ON stock_movements(plant_id);
 CREATE INDEX IF NOT EXISTS idx_move_loc ON stock_movements(stock_location_id);
+CREATE INDEX IF NOT EXISTS idx_products_plant ON products(plant_id);
+CREATE INDEX IF NOT EXISTS idx_crates_customer ON customer_rates(customer_id);
+CREATE INDEX IF NOT EXISTS idx_customers_token ON customers(share_token);
 `

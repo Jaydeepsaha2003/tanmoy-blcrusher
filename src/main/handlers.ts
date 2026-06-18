@@ -3,6 +3,8 @@ import * as plants from './services/plants'
 import * as locations from './services/stockLocations'
 import * as suppliers from './services/suppliers'
 import * as customers from './services/customers'
+import * as products from './services/products'
+import * as rates from './services/rates'
 import * as purchases from './services/purchases'
 import * as psettings from './services/productionSettings'
 import * as productions from './services/productions'
@@ -58,6 +60,18 @@ export const handlers: Record<string, (payload: any) => unknown> = {
   'customers.create': customers.createCustomer,
   'customers.update': customers.updateCustomer,
   'customers.delete': customers.deleteCustomer,
+
+  'products.list': products.listProducts,
+  'products.create': products.createProduct,
+  'products.update': products.updateProduct,
+  'products.delete': products.deleteProduct,
+
+  'rates.list': rates.listCustomerRates,
+  'rates.save': rates.saveCustomerRates,
+  'rates.createShareLink': rates.customerShareLink,
+  'rates.removeShareLink': rates.revokeShareLink,
+  'rates.getBusinessName': rates.getBusinessName,
+  'rates.setBusinessName': rates.setBusinessName,
 
   'purchases.list': purchases.listPurchases,
   'purchases.create': purchases.createPurchase,

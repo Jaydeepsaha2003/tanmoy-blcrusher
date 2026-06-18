@@ -1,7 +1,8 @@
 import { getDb, nextNumber } from '../db'
-import type { Dispatch, DeliveryStatus, PaymentStatus, VehicleType, Uom } from '@shared/types'
+import type { Dispatch, DeliveryStatus, PaymentStatus, VehicleType, Uom, UomFactors } from '@shared/types'
 import { properCase, toCm, derivePaymentStatus } from '@shared/types'
 import { addMovement, finishedBalance } from './movements'
+import { plantUomFactors } from './plants'
 
 export interface DispatchFilter {
   customer_id?: number
@@ -100,7 +101,7 @@ export interface DispatchInput {
   remarks: string
 }
 
-function normalize(p: DispatchInput): {
+function normalize(p: DispatchInput, factors?: UomFactors): {
   product: string
   qtyCm: number
   amount: number | null
@@ -110,7 +111,7 @@ function normalize(p: DispatchInput): {
   if (!(Number(p.quantity) > 0)) throw new Error('Quantity must be greater than 0.')
   if (!['CM', 'TON', 'CFT'].includes(p.uom)) throw new Error('Invalid unit of measure.')
   const product = properCase(p.product_name)
-  const qtyCm = roundQty(toCm(Number(p.quantity), p.uom))
+  const qtyCm = roundQty(toCm(Number(p.quantity), p.uom, factors))
   const amount = computeAmount(p.rate, Number(p.quantity))
   const transport = Number(p.transport_charge) || 0
   const other = Number(p.other_charge) || 0
@@ -151,7 +152,7 @@ function normalize(p: DispatchInput): {
 
 export async function createDispatch(p: DispatchInput): Promise<Dispatch> {
   const d = getDb()
-  const { product, qtyCm, outsourced, fields } = normalize(p)
+  const { product, qtyCm, outsourced, fields } = normalize(p, await plantUomFactors(p.plant_id))
   if (!outsourced) {
     const available = await finishedBalance(d, p.plant_id, product)
     if (qtyCm > available)
@@ -195,7 +196,7 @@ export async function updateDispatch(p: DispatchInput): Promise<Dispatch> {
   if (!p.id) throw new Error('Missing dispatch id.')
   const old = (await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(p.id)) as Dispatch
   if (!old) throw new Error('Dispatch not found.')
-  const { product, qtyCm, outsourced, fields } = normalize(p)
+  const { product, qtyCm, outsourced, fields } = normalize(p, await plantUomFactors(p.plant_id))
   await d.transaction(async () => {
     await d.prepare(
       `UPDATE dispatches SET customer_id=@customer_id, plant_id=@plant_id, product_name=@product_name,

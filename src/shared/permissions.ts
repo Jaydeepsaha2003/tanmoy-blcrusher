@@ -38,6 +38,8 @@ const PREFIX_MODULE: Record<string, ModuleKey> = {
   locations: 'masters',
   suppliers: 'masters',
   customers: 'masters',
+  products: 'masters',
+  rates: 'masters',
   transporters: 'masters',
   companies: 'masters',
   businesses: 'masters',
@@ -67,6 +69,8 @@ const METHOD_MODULE: Record<string, ModuleKey> = {
   'system.cancelDelete': 'settings',
   'system.deleteStatus': 'settings',
   'system.setWorkdays': 'settings',
+  'rates.getBusinessName': 'settings',
+  'rates.setBusinessName': 'settings',
   'system.getWorkdays': 'payroll', // read by the Payroll page
   'racks.createExpenseType': 'settings',
   'racks.deleteExpenseType': 'settings'

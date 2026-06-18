@@ -75,22 +75,38 @@ export interface ActivityEntry {
 
 /* ---- Units of measure ----
  * All stock is stored in cubic meters (CM). Sales can be made in any UOM.
- * 1 CM = 1.6 TON, 1 CM = 35.31 CFT.
+ * Defaults: 1 CM = 1.6 TON, 1 CM = 35.31 CFT. Each plant can override these
+ * factors (e.g. a denser aggregate weighs more per m³) — see UomFactors.
  */
 export type Uom = 'CM' | 'TON' | 'CFT'
 export const UOMS: Uom[] = ['CM', 'TON', 'CFT']
 export const TON_PER_CM = 1.6
 export const CFT_PER_CM = 35.31
 
-export function toCm(qty: number, uom: Uom): number {
-  if (uom === 'TON') return qty / TON_PER_CM
-  if (uom === 'CFT') return qty / CFT_PER_CM
+/** Per-plant conversion factors. Falls back to the defaults above when unset. */
+export interface UomFactors {
+  ton_per_cm?: number | null
+  cft_per_cm?: number | null
+}
+
+function tonFactor(f?: UomFactors): number {
+  const v = Number(f?.ton_per_cm)
+  return v > 0 ? v : TON_PER_CM
+}
+function cftFactor(f?: UomFactors): number {
+  const v = Number(f?.cft_per_cm)
+  return v > 0 ? v : CFT_PER_CM
+}
+
+export function toCm(qty: number, uom: Uom, f?: UomFactors): number {
+  if (uom === 'TON') return qty / tonFactor(f)
+  if (uom === 'CFT') return qty / cftFactor(f)
   return qty
 }
 
-export function fromCm(qtyCm: number, uom: Uom): number {
-  if (uom === 'TON') return qtyCm * TON_PER_CM
-  if (uom === 'CFT') return qtyCm * CFT_PER_CM
+export function fromCm(qtyCm: number, uom: Uom, f?: UomFactors): number {
+  if (uom === 'TON') return qtyCm * tonFactor(f)
+  if (uom === 'CFT') return qtyCm * cftFactor(f)
   return qtyCm
 }
 
@@ -124,7 +140,43 @@ export interface Plant {
   code: string
   location: string
   status: Status
+  /** Bulk density: tonnes per m³ (used to convert TON↔m³). Default 1.6. */
+  ton_per_cm: number
+  /** Cubic feet per m³ (geometric; default 35.31). Editable per plant. */
+  cft_per_cm: number
   created_at: string
+}
+
+export interface Product {
+  id: number
+  plant_id: number
+  plant_name?: string
+  name: string
+  description: string
+  status: Status
+  created_at: string
+}
+
+export interface CustomerRate {
+  id: number
+  customer_id: number
+  plant_id: number
+  plant_name?: string
+  product_name: string
+  uom: Uom
+  rate: number
+  updated_at?: string
+}
+
+/** Data backing the public, no-login rate page shared with a customer. */
+export interface PublicRateList {
+  customer_name: string
+  business_name: string
+  updated_at: string | null
+  groups: {
+    plant_name: string
+    rates: { product_name: string; uom: Uom; rate: number }[]
+  }[]
 }
 
 export interface StockLocation {
@@ -183,6 +235,8 @@ export interface Customer {
   company_name?: string
   plant_id: number | null
   plant_name?: string
+  /** Random token for the public, no-login rate-list URL (/rates/:token). */
+  share_token?: string | null
   created_at: string
   // computed
   total_dispatched?: number
