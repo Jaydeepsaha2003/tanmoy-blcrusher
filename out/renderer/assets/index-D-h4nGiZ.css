@@ -772,6 +772,9 @@ video {
 .max-w-sm {
   max-width: 24rem;
 }
+.max-w-xl {
+  max-width: 36rem;
+}
 .flex-1 {
   flex: 1 1 0%;
 }
@@ -807,6 +810,9 @@ video {
 }
 .grid-cols-\[1fr_96px_120px_36px\] {
   grid-template-columns: 1fr 96px 120px 36px;
+}
+.flex-row {
+  flex-direction: row;
 }
 .flex-col {
   flex-direction: column;

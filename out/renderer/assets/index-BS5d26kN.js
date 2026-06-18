@@ -11274,6 +11274,18 @@ const api = {
     update: (p2) => call("customers.update", p2),
     delete: (id2) => call("customers.delete", { id: id2 })
   },
+  rateChart: {
+    list: (plant_id) => call("rateChart.list", { plant_id }),
+    create: (p2) => call("rateChart.create", p2),
+    update: (p2) => call("rateChart.update", p2),
+    delete: (id2) => call("rateChart.delete", { id: id2 })
+  },
+  transportCharges: {
+    list: (plant_id) => call("transportCharges.list", { plant_id }),
+    create: (p2) => call("transportCharges.create", p2),
+    update: (p2) => call("transportCharges.update", p2),
+    delete: (id2) => call("transportCharges.delete", { id: id2 })
+  },
   products: {
     list: () => call("products.list"),
     create: (p2) => call("products.create", p2),
@@ -35625,7 +35637,8 @@ const NAV = [
     heading: "Direct Sales",
     items: [
       { to: "/dispatch", label: "Direct Sale", icon: Send, module: "dispatch" },
-      { to: "/deliveries", label: "Delivery Status", icon: ClipboardCheck, module: "dispatch" }
+      { to: "/deliveries", label: "Delivery Status", icon: ClipboardCheck, module: "dispatch" },
+      { to: "/rate-chart", label: "Rate Chart", icon: IndianRupee, module: "masters" }
     ]
   },
   {
@@ -59899,6 +59912,212 @@ function Products() {
     ] }) })
   ] });
 }
+const LORRY_TYPES = ["Tractor", "Tipper", "Dumper", "6 Wheeler", "10 Wheeler", "12 Wheeler", "14 Wheeler", "Truck"];
+const basisLabel = { trip: "Per Trip", cm: "Per m³", ton: "Per Ton" };
+function RateChart() {
+  const qc2 = useQueryClient();
+  const toast = useToast();
+  const { plantId } = usePlant();
+  const { data: locations = [] } = useQuery({ queryKey: ["locations", 0], queryFn: () => api.locations.list() });
+  const { data: products = [] } = useQuery({ queryKey: ["products"], queryFn: () => api.products.list() });
+  const { data: rows = [] } = useQuery({ queryKey: ["rateChart", plantId], queryFn: () => api.rateChart.list(plantId) });
+  const { data: transport = [] } = useQuery({ queryKey: ["transportCharges", plantId], queryFn: () => api.transportCharges.list(plantId) });
+  const formLocations = locations.filter((l2) => !plantId || l2.plant_id === plantId);
+  const [rateForm, setRateForm] = reactExports.useState(null);
+  const [tForm, setTForm] = reactExports.useState(null);
+  const saveRate = useMutation({
+    mutationFn: (p2) => p2.id ? api.rateChart.update(p2) : api.rateChart.create(p2),
+    onSuccess: () => {
+      qc2.invalidateQueries({ queryKey: ["rateChart"] });
+      setRateForm(null);
+      toast.success("Rate saved.");
+    },
+    onError: (e3) => toast.error(e3.message)
+  });
+  const saveTransport = useMutation({
+    mutationFn: (p2) => p2.id ? api.transportCharges.update(p2) : api.transportCharges.create(p2),
+    onSuccess: () => {
+      qc2.invalidateQueries({ queryKey: ["transportCharges"] });
+      setTForm(null);
+      toast.success("Transport charge saved.");
+    },
+    onError: (e3) => toast.error(e3.message)
+  });
+  async function removeRate(r2) {
+    if (!await confirmDialog({ title: "Delete rate", message: `Delete the rate for ${r2.product_name}?` })) return;
+    await api.rateChart.delete(r2.id);
+    qc2.invalidateQueries({ queryKey: ["rateChart"] });
+    toast.success("Rate deleted.");
+  }
+  async function removeTransport(t2) {
+    if (!await confirmDialog({ title: "Delete charge", message: `Delete the ${t2.vehicle_type} charge?` })) return;
+    await api.transportCharges.delete(t2.id);
+    qc2.invalidateQueries({ queryKey: ["transportCharges"] });
+    toast.success("Transport charge deleted.");
+  }
+  const noPlants = locations.length === 0;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      PageHeader,
+      {
+        title: "Rate Chart",
+        description: "Set product rates per location for Wholesale / Retail / Customer, plus transport charges by lorry type"
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(Page, { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(Card, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(CardHeader, { className: "flex-row items-center justify-between", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(CardTitle, { className: "flex items-center gap-2", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Tags, { size: 18 }),
+            " Product Rates"
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            Button,
+            {
+              size: "sm",
+              disabled: noPlants || products.length === 0,
+              onClick: () => setRateForm({
+                product_name: "",
+                stock_location_id: formLocations[0]?.id,
+                uom: "CM",
+                rate_wholesale: 0,
+                rate_retail: 0,
+                rate_customer: 0
+              }),
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 15 }),
+                " New Rate"
+              ]
+            }
+          )
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(CardContent, { children: noPlants ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "Create a plant and stock location first." }) : products.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "Add products first (Products menu)." }) : rows.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No rates yet. Add a product rate for a location." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Product" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Location" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Unit" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Wholesale" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Retail" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Customer" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
+          ] }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: rows.map((r2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: r2.product_name }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-muted-foreground", children: [
+              r2.plant_name,
+              " · ",
+              r2.stock_location_name
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "muted", children: r2.uom }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: fmtMoney(r2.rate_wholesale) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: fmtMoney(r2.rate_retail) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: fmtMoney(r2.rate_customer) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => setRateForm(r2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => removeRate(r2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+            ] })
+          ] }, r2.id)) })
+        ] }) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(Card, { className: "mt-6", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(CardHeader, { className: "flex-row items-center justify-between", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(CardTitle, { className: "flex items-center gap-2", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Truck, { size: 18 }),
+            " Transport Charges"
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            Button,
+            {
+              size: "sm",
+              disabled: noPlants,
+              onClick: () => setTForm({ vehicle_type: "", stock_location_id: formLocations[0]?.id, basis: "trip", charge: 0 }),
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 15 }),
+                " New Charge"
+              ]
+            }
+          )
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(CardContent, { children: noPlants ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "Create a plant and stock location first." }) : transport.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No transport charges yet. Add a charge per lorry type and location." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Vehicle / Lorry" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Location" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Basis" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Charge" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
+          ] }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: transport.map((t2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: t2.vehicle_type }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-muted-foreground", children: [
+              t2.plant_name,
+              " · ",
+              t2.stock_location_name
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "muted", children: basisLabel[t2.basis] }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: fmtMoney(t2.charge) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => setTForm(t2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => removeTransport(t2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+            ] })
+          ] }, t2.id)) })
+        ] }) })
+      ] })
+    ] }),
+    rateForm && /* @__PURE__ */ jsxRuntimeExports.jsx(Modal, { open: true, onClose: () => setRateForm(null), title: rateForm.id ? "Edit Rate" : "New Product Rate", width: "max-w-xl", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-3", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: rateForm.product_name || "", onChange: (e3) => setRateForm({ ...rateForm, product_name: e3.target.value }), children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Select…" }),
+          rateForm.product_name && !products.some((p2) => p2.name === rateForm.product_name) && /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: rateForm.product_name, children: rateForm.product_name }),
+          products.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.name, children: p2.name }, p2.id))
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Location", className: "sm:col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: rateForm.stock_location_id || "", onChange: (e3) => setRateForm({ ...rateForm, stock_location_id: Number(e3.target.value) }), children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Select…" }),
+          formLocations.map((l2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: l2.id, children: [
+            l2.plant_name,
+            " · ",
+            l2.name
+          ] }, l2.id))
+        ] }) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4 sm:grid-cols-4", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Unit", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: rateForm.uom || "CM", onChange: (e3) => setRateForm({ ...rateForm, uom: e3.target.value }), children: UOMS.map((u2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: u2, children: u2 }, u2)) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Wholesale ₹", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: rateForm.rate_wholesale ?? "", onChange: (e3) => setRateForm({ ...rateForm, rate_wholesale: Number(e3.target.value) }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Retail ₹", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: rateForm.rate_retail ?? "", onChange: (e3) => setRateForm({ ...rateForm, rate_retail: Number(e3.target.value) }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Customer ₹", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: rateForm.rate_customer ?? "", onChange: (e3) => setRateForm({ ...rateForm, rate_customer: Number(e3.target.value) }) }) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-end gap-2 pt-1", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setRateForm(null), children: "Cancel" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: () => saveRate.mutate(rateForm), disabled: !rateForm.product_name || !rateForm.stock_location_id, children: "Save" })
+      ] })
+    ] }) }),
+    tForm && /* @__PURE__ */ jsxRuntimeExports.jsx(Modal, { open: true, onClose: () => setTForm(null), title: tForm.id ? "Edit Transport Charge" : "New Transport Charge", width: "max-w-xl", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(Field, { label: "Vehicle / Lorry Type", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { list: "lorry-types", value: tForm.vehicle_type || "", onChange: (e3) => setTForm({ ...tForm, vehicle_type: e3.target.value }), placeholder: "e.g. 10 Wheeler" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("datalist", { id: "lorry-types", children: LORRY_TYPES.map((v2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: v2 }, v2)) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Location", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: tForm.stock_location_id || "", onChange: (e3) => setTForm({ ...tForm, stock_location_id: Number(e3.target.value) }), children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Select…" }),
+          formLocations.map((l2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: l2.id, children: [
+            l2.plant_name,
+            " · ",
+            l2.name
+          ] }, l2.id))
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Basis", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: tForm.basis || "trip", onChange: (e3) => setTForm({ ...tForm, basis: e3.target.value }), children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "trip", children: "Per Trip" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "cm", children: "Per m³" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "ton", children: "Per Ton" })
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Charge ₹", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: tForm.charge ?? "", onChange: (e3) => setTForm({ ...tForm, charge: Number(e3.target.value) }) }) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-end gap-2 pt-1", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setTForm(null), children: "Cancel" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: () => saveTransport.mutate(tForm), disabled: !tForm.vehicle_type?.trim() || !tForm.stock_location_id, children: "Save" })
+      ] })
+    ] }) })
+  ] });
+}
 function shareOrigin() {
   return typeof window !== "undefined" && window.location.origin.startsWith("http") ? window.location.origin : "";
 }
@@ -64967,6 +65186,7 @@ function AppRoutes() {
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/production", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "production", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ProductionEntry, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/finished-goods", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "production", children: /* @__PURE__ */ jsxRuntimeExports.jsx(FinishedGoods, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/products", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "masters", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Products, {}) }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/rate-chart", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "masters", children: /* @__PURE__ */ jsxRuntimeExports.jsx(RateChart, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/customers", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "masters", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Customers, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/transporters", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "masters", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Transporters, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/companies", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "masters", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Companies, {}) }) }),

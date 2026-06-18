@@ -233,6 +233,26 @@ CREATE TABLE IF NOT EXISTS customer_rates (
   updated_at   TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
+CREATE TABLE IF NOT EXISTS rate_chart (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  product_name      TEXT NOT NULL,
+  stock_location_id INTEGER NOT NULL REFERENCES stock_locations(id),
+  uom               TEXT NOT NULL DEFAULT 'CM',
+  rate_wholesale    REAL NOT NULL DEFAULT 0,
+  rate_retail       REAL NOT NULL DEFAULT 0,
+  rate_customer     REAL NOT NULL DEFAULT 0,
+  updated_at        TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS transport_charges (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  vehicle_type      TEXT NOT NULL,
+  stock_location_id INTEGER NOT NULL REFERENCES stock_locations(id),
+  basis             TEXT NOT NULL DEFAULT 'trip',
+  charge            REAL NOT NULL DEFAULT 0,
+  updated_at        TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS stock_locations (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   plant_id    INTEGER NOT NULL REFERENCES plants(id),
@@ -624,6 +644,8 @@ CREATE INDEX IF NOT EXISTS idx_products_plant ON products(plant_id);
 CREATE INDEX IF NOT EXISTS idx_crates_customer ON customer_rates(customer_id);
 CREATE INDEX IF NOT EXISTS idx_customers_token ON customers(share_token);
 CREATE INDEX IF NOT EXISTS idx_opening_party ON opening_balances(party_type, party_id);
+CREATE INDEX IF NOT EXISTS idx_ratechart_loc ON rate_chart(stock_location_id);
+CREATE INDEX IF NOT EXISTS idx_transport_loc ON transport_charges(stock_location_id);
 `;
 
 // src/main/crypto.ts
@@ -710,6 +732,24 @@ CREATE TABLE IF NOT EXISTS customer_rates (
   uom          VARCHAR(8) NOT NULL DEFAULT 'CM',
   rate         DOUBLE NOT NULL DEFAULT 0,
   updated_at   VARCHAR(32) NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS rate_chart (
+  id                INT AUTO_INCREMENT PRIMARY KEY,
+  product_name      VARCHAR(255) NOT NULL,
+  stock_location_id INT NOT NULL,
+  uom               VARCHAR(8) NOT NULL DEFAULT 'CM',
+  rate_wholesale    DOUBLE NOT NULL DEFAULT 0,
+  rate_retail       DOUBLE NOT NULL DEFAULT 0,
+  rate_customer     DOUBLE NOT NULL DEFAULT 0,
+  updated_at        VARCHAR(32) NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS transport_charges (
+  id                INT AUTO_INCREMENT PRIMARY KEY,
+  vehicle_type      VARCHAR(255) NOT NULL,
+  stock_location_id INT NOT NULL,
+  basis             VARCHAR(8) NOT NULL DEFAULT 'trip',
+  charge            DOUBLE NOT NULL DEFAULT 0,
+  updated_at        VARCHAR(32) NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS stock_locations (
   id          INT AUTO_INCREMENT PRIMARY KEY,
@@ -1150,6 +1190,30 @@ ALTER TABLE purchases ADD COLUMN outsource_id INT`
   created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_opening_party ON opening_balances(party_type, party_id)`
+  },
+  {
+    // Advanced rate chart (product × location × tier) + transport charges (vehicle × location).
+    id: "009_rate_chart_transport",
+    sql: `CREATE TABLE IF NOT EXISTS rate_chart (
+  id                INT AUTO_INCREMENT PRIMARY KEY,
+  product_name      VARCHAR(255) NOT NULL,
+  stock_location_id INT NOT NULL,
+  uom               VARCHAR(8) NOT NULL DEFAULT 'CM',
+  rate_wholesale    DOUBLE NOT NULL DEFAULT 0,
+  rate_retail       DOUBLE NOT NULL DEFAULT 0,
+  rate_customer     DOUBLE NOT NULL DEFAULT 0,
+  updated_at        VARCHAR(32) NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS transport_charges (
+  id                INT AUTO_INCREMENT PRIMARY KEY,
+  vehicle_type      VARCHAR(255) NOT NULL,
+  stock_location_id INT NOT NULL,
+  basis             VARCHAR(8) NOT NULL DEFAULT 'trip',
+  charge            DOUBLE NOT NULL DEFAULT 0,
+  updated_at        VARCHAR(32) NOT NULL DEFAULT ''
+);
+CREATE INDEX idx_ratechart_loc ON rate_chart(stock_location_id);
+CREATE INDEX idx_transport_loc ON transport_charges(stock_location_id)`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -1431,6 +1495,8 @@ var PREFIX_MODULE = {
   customers: "masters",
   products: "masters",
   rates: "masters",
+  rateChart: "masters",
+  transportCharges: "masters",
   transporters: "masters",
   companies: "masters",
   businesses: "masters",
@@ -2246,6 +2312,103 @@ async function publicRateList(payload) {
     updated_at: updated,
     rates: rows.map((r) => ({ product_name: r.product_name, uom: r.uom, rate: r.rate }))
   };
+}
+
+// src/main/services/rateChart.ts
+var VALID_UOM2 = ["CM", "TON", "CFT"];
+var VALID_BASIS = ["trip", "cm", "ton"];
+function nowIso2() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+function money(n) {
+  const v = Number(n);
+  return Number.isFinite(v) ? Math.round((v + Number.EPSILON) * 100) / 100 : 0;
+}
+async function listRateChart(payload = {}) {
+  const d = getDb();
+  const clause = payload.plant_id ? "WHERE l.plant_id = @plant_id" : "";
+  return await d.prepare(
+    `SELECT rc.*, l.name AS stock_location_name, p.name AS plant_name
+       FROM rate_chart rc
+       JOIN stock_locations l ON l.id = rc.stock_location_id
+       JOIN plants p ON p.id = l.plant_id
+       ${clause}
+       ORDER BY p.name, l.name, rc.product_name, rc.uom`
+  ).all(payload);
+}
+async function createRateChart(p) {
+  const d = getDb();
+  const name = properCase(p.product_name);
+  if (!name) throw new Error("Select a product.");
+  if (!p.stock_location_id) throw new Error("Select a location.");
+  const uom = VALID_UOM2.includes(p.uom) ? p.uom : "CM";
+  const dup = await d.prepare(
+    `SELECT id FROM rate_chart WHERE stock_location_id = ? AND LOWER(product_name) = LOWER(?) AND uom = ?`
+  ).get(p.stock_location_id, name, uom);
+  if (dup) throw new Error("A rate row already exists for this product, location and unit.");
+  const info = await d.prepare(
+    `INSERT INTO rate_chart (product_name, stock_location_id, uom, rate_wholesale, rate_retail, rate_customer, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(name, p.stock_location_id, uom, money(p.rate_wholesale), money(p.rate_retail), money(p.rate_customer), nowIso2());
+  return await d.prepare(`SELECT * FROM rate_chart WHERE id = ?`).get(info.lastInsertRowid);
+}
+async function updateRateChart(p) {
+  const d = getDb();
+  if (!p.id) throw new Error("Missing rate row id.");
+  const name = properCase(p.product_name);
+  const uom = VALID_UOM2.includes(p.uom) ? p.uom : "CM";
+  const dup = await d.prepare(
+    `SELECT id FROM rate_chart WHERE stock_location_id = ? AND LOWER(product_name) = LOWER(?) AND uom = ? AND id <> ?`
+  ).get(p.stock_location_id, name, uom, p.id);
+  if (dup) throw new Error("A rate row already exists for this product, location and unit.");
+  await d.prepare(
+    `UPDATE rate_chart SET product_name=?, stock_location_id=?, uom=?, rate_wholesale=?, rate_retail=?, rate_customer=?, updated_at=?
+       WHERE id=?`
+  ).run(name, p.stock_location_id, uom, money(p.rate_wholesale), money(p.rate_retail), money(p.rate_customer), nowIso2(), p.id);
+  return await d.prepare(`SELECT * FROM rate_chart WHERE id = ?`).get(p.id);
+}
+async function deleteRateChart(payload) {
+  await getDb().prepare(`DELETE FROM rate_chart WHERE id = ?`).run(payload.id);
+  return { ok: true };
+}
+async function listTransportCharges(payload = {}) {
+  const d = getDb();
+  const clause = payload.plant_id ? "WHERE l.plant_id = @plant_id" : "";
+  return await d.prepare(
+    `SELECT tc.*, l.name AS stock_location_name, p.name AS plant_name
+       FROM transport_charges tc
+       JOIN stock_locations l ON l.id = tc.stock_location_id
+       JOIN plants p ON p.id = l.plant_id
+       ${clause}
+       ORDER BY p.name, l.name, tc.vehicle_type`
+  ).all(payload);
+}
+async function createTransportCharge(p) {
+  const d = getDb();
+  const vehicle = properCase(p.vehicle_type);
+  if (!vehicle) throw new Error("Enter a vehicle / lorry type.");
+  if (!p.stock_location_id) throw new Error("Select a location.");
+  const basis = VALID_BASIS.includes(p.basis) ? p.basis : "trip";
+  const info = await d.prepare(
+    `INSERT INTO transport_charges (vehicle_type, stock_location_id, basis, charge, updated_at)
+       VALUES (?, ?, ?, ?, ?)`
+  ).run(vehicle, p.stock_location_id, basis, money(p.charge), nowIso2());
+  return await d.prepare(`SELECT * FROM transport_charges WHERE id = ?`).get(info.lastInsertRowid);
+}
+async function updateTransportCharge(p) {
+  const d = getDb();
+  if (!p.id) throw new Error("Missing transport charge id.");
+  const vehicle = properCase(p.vehicle_type);
+  if (!vehicle) throw new Error("Enter a vehicle / lorry type.");
+  const basis = VALID_BASIS.includes(p.basis) ? p.basis : "trip";
+  await d.prepare(
+    `UPDATE transport_charges SET vehicle_type=?, stock_location_id=?, basis=?, charge=?, updated_at=? WHERE id=?`
+  ).run(vehicle, p.stock_location_id, basis, money(p.charge), nowIso2(), p.id);
+  return await d.prepare(`SELECT * FROM transport_charges WHERE id = ?`).get(p.id);
+}
+async function deleteTransportCharge(payload) {
+  await getDb().prepare(`DELETE FROM transport_charges WHERE id = ?`).run(payload.id);
+  return { ok: true };
 }
 
 // src/main/services/purchases.ts
@@ -4359,7 +4522,7 @@ async function getAllDues(payload = {}) {
 }
 
 // src/main/services/diesel.ts
-function money(n) {
+function money2(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 function litres(n) {
@@ -4414,8 +4577,8 @@ async function listDieselPurchases(filter = {}) {
 function purchaseFields(p) {
   if (!(Number(p.litres) > 0)) throw new Error("Litres must be greater than 0.");
   const rate = p.rate == null || p.rate === "" ? null : Number(p.rate);
-  const amount = rate == null ? null : money(Number(p.litres) * rate);
-  const paid = money(Number(p.paid_amount) || 0);
+  const amount = rate == null ? null : money2(Number(p.litres) * rate);
+  const paid = money2(Number(p.paid_amount) || 0);
   return {
     supplier_id: p.supplier_id,
     plant_id: p.plant_id,
@@ -4607,18 +4770,18 @@ async function assetReport(payload) {
        FROM plant_expenses WHERE asset_id = ?`
   ).get(payload.id);
   const wages = (await d.prepare(`SELECT COALESCE(SUM(amount),0) AS q FROM wage_entries WHERE asset_id = ?`).get(payload.id)).q;
-  const money5 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
-  const net = money5(exp.rent - dieselCost - exp.maintenance - exp.other - wages);
+  const money6 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+  const net = money6(exp.rent - dieselCost - exp.maintenance - exp.other - wages);
   return {
     asset_id: payload.id,
     asset_name: a.name,
     business_name: a.business_name,
-    diesel_litres: money5(litres2),
-    diesel_cost: money5(dieselCost),
-    maintenance: money5(exp.maintenance),
-    other_expense: money5(exp.other),
-    wages: money5(wages),
-    rent_income: money5(exp.rent),
+    diesel_litres: money6(litres2),
+    diesel_cost: money6(dieselCost),
+    maintenance: money6(exp.maintenance),
+    other_expense: money6(exp.other),
+    wages: money6(wages),
+    rent_income: money6(exp.rent),
     net
   };
 }
@@ -4633,7 +4796,7 @@ async function deleteAsset(payload) {
 }
 
 // src/main/services/plantExpenses.ts
-function money2(n) {
+function money3(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 function num(n) {
@@ -4703,15 +4866,15 @@ function resolve(p) {
   if (cat === "electricity") {
     if (meter_open != null && meter_close != null) units = num(meter_close - meter_open);
     if (units != null && units !== 0) {
-      if (amount <= 0 && rate != null) amount = money2(units * rate);
-      else if (amount > 0 && (rate == null || rate === 0)) rate = money2(amount / units);
+      if (amount <= 0 && rate != null) amount = money3(units * rate);
+      else if (amount > 0 && (rate == null || rate === 0)) rate = money3(amount / units);
     }
   } else {
     meter_open = null;
     meter_close = null;
   }
   if (cat === "tipper_rent" || cat === "equipment_rent") {
-    if (amount <= 0 && hours != null && rate != null) amount = money2(hours * rate);
+    if (amount <= 0 && hours != null && rate != null) amount = money3(hours * rate);
   } else {
     hours = null;
   }
@@ -4728,9 +4891,9 @@ function resolve(p) {
     rate,
     hours,
     parts: p.parts ?? "",
-    amount: money2(amount),
+    amount: money3(amount),
     payment_status: derivePaymentStatus(amount, Number(p.paid_amount) || 0),
-    paid_amount: money2(Number(p.paid_amount) || 0),
+    paid_amount: money3(Number(p.paid_amount) || 0),
     date: p.date,
     remarks: p.remarks ?? ""
   };
@@ -4934,7 +5097,7 @@ async function setWorkdaySettings(payload) {
 }
 
 // src/main/services/payroll.ts
-function money3(n) {
+function money4(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 async function workingDaysIn(period) {
@@ -5045,13 +5208,13 @@ async function resolve2(p) {
   if (!p.period) throw new Error("Pay period is required.");
   const workingDays = await workingDaysIn(p.period);
   const daysWorked = Number(p.days_worked) || 0;
-  const earned = emp.wage_type === "monthly" ? workingDays > 0 ? money3(emp.monthly_salary / workingDays * daysWorked) : 0 : money3(emp.daily_wage * daysWorked);
+  const earned = emp.wage_type === "monthly" ? workingDays > 0 ? money4(emp.monthly_salary / workingDays * daysWorked) : 0 : money4(emp.daily_wage * daysWorked);
   const otHours = Number(p.ot_hours) || 0;
   const otRate = p.ot_rate == null || p.ot_rate === "" ? emp.ot_rate : Number(p.ot_rate);
-  const otAmount = money3(otHours * otRate);
-  const deduction = money3(Number(p.deduction) || 0);
-  const gross = money3(earned + otAmount);
-  const amount = money3(gross - deduction);
+  const otAmount = money4(otHours * otRate);
+  const deduction = money4(Number(p.deduction) || 0);
+  const gross = money4(earned + otAmount);
+  const amount = money4(gross - deduction);
   if (!(amount > 0)) throw new Error("Net wage must be greater than 0.");
   return {
     employee_id: p.employee_id,
@@ -5069,7 +5232,7 @@ async function resolve2(p) {
     gross,
     amount,
     payment_status: derivePaymentStatus(amount, Number(p.paid_amount) || 0),
-    paid_amount: money3(Number(p.paid_amount) || 0),
+    paid_amount: money4(Number(p.paid_amount) || 0),
     date: p.date,
     remarks: p.remarks ?? ""
   };
@@ -5251,7 +5414,7 @@ async function listActivity(filter = {}) {
 function num2(row) {
   return Math.round(((row?.q ?? 0) + Number.EPSILON) * 1e3) / 1e3;
 }
-function money4(row) {
+function money5(row) {
   return Math.round(((row?.q ?? 0) + Number.EPSILON) * 100) / 100;
 }
 async function getDashboard(payload = {}) {
@@ -5301,7 +5464,7 @@ async function getDashboard(payload = {}) {
   const totalDispatched = num2(
     await d.prepare(`SELECT COALESCE(SUM(qty_cm),0) AS q FROM dispatches${plWhere}`).get()
   );
-  const pendingSupplierPayment = money4(
+  const pendingSupplierPayment = money5(
     await d.prepare(`SELECT COALESCE(SUM(COALESCE(amount,0) - paid_amount),0) AS q FROM purchases WHERE payment_status <> 'paid'${plAnd}`).get()
   );
   const pendingDeliveries = (await d.prepare(`SELECT COUNT(*) AS q FROM dispatches WHERE delivery_status='pending'${plAnd}`).get()).q;
@@ -5321,31 +5484,31 @@ async function getDashboard(payload = {}) {
     ).get()
   );
   const openRacks = (await d.prepare(`SELECT COUNT(*) AS q FROM racks WHERE status <> 'closed'`).get()).q;
-  const rackSalesAmount = money4(
+  const rackSalesAmount = money5(
     await d.prepare(`SELECT COALESCE(SUM(amount),0) AS q FROM rack_sales`).get()
   );
-  const rackTransportCost = money4(
+  const rackTransportCost = money5(
     await d.prepare(
       `SELECT (SELECT COALESCE(SUM(amount),0) FROM rack_loadings)
             + (SELECT COALESCE(SUM(amount),0) FROM rack_unloadings) AS q`
     ).get()
   );
-  const totalRackExpenses = money4(
+  const totalRackExpenses = money5(
     await d.prepare(`SELECT COALESCE(SUM(amount),0) AS q FROM rack_expenses`).get()
   );
-  const rackProfit = money4({ q: rackSalesAmount - rackTransportCost - totalRackExpenses });
+  const rackProfit = money5({ q: rackSalesAmount - rackTransportCost - totalRackExpenses });
   const custSalesExpr = pid ? `COALESCE((SELECT SUM(amount) FROM dispatches WHERE customer_id=c.id AND plant_id=${pid} AND amount IS NOT NULL),0)` : `COALESCE((SELECT SUM(amount) FROM rack_sales WHERE customer_id=c.id AND amount IS NOT NULL),0) +
        COALESCE((SELECT SUM(amount) FROM dispatches WHERE customer_id=c.id AND amount IS NOT NULL),0)`;
   const topCustomers = (await d.prepare(
     `SELECT c.name AS name, ${custSalesExpr} AS amount
          FROM customers c ORDER BY amount DESC LIMIT 5`
-  ).all()).filter((r) => r.amount > 0).map((r) => ({ name: r.name, amount: money4({ q: r.amount }) }));
+  ).all()).filter((r) => r.amount > 0).map((r) => ({ name: r.name, amount: money5({ q: r.amount }) }));
   const monthlySrc = pid ? `SELECT substr(date,1,7) AS month, COALESCE(amount,0) AS amount FROM dispatches WHERE amount IS NOT NULL AND plant_id=${pid}` : `SELECT substr(date,1,7) AS month, COALESCE(amount,0) AS amount FROM rack_sales WHERE amount IS NOT NULL
        UNION ALL
        SELECT substr(date,1,7) AS month, COALESCE(amount,0) AS amount FROM dispatches WHERE amount IS NOT NULL`;
   const monthlySales = (await d.prepare(
     `SELECT month, SUM(amount) AS amount FROM (${monthlySrc}) AS t GROUP BY month ORDER BY month DESC LIMIT 6`
-  ).all()).map((r) => ({ month: r.month, amount: money4({ q: r.amount }) })).reverse();
+  ).all()).map((r) => ({ month: r.month, amount: money5({ q: r.amount }) })).reverse();
   const custRow = await (pid ? d.prepare(
     `SELECT COALESCE(SUM(COALESCE(amount,0)
              + CASE WHEN transport_billed=1 THEN transport_charge ELSE 0 END
@@ -5361,7 +5524,7 @@ async function getDashboard(payload = {}) {
             (SELECT COALESCE(SUM(amount),0) FROM payments WHERE party_type='customer' AND direction='out') -
             (SELECT COALESCE(SUM(amount),0) FROM payments WHERE party_type='customer' AND direction='in') AS q`
   )).get();
-  const customerReceivable = money4(custRow);
+  const customerReceivable = money5(custRow);
   const transRow = await (pid ? d.prepare(
     `SELECT COALESCE(SUM(COALESCE(amount,0) - COALESCE(diesel_amount,0)),0) AS q FROM rack_loadings WHERE plant_id = ${pid}`
   ) : d.prepare(
@@ -5371,7 +5534,7 @@ async function getDashboard(payload = {}) {
             (SELECT COALESCE(SUM(amount),0) FROM payments WHERE party_type='transporter' AND direction='out') +
             (SELECT COALESCE(SUM(amount),0) FROM payments WHERE party_type='transporter' AND direction='in') AS q`
   )).get();
-  const transporterPayable = money4(transRow);
+  const transporterPayable = money5(transRow);
   const counts = {
     plants: (await d.prepare(`SELECT COUNT(*) AS q FROM plants`).get()).q,
     suppliers: (await d.prepare(`SELECT COUNT(*) AS q FROM suppliers`).get()).q,
@@ -5444,6 +5607,14 @@ var handlers = {
   "rates.removeShareLink": revokeShareLink,
   "rates.getBusinessName": getBusinessName,
   "rates.setBusinessName": setBusinessName,
+  "rateChart.list": listRateChart,
+  "rateChart.create": createRateChart,
+  "rateChart.update": updateRateChart,
+  "rateChart.delete": deleteRateChart,
+  "transportCharges.list": listTransportCharges,
+  "transportCharges.create": createTransportCharge,
+  "transportCharges.update": updateTransportCharge,
+  "transportCharges.delete": deleteTransportCharge,
   "purchases.list": listPurchases,
   "purchases.create": createPurchase,
   "purchases.update": updatePurchase,
