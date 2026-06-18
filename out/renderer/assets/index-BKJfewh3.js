@@ -60239,6 +60239,7 @@ function Dispatch() {
       product_name: "",
       uom: "CM",
       quantity: "",
+      sale_quantity: "",
       rate: "",
       transport_charge: "",
       transport_billed: false,
@@ -60269,6 +60270,7 @@ function Dispatch() {
     save.mutate({
       ...form,
       quantity: Number(form.quantity),
+      sale_quantity: form.sale_quantity === "" || form.sale_quantity == null ? null : Number(form.sale_quantity),
       rate: form.rate === "" || form.rate == null ? null : Number(form.rate),
       transport_charge: Number(form.transport_charge) || 0,
       other_charge: Number(form.other_charge) || 0,
@@ -60324,8 +60326,13 @@ function Dispatch() {
     );
   }
   plants.find((pl2) => pl2.id === form?.plant_id);
-  const qtyCm = form ? toCm(Number(form.quantity) || 0, form.uom) : 0;
-  const goods = form && form.rate !== "" ? (Number(form.quantity) || 0) * Number(form.rate) : 0;
+  const actualQty = Number(form?.quantity) || 0;
+  const saleSet = !!form && form.sale_quantity !== "" && form.sale_quantity != null;
+  const saleQty = saleSet ? Number(form.sale_quantity) || 0 : null;
+  const billableQty = saleQty != null ? saleQty : actualQty;
+  const shortageQty = saleQty != null ? actualQty - saleQty : 0;
+  const qtyCm = form ? toCm(actualQty, form.uom) : 0;
+  const goods = form && form.rate !== "" ? billableQty * Number(form.rate) : 0;
   const billedExtra = form ? (form.transport_billed ? Number(form.transport_charge) || 0 : 0) + (form.other_billed ? Number(form.other_charge) || 0 : 0) : 0;
   const invoiceTotal = goods + billedExtra;
   const available = form ? (selProduct?.balance_qty ?? 0) + (form.id ? Number(form.qty_cm) || 0 : 0) : 0;
@@ -60392,7 +60399,16 @@ function Dispatch() {
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
             fmtQty(d2.quantity),
             " ",
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-muted-foreground", children: d2.uom })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-muted-foreground", children: d2.uom }),
+            d2.sale_quantity != null && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "block text-[11px] text-muted-foreground", children: [
+              "sold ",
+              fmtQty(d2.sale_quantity),
+              d2.quantity - d2.sale_quantity !== 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: d2.quantity - d2.sale_quantity > 0 ? "text-warning" : "text-destructive", children: [
+                " · ",
+                "±",
+                fmtQty(Math.abs(d2.quantity - d2.sale_quantity))
+              ] })
+            ] })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: d2.rate == null ? /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "warning", children: "No rate" }) : fmtMoney(d2.rate) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right font-semibold", children: fmtMoney(d2.billed_total) }),
@@ -60405,7 +60421,7 @@ function Dispatch() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: payBadge$4[d2.payment_status], children: d2.payment_status }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => {
-              setForm({ ...d2, rate: d2.rate ?? "", transport_billed: !!d2.transport_billed, other_billed: !!d2.other_billed });
+              setForm({ ...d2, rate: d2.rate ?? "", sale_quantity: d2.sale_quantity ?? "", transport_billed: !!d2.transport_billed, other_billed: !!d2.other_billed });
               setOpen(true);
             }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => remove(d2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
@@ -60458,9 +60474,17 @@ function Dispatch() {
             )
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Section, { title: "Quantity & Rate", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-3", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Unit of Measure", required: true, hint: "1 m³ = 1.6 ton = 35.31 cft", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: form.uom, onChange: (e3) => setForm({ ...form, uom: e3.target.value }), children: UOMS.map((u2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: u2, children: u2 === "CM" ? "Cubic Meter (m³)" : u2 === "TON" ? "Ton" : "Cubic Feet (CFT)" }, u2)) }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `Quantity (${form.uom})`, required: true, hint: qtyCm > 0 ? `= ${fmtQty(qtyCm)} m³` : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.quantity, onChange: (e3) => setForm({ ...form, quantity: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Section, { title: "Quantity & Rate", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4 sm:grid-cols-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Unit (UOM)", required: true, hint: "1 m³ = 1.6 ton = 35.31 cft", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: form.uom, onChange: (e3) => setForm({ ...form, uom: e3.target.value }), children: UOMS.map((u2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: u2, children: u2 === "CM" ? "m³" : u2 === "TON" ? "Ton" : "CFT" }, u2)) }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `Actual Qty (${form.uom})`, required: true, hint: qtyCm > 0 ? `${fmtQty(qtyCm)} m³ off stock` : "Dispatched from plant", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.quantity, onChange: (e3) => setForm({ ...form, quantity: e3.target.value }) }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            Field,
+            {
+              label: `Sale Qty (${form.uom})`,
+              hint: saleQty != null ? shortageQty > 0 ? `Shortage ${fmtQty(shortageQty)} ${form.uom}` : shortageQty < 0 ? `Excess ${fmtQty(-shortageQty)} ${form.uom}` : "No shortage" : "Add later — bills actual until set",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.sale_quantity, onChange: (e3) => setForm({ ...form, sale_quantity: e3.target.value }), placeholder: "Optional" })
+            }
+          ),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `Rate per ${form.uom}`, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.rate, onChange: (e3) => setForm({ ...form, rate: e3.target.value }), placeholder: "Optional" }) })
         ] }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Section, { title: "Vehicle & Delivery", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4 sm:grid-cols-3", children: [
@@ -60516,10 +60540,30 @@ function Dispatch() {
                 " m³"
               ] }),
               qtyCm > available && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ml-2 font-semibold text-destructive", children: "— exceeds stock!" })
+            ] }),
+            saleQty != null && shortageQty !== 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-0.5 text-xs", children: [
+              "Sold ",
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("b", { children: [
+                fmtQty(billableQty),
+                " ",
+                form.uom
+              ] }),
+              " ·",
+              " ",
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: shortageQty > 0 ? "text-warning" : "text-destructive", children: [
+                shortageQty > 0 ? "shortage" : "excess",
+                " ",
+                fmtQty(Math.abs(shortageQty)),
+                " ",
+                form.uom
+              ] })
             ] })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border bg-muted/40 px-4 py-3 text-sm", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: "Invoice" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: [
+              "Invoice ",
+              saleQty != null ? "(on sale qty)" : "(on actual qty)"
+            ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-1", children: [
               "Goods ",
               /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: fmtMoney(goods) }),

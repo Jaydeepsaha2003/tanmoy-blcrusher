@@ -323,6 +323,7 @@ CREATE TABLE IF NOT EXISTS dispatches (
   uom             TEXT NOT NULL DEFAULT 'CM',
   quantity        REAL NOT NULL,
   qty_cm          REAL NOT NULL DEFAULT 0,
+  sale_quantity   REAL,
   rate            REAL,
   amount          REAL,
   transport_charge REAL NOT NULL DEFAULT 0,
@@ -813,6 +814,7 @@ CREATE TABLE IF NOT EXISTS dispatches (
   uom              VARCHAR(8) NOT NULL DEFAULT 'CM',
   quantity         DOUBLE NOT NULL,
   qty_cm           DOUBLE NOT NULL DEFAULT 0,
+  sale_quantity    DOUBLE,
   rate             DOUBLE,
   amount           DOUBLE,
   transport_charge DOUBLE NOT NULL DEFAULT 0,
@@ -1095,6 +1097,12 @@ CREATE INDEX idx_crates_customer ON customer_rates(customer_id)`
     id: "005_purchase_finished_goods",
     sql: `ALTER TABLE purchases ADD COLUMN material_type VARCHAR(16) NOT NULL DEFAULT 'raw';
 ALTER TABLE purchases ADD COLUMN product_name VARCHAR(255) NOT NULL DEFAULT ''`
+  },
+  {
+    // Direct sale: actual quantity (existing 'quantity') vs sale quantity. The
+    // bill uses sale_quantity when set, otherwise the actual quantity.
+    id: "006_dispatch_sale_quantity",
+    sql: `ALTER TABLE dispatches ADD COLUMN sale_quantity DOUBLE`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -1146,6 +1154,7 @@ async function sqliteLegacyMigrate(adapter2) {
   await addColumn("customers", "share_token", "TEXT");
   await addColumn("purchases", "material_type", `TEXT NOT NULL DEFAULT 'raw'`);
   await addColumn("purchases", "product_name", `TEXT NOT NULL DEFAULT ''`);
+  await addColumn("dispatches", "sale_quantity", "REAL");
 }
 async function importProductsFromSettings(adapter2) {
   const all = (await adapter2.exec(`SELECT id, name FROM products ORDER BY id`, void 0, null)).rows;
@@ -2686,11 +2695,15 @@ function roundQty2(n) {
   return Math.round((n + Number.EPSILON) * 1e3) / 1e3;
 }
 function normalize(p, factors) {
-  if (!(Number(p.quantity) > 0)) throw new Error("Quantity must be greater than 0.");
+  if (!(Number(p.quantity) > 0)) throw new Error("Actual quantity must be greater than 0.");
   if (!["CM", "TON", "CFT"].includes(p.uom)) throw new Error("Invalid unit of measure.");
   const product = properCase(p.product_name);
-  const qtyCm = roundQty2(toCm(Number(p.quantity), p.uom, factors));
-  const amount = computeAmount2(p.rate, Number(p.quantity));
+  const actualQty = Number(p.quantity);
+  const saleQty = p.sale_quantity == null || p.sale_quantity === "" ? null : Number(p.sale_quantity);
+  if (saleQty != null && saleQty < 0) throw new Error("Sale quantity cannot be negative.");
+  const billableQty = saleQty != null ? saleQty : actualQty;
+  const qtyCm = roundQty2(toCm(actualQty, p.uom, factors));
+  const amount = computeAmount2(p.rate, billableQty);
   const transport = Number(p.transport_charge) || 0;
   const other = Number(p.other_charge) || 0;
   const billed = (amount ?? 0) + (p.transport_billed ? transport : 0) + (p.other_billed ? other : 0);
@@ -2706,8 +2719,9 @@ function normalize(p, factors) {
       plant_id: p.plant_id,
       product_name: product,
       uom: p.uom,
-      quantity: Number(p.quantity),
+      quantity: actualQty,
       qty_cm: qtyCm,
+      sale_quantity: saleQty,
       rate: p.rate,
       amount,
       transport_charge: transport,
@@ -2741,10 +2755,10 @@ async function createDispatch(p) {
     const no = await nextNumber("SALE", "dispatch");
     const info = await d.prepare(
       `INSERT INTO dispatches
-          (dispatch_no, customer_id, plant_id, product_name, uom, quantity, qty_cm, rate, amount,
+          (dispatch_no, customer_id, plant_id, product_name, uom, quantity, qty_cm, sale_quantity, rate, amount,
            transport_charge, transport_billed, other_charge, other_billed,
            vehicle_no, vehicle_type, driver, challan_no, outsourced, delivery_status, payment_status, paid_amount, date, remarks)
-         VALUES (@dispatch_no,@customer_id,@plant_id,@product_name,@uom,@quantity,@qty_cm,@rate,@amount,
+         VALUES (@dispatch_no,@customer_id,@plant_id,@product_name,@uom,@quantity,@qty_cm,@sale_quantity,@rate,@amount,
            @transport_charge,@transport_billed,@other_charge,@other_billed,
            @vehicle_no,@vehicle_type,@driver,@challan_no,@outsourced,@delivery_status,@payment_status,@paid_amount,@date,@remarks)`
     ).run({ dispatch_no: no, ...fields });
@@ -2774,7 +2788,7 @@ async function updateDispatch(p) {
   await d.transaction(async () => {
     await d.prepare(
       `UPDATE dispatches SET customer_id=@customer_id, plant_id=@plant_id, product_name=@product_name,
-        uom=@uom, quantity=@quantity, qty_cm=@qty_cm, rate=@rate, amount=@amount,
+        uom=@uom, quantity=@quantity, qty_cm=@qty_cm, sale_quantity=@sale_quantity, rate=@rate, amount=@amount,
         transport_charge=@transport_charge, transport_billed=@transport_billed,
         other_charge=@other_charge, other_billed=@other_billed,
         vehicle_no=@vehicle_no, vehicle_type=@vehicle_type, driver=@driver, challan_no=@challan_no,
@@ -2804,7 +2818,8 @@ async function updateDispatch(p) {
 async function setRate(payload) {
   const d = getDb();
   const row = await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id);
-  const amount = computeAmount2(payload.rate, row.quantity);
+  const billableQty = row.sale_quantity != null ? row.sale_quantity : row.quantity;
+  const amount = computeAmount2(payload.rate, billableQty);
   await d.prepare(`UPDATE dispatches SET rate=?, amount=? WHERE id=?`).run(payload.rate, amount, payload.id);
   return await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id);
 }
@@ -3759,7 +3774,7 @@ async function buildEntries(partyType, partyId) {
   }
   if (partyType === "plant") {
     const sales = await d.prepare(
-      `SELECT dispatch_no, date, created_at, product_name, quantity, uom,
+      `SELECT dispatch_no, date, created_at, product_name, COALESCE(sale_quantity, quantity) AS quantity, uom,
           (COALESCE(amount,0)
             + CASE WHEN transport_billed=1 THEN transport_charge ELSE 0 END
             + CASE WHEN other_billed=1 THEN other_charge ELSE 0 END) AS billed
@@ -3968,7 +3983,7 @@ async function buildEntries(partyType, partyId) {
   }
   if (partyType === "customer") {
     const dispatches = await d.prepare(
-      `SELECT dispatch_no, date, created_at, product_name, quantity, uom,
+      `SELECT dispatch_no, date, created_at, product_name, COALESCE(sale_quantity, quantity) AS quantity, uom,
           (COALESCE(amount,0)
             + CASE WHEN transport_billed=1 THEN transport_charge ELSE 0 END
             + CASE WHEN other_billed=1 THEN other_charge ELSE 0 END) AS billed,
