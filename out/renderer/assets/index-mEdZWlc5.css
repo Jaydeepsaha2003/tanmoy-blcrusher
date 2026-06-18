@@ -976,6 +976,9 @@ video {
 .border-warning\/40 {
   border-color: hsl(var(--warning) / 0.4);
 }
+.bg-accent\/40 {
+  background-color: hsl(var(--accent) / 0.4);
+}
 .bg-accent\/50 {
   background-color: hsl(var(--accent) / 0.5);
 }

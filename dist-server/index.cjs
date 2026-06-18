@@ -573,6 +573,17 @@ CREATE TABLE IF NOT EXISTS diesel_issues (
   created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
+CREATE TABLE IF NOT EXISTS opening_balances (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  party_type  TEXT NOT NULL,
+  party_id    INTEGER NOT NULL,
+  amount      REAL NOT NULL DEFAULT 0,
+  direction   TEXT NOT NULL DEFAULT 'debit',
+  as_of_date  TEXT NOT NULL,
+  remarks     TEXT NOT NULL DEFAULT '',
+  created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS payments (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   party_type TEXT NOT NULL,
@@ -612,6 +623,7 @@ CREATE INDEX IF NOT EXISTS idx_move_loc ON stock_movements(stock_location_id);
 CREATE INDEX IF NOT EXISTS idx_products_plant ON products(plant_id);
 CREATE INDEX IF NOT EXISTS idx_crates_customer ON customer_rates(customer_id);
 CREATE INDEX IF NOT EXISTS idx_customers_token ON customers(share_token);
+CREATE INDEX IF NOT EXISTS idx_opening_party ON opening_balances(party_type, party_id);
 `;
 
 // src/main/crypto.ts
@@ -1023,6 +1035,16 @@ CREATE TABLE IF NOT EXISTS diesel_issues (
   remarks    TEXT,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS opening_balances (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  party_type  VARCHAR(32) NOT NULL,
+  party_id    INT NOT NULL,
+  amount      DOUBLE NOT NULL DEFAULT 0,
+  direction   VARCHAR(8) NOT NULL DEFAULT 'debit',
+  as_of_date  VARCHAR(32) NOT NULL,
+  remarks     TEXT,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS payments (
   id         INT AUTO_INCREMENT PRIMARY KEY,
   party_type VARCHAR(32) NOT NULL,
@@ -1113,6 +1135,21 @@ ALTER TABLE purchases ADD COLUMN product_name VARCHAR(255) NOT NULL DEFAULT ''`
     id: "007_outsource_on_sale_purchase",
     sql: `ALTER TABLE dispatches ADD COLUMN outsource_id INT;
 ALTER TABLE purchases ADD COLUMN outsource_id INT`
+  },
+  {
+    // Per-account opening balances (financial-year carry-forward is computed).
+    id: "008_opening_balances",
+    sql: `CREATE TABLE IF NOT EXISTS opening_balances (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  party_type  VARCHAR(32) NOT NULL,
+  party_id    INT NOT NULL,
+  amount      DOUBLE NOT NULL DEFAULT 0,
+  direction   VARCHAR(8) NOT NULL DEFAULT 'debit',
+  as_of_date  VARCHAR(32) NOT NULL,
+  remarks     TEXT,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_opening_party ON opening_balances(party_type, party_id)`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -3722,9 +3759,25 @@ async function deletePayment(payload) {
   await d.prepare(`DELETE FROM payments WHERE id = ?`).run(payload.id);
   return { ok: true };
 }
+var OPENING_TYPES = ["customer", "supplier", "transporter", "outsource"];
+async function openingEntry(partyType, partyId) {
+  if (!OPENING_TYPES.includes(partyType)) return null;
+  const row = await getDb().prepare(`SELECT amount, direction, as_of_date FROM opening_balances WHERE party_type = ? AND party_id = ?`).get(partyType, partyId);
+  if (!row || !(row.amount > 0)) return null;
+  return {
+    date: row.as_of_date || "1900-04-01",
+    created_at: "",
+    particulars: "Opening Balance",
+    ref: "OPENING",
+    debit: row.direction === "debit" ? roundMoney2(row.amount) : 0,
+    credit: row.direction === "credit" ? roundMoney2(row.amount) : 0
+  };
+}
 async function buildEntries(partyType, partyId) {
   const d = getDb();
   const entries = [];
+  const op = await openingEntry(partyType, partyId);
+  if (op) entries.push(op);
   if (partyType === "rack") {
     const loadings = await d.prepare(
       `SELECT rl.loading_no, rl.date, rl.created_at, COALESCE(rl.amount,0) AS amount,
@@ -4187,7 +4240,7 @@ async function getLedger(payload) {
   if (payload.from) {
     entries.push({
       date: payload.from,
-      particulars: "Opening balance",
+      particulars: "Opening Balance b/f",
       ref: "",
       debit: 0,
       credit: 0,
@@ -4254,6 +4307,36 @@ async function getPartyBalances(payload) {
     });
   }
   return result;
+}
+async function getOpeningBalance(payload) {
+  const row = await getDb().prepare(
+    `SELECT id, party_type, party_id, amount, direction, as_of_date, remarks
+       FROM opening_balances WHERE party_type = ? AND party_id = ?`
+  ).get(payload.party_type, payload.party_id);
+  return row ?? null;
+}
+async function setOpeningBalance(payload) {
+  if (!OPENING_TYPES.includes(payload.party_type))
+    return { ok: false, error: "Opening balance is only available for customer, supplier, transporter and outsource ledgers." };
+  if (!payload.party_id) return { ok: false, error: "Select a party." };
+  const amount = roundMoney2(Number(payload.amount) || 0);
+  const direction = payload.direction === "credit" ? "credit" : "debit";
+  const asOf = payload.as_of_date || (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const d = getDb();
+  await d.transaction(async () => {
+    await d.prepare(`DELETE FROM opening_balances WHERE party_type = ? AND party_id = ?`).run(payload.party_type, payload.party_id);
+    if (amount > 0) {
+      await d.prepare(
+        `INSERT INTO opening_balances (party_type, party_id, amount, direction, as_of_date, remarks)
+           VALUES (?, ?, ?, ?, ?, ?)`
+      ).run(payload.party_type, payload.party_id, amount, direction, asOf, payload.remarks ?? "");
+    }
+  });
+  return { ok: true };
+}
+async function deleteOpeningBalance(payload) {
+  await getDb().prepare(`DELETE FROM opening_balances WHERE party_type = ? AND party_id = ?`).run(payload.party_type, payload.party_id);
+  return { ok: true };
 }
 async function getAllDues(payload = {}) {
   const types = ["customer", "supplier", "transporter", "outsource"];
@@ -5419,6 +5502,9 @@ var handlers = {
   "ledgers.get": getLedger,
   "ledgers.balances": getPartyBalances,
   "ledgers.allDues": getAllDues,
+  "ledgers.getOpening": getOpeningBalance,
+  "ledgers.setOpening": setOpeningBalance,
+  "ledgers.deleteOpening": deleteOpeningBalance,
   "assets.list": listAssets,
   "assets.create": createAsset,
   "assets.update": updateAsset,

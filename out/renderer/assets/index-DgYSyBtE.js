@@ -11367,7 +11367,10 @@ const api = {
   ledgers: {
     get: (party_type, party_id, from, to) => call("ledgers.get", { party_type, party_id, from, to }),
     balances: (party_type, plant_id) => call("ledgers.balances", { party_type, plant_id }),
-    allDues: (plant_id) => call("ledgers.allDues", { plant_id })
+    allDues: (plant_id) => call("ledgers.allDues", { plant_id }),
+    getOpening: (party_type, party_id) => call("ledgers.getOpening", { party_type, party_id }),
+    setOpening: (p2) => call("ledgers.setOpening", p2),
+    deleteOpening: (party_type, party_id) => call("ledgers.deleteOpening", { party_type, party_id })
   },
   payments: {
     add: (p2) => call("payments.add", p2),
@@ -63179,6 +63182,13 @@ function drcr(t2, v2) {
   const debitPositive = t2 === "customer" || t2 === "company";
   return (debitPositive ? v2 > 0 : v2 < 0) ? "Dr" : "Cr";
 }
+const OPENING_TYPES = ["customer", "supplier", "transporter", "outsource"];
+function fyStartYearOf(d2) {
+  return d2.getMonth() >= 3 ? d2.getFullYear() : d2.getFullYear() - 1;
+}
+function fyLabel(y2) {
+  return `${y2}-${String((y2 + 1) % 100).padStart(2, "0")}`;
+}
 function Ledgers() {
   const qc2 = useQueryClient();
   const toast = useToast();
@@ -63187,7 +63197,25 @@ function Ledgers() {
   const [partyId, setPartyId] = reactExports.useState(initial.id);
   const [from, setFrom] = reactExports.useState("");
   const [to, setTo] = reactExports.useState("");
+  const [fy, setFy] = reactExports.useState("");
   const [payForm, setPayForm] = reactExports.useState(null);
+  const [openingForm, setOpeningForm] = reactExports.useState(null);
+  const fyYears = reactExports.useMemo(() => {
+    const cur = fyStartYearOf(/* @__PURE__ */ new Date());
+    return Array.from({ length: 7 }, (_, i) => cur + 1 - i);
+  }, []);
+  function selectFy(value) {
+    if (value === "") {
+      setFy("");
+      setFrom("");
+      setTo("");
+      return;
+    }
+    const y2 = Number(value);
+    setFy(y2);
+    setFrom(`${y2}-04-01`);
+    setTo(`${y2 + 1}-03-31`);
+  }
   const { data: balances = [] } = useQuery({
     queryKey: ["ledger-balances", partyType],
     queryFn: () => api.ledgers.balances(partyType)
@@ -63225,6 +63253,29 @@ function Ledgers() {
   function switchType(t2) {
     setPartyType(t2);
     setPartyId(void 0);
+  }
+  const saveOpening = useMutation({
+    mutationFn: (p2) => api.ledgers.setOpening(p2),
+    onSuccess: (res) => {
+      if (res.ok) {
+        refresh();
+        setOpeningForm(null);
+        toast.success("Opening balance saved.");
+      } else toast.error(res.error || "Could not save opening balance.");
+    },
+    onError: (e3) => toast.error(e3.message)
+  });
+  async function openOpening() {
+    if (!partyId) return;
+    const existing = await api.ledgers.getOpening(partyType, partyId).catch(() => null);
+    setOpeningForm({
+      party_type: partyType,
+      party_id: partyId,
+      amount: existing?.amount ?? "",
+      direction: existing?.direction ?? (partyType === "customer" ? "debit" : "credit"),
+      as_of_date: existing?.as_of_date || (fy ? `${fy}-04-01` : today()),
+      remarks: existing?.remarks ?? ""
+    });
   }
   function openPayment() {
     setPayForm({
@@ -63286,6 +63337,7 @@ function Ledgers() {
             /* @__PURE__ */ jsxRuntimeExports.jsx(FileSpreadsheet, { size: 16 }),
             " Excel"
           ] }),
+          OPENING_TYPES.includes(partyType) && /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", className: "no-print", onClick: openOpening, children: "Opening Balance" }),
           partyType !== "rack" && partyType !== "company" && partyType !== "plant" && partyType !== "business" && /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { className: "no-print", onClick: openPayment, children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 16 }),
             " Record Payment"
@@ -63322,9 +63374,22 @@ function Ledgers() {
           }
         ),
         partyId && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", className: "w-full sm:w-36", value: from, onChange: (e3) => setFrom(e3.target.value) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { className: "w-full sm:w-36", value: fy === "" ? "" : String(fy), onChange: (e3) => selectFy(e3.target.value), title: "Financial year", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "All time" }),
+            fyYears.map((y2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: y2, children: [
+              "FY ",
+              fyLabel(y2)
+            ] }, y2))
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", className: "w-full sm:w-36", value: from, onChange: (e3) => {
+            setFrom(e3.target.value);
+            setFy("");
+          } }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-muted-foreground", children: "to" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", className: "w-full sm:w-36", value: to, onChange: (e3) => setTo(e3.target.value) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", className: "w-full sm:w-36", value: to, onChange: (e3) => {
+            setTo(e3.target.value);
+            setFy("");
+          } }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "ghost", size: "sm", onClick: () => setPartyId(void 0), children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowLeft, { size: 15 }),
             " All ",
@@ -63397,7 +63462,7 @@ function Ledgers() {
           ] }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TBody, { children: [
             ledger.entries.map((e3, i) => {
-              const opening = e3.particulars === "Opening balance";
+              const opening = e3.particulars.toLowerCase().startsWith("opening balance");
               return /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { className: opening ? "bg-muted/30" : "", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "whitespace-nowrap", children: fmtDate(e3.date) }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: opening ? "italic text-muted-foreground" : "font-medium", children: e3.particulars }),
@@ -63453,6 +63518,29 @@ function Ledgers() {
             children: "Save Payment"
           }
         )
+      ] })
+    ] }) }),
+    openingForm && /* @__PURE__ */ jsxRuntimeExports.jsx(Modal, { open: true, onClose: () => setOpeningForm(null), title: `Opening Balance — ${selected?.name ?? ""}`, children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-lg border border-primary/30 bg-accent/40 px-3.5 py-2.5 text-xs text-accent-foreground", children: "The opening balance is the account's starting figure. Each financial year's opening is the previous year's closing automatically — you only set this once." }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "As-of date", hint: "Usually the start of your first financial year", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: openingForm.as_of_date, onChange: (e3) => setOpeningForm({ ...openingForm, as_of_date: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Amount", hint: "Set 0 to clear the opening balance", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: openingForm.amount, onChange: (e3) => setOpeningForm({ ...openingForm, amount: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Field,
+          {
+            label: "Type",
+            hint: partyType === "customer" ? "Dr = they owe you · Cr = advance from them" : "Cr = you owe them · Dr = advance you paid",
+            children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: openingForm.direction, onChange: (e3) => setOpeningForm({ ...openingForm, direction: e3.target.value }), children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "debit", children: "Debit (Dr)" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "credit", children: "Credit (Cr)" })
+            ] })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: openingForm.remarks, onChange: (e3) => setOpeningForm({ ...openingForm, remarks: e3.target.value }) }) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-end gap-2 pt-1", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setOpeningForm(null), children: "Cancel" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: () => saveOpening.mutate({ ...openingForm, amount: Number(openingForm.amount) || 0 }), children: "Save Opening Balance" })
       ] })
     ] }) })
   ] });
