@@ -74,6 +74,26 @@ CREATE TABLE IF NOT EXISTS customer_rates (
   updated_at   TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
+CREATE TABLE IF NOT EXISTS rate_chart (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  product_name      TEXT NOT NULL,
+  stock_location_id INTEGER NOT NULL REFERENCES stock_locations(id),
+  uom               TEXT NOT NULL DEFAULT 'CM',
+  rate_wholesale    REAL NOT NULL DEFAULT 0,
+  rate_retail       REAL NOT NULL DEFAULT 0,
+  rate_customer     REAL NOT NULL DEFAULT 0,
+  updated_at        TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS transport_charges (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  vehicle_type      TEXT NOT NULL,
+  stock_location_id INTEGER NOT NULL REFERENCES stock_locations(id),
+  basis             TEXT NOT NULL DEFAULT 'trip',
+  charge            REAL NOT NULL DEFAULT 0,
+  updated_at        TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS stock_locations (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   plant_id    INTEGER NOT NULL REFERENCES plants(id),
@@ -465,4 +485,6 @@ CREATE INDEX IF NOT EXISTS idx_products_plant ON products(plant_id);
 CREATE INDEX IF NOT EXISTS idx_crates_customer ON customer_rates(customer_id);
 CREATE INDEX IF NOT EXISTS idx_customers_token ON customers(share_token);
 CREATE INDEX IF NOT EXISTS idx_opening_party ON opening_balances(party_type, party_id);
+CREATE INDEX IF NOT EXISTS idx_ratechart_loc ON rate_chart(stock_location_id);
+CREATE INDEX IF NOT EXISTS idx_transport_loc ON transport_charges(stock_location_id);
 `

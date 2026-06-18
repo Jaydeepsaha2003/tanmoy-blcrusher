@@ -5,6 +5,8 @@ import type {
   Customer,
   Product,
   CustomerRate,
+  RateChartRow,
+  TransportCharge,
   Purchase,
   ProductionSetting,
   Production,
@@ -115,6 +117,18 @@ export const api = {
     create: (p: Partial<Customer>) => call<Customer>('customers.create', p),
     update: (p: Partial<Customer>) => call<Customer>('customers.update', p),
     delete: (id: number) => call<{ ok: boolean; error?: string }>('customers.delete', { id })
+  },
+  rateChart: {
+    list: (plant_id?: number) => call<RateChartRow[]>('rateChart.list', { plant_id }),
+    create: (p: Partial<RateChartRow>) => call<RateChartRow>('rateChart.create', p),
+    update: (p: Partial<RateChartRow>) => call<RateChartRow>('rateChart.update', p),
+    delete: (id: number) => call<{ ok: boolean }>('rateChart.delete', { id })
+  },
+  transportCharges: {
+    list: (plant_id?: number) => call<TransportCharge[]>('transportCharges.list', { plant_id }),
+    create: (p: Partial<TransportCharge>) => call<TransportCharge>('transportCharges.create', p),
+    update: (p: Partial<TransportCharge>) => call<TransportCharge>('transportCharges.update', p),
+    delete: (id: number) => call<{ ok: boolean }>('transportCharges.delete', { id })
   },
   products: {
     list: () => call<Product[]>('products.list'),

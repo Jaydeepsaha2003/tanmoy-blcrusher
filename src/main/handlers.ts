@@ -5,6 +5,7 @@ import * as suppliers from './services/suppliers'
 import * as customers from './services/customers'
 import * as products from './services/products'
 import * as rates from './services/rates'
+import * as rateChart from './services/rateChart'
 import * as purchases from './services/purchases'
 import * as psettings from './services/productionSettings'
 import * as productions from './services/productions'
@@ -72,6 +73,15 @@ export const handlers: Record<string, (payload: any) => unknown> = {
   'rates.removeShareLink': rates.revokeShareLink,
   'rates.getBusinessName': rates.getBusinessName,
   'rates.setBusinessName': rates.setBusinessName,
+
+  'rateChart.list': rateChart.listRateChart,
+  'rateChart.create': rateChart.createRateChart,
+  'rateChart.update': rateChart.updateRateChart,
+  'rateChart.delete': rateChart.deleteRateChart,
+  'transportCharges.list': rateChart.listTransportCharges,
+  'transportCharges.create': rateChart.createTransportCharge,
+  'transportCharges.update': rateChart.updateTransportCharge,
+  'transportCharges.delete': rateChart.deleteTransportCharge,
 
   'purchases.list': purchases.listPurchases,
   'purchases.create': purchases.createPurchase,

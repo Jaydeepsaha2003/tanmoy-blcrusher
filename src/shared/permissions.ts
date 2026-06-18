@@ -40,6 +40,8 @@ const PREFIX_MODULE: Record<string, ModuleKey> = {
   customers: 'masters',
   products: 'masters',
   rates: 'masters',
+  rateChart: 'masters',
+  transportCharges: 'masters',
   transporters: 'masters',
   companies: 'masters',
   businesses: 'masters',

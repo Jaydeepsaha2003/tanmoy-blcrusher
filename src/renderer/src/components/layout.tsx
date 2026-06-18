@@ -40,6 +40,7 @@ import {
   ShieldCheck,
   ScrollText,
   Package,
+  IndianRupee,
   Menu
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -84,7 +85,8 @@ export const NAV: NavGroup[] = [
     heading: 'Direct Sales',
     items: [
       { to: '/dispatch', label: 'Direct Sale', icon: Send, module: 'dispatch' },
-      { to: '/deliveries', label: 'Delivery Status', icon: ClipboardCheck, module: 'dispatch' }
+      { to: '/deliveries', label: 'Delivery Status', icon: ClipboardCheck, module: 'dispatch' },
+      { to: '/rate-chart', label: 'Rate Chart', icon: IndianRupee, module: 'masters' }
     ]
   },
   {

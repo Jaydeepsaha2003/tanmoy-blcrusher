@@ -70,6 +70,24 @@ CREATE TABLE IF NOT EXISTS customer_rates (
   rate         DOUBLE NOT NULL DEFAULT 0,
   updated_at   VARCHAR(32) NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS rate_chart (
+  id                INT AUTO_INCREMENT PRIMARY KEY,
+  product_name      VARCHAR(255) NOT NULL,
+  stock_location_id INT NOT NULL,
+  uom               VARCHAR(8) NOT NULL DEFAULT 'CM',
+  rate_wholesale    DOUBLE NOT NULL DEFAULT 0,
+  rate_retail       DOUBLE NOT NULL DEFAULT 0,
+  rate_customer     DOUBLE NOT NULL DEFAULT 0,
+  updated_at        VARCHAR(32) NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS transport_charges (
+  id                INT AUTO_INCREMENT PRIMARY KEY,
+  vehicle_type      VARCHAR(255) NOT NULL,
+  stock_location_id INT NOT NULL,
+  basis             VARCHAR(8) NOT NULL DEFAULT 'trip',
+  charge            DOUBLE NOT NULL DEFAULT 0,
+  updated_at        VARCHAR(32) NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS stock_locations (
   id          INT AUTO_INCREMENT PRIMARY KEY,
   plant_id    INT NOT NULL,
@@ -515,6 +533,30 @@ ALTER TABLE purchases ADD COLUMN outsource_id INT`
   created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_opening_party ON opening_balances(party_type, party_id)`
+  },
+  {
+    // Advanced rate chart (product × location × tier) + transport charges (vehicle × location).
+    id: '009_rate_chart_transport',
+    sql: `CREATE TABLE IF NOT EXISTS rate_chart (
+  id                INT AUTO_INCREMENT PRIMARY KEY,
+  product_name      VARCHAR(255) NOT NULL,
+  stock_location_id INT NOT NULL,
+  uom               VARCHAR(8) NOT NULL DEFAULT 'CM',
+  rate_wholesale    DOUBLE NOT NULL DEFAULT 0,
+  rate_retail       DOUBLE NOT NULL DEFAULT 0,
+  rate_customer     DOUBLE NOT NULL DEFAULT 0,
+  updated_at        VARCHAR(32) NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS transport_charges (
+  id                INT AUTO_INCREMENT PRIMARY KEY,
+  vehicle_type      VARCHAR(255) NOT NULL,
+  stock_location_id INT NOT NULL,
+  basis             VARCHAR(8) NOT NULL DEFAULT 'trip',
+  charge            DOUBLE NOT NULL DEFAULT 0,
+  updated_at        VARCHAR(32) NOT NULL DEFAULT ''
+);
+CREATE INDEX idx_ratechart_loc ON rate_chart(stock_location_id);
+CREATE INDEX idx_transport_loc ON transport_charges(stock_location_id)`
   }
 ]
 

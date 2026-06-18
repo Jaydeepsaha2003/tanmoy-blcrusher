@@ -165,6 +165,35 @@ export interface CustomerRate {
   updated_at?: string
 }
 
+export type RateTier = 'wholesale' | 'retail' | 'customer'
+export type TransportBasis = 'trip' | 'cm' | 'ton'
+
+/** A row in the advanced rate chart: a product at a location, priced per tier. */
+export interface RateChartRow {
+  id?: number
+  product_name: string
+  stock_location_id: number
+  stock_location_name?: string
+  plant_name?: string
+  uom: Uom
+  rate_wholesale: number
+  rate_retail: number
+  rate_customer: number
+  updated_at?: string
+}
+
+/** A transport charge for a vehicle/lorry type at a location. */
+export interface TransportCharge {
+  id?: number
+  vehicle_type: string
+  stock_location_id: number
+  stock_location_name?: string
+  plant_name?: string
+  basis: TransportBasis
+  charge: number
+  updated_at?: string
+}
+
 /** Data backing the public, no-login rate page shared with a customer. */
 export interface PublicRateList {
   customer_name: string
