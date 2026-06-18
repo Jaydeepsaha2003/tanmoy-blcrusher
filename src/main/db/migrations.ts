@@ -138,6 +138,8 @@ CREATE TABLE IF NOT EXISTS purchases (
   supplier_id       INT NOT NULL,
   plant_id          INT NOT NULL,
   stock_location_id INT NOT NULL,
+  material_type     VARCHAR(16) NOT NULL DEFAULT 'raw',
+  product_name      VARCHAR(255) NOT NULL DEFAULT '',
   quantity          DOUBLE NOT NULL,
   rate              DOUBLE,
   amount            DOUBLE,
@@ -466,6 +468,13 @@ CREATE TABLE IF NOT EXISTS customer_rates (
 );
 CREATE INDEX idx_products_plant ON products(plant_id);
 CREATE INDEX idx_crates_customer ON customer_rates(customer_id)`
+  },
+  {
+    // Purchasing finished goods: a purchase can be raw material or a finished
+    // product (which lands in finished-goods stock).
+    id: '005_purchase_finished_goods',
+    sql: `ALTER TABLE purchases ADD COLUMN material_type VARCHAR(16) NOT NULL DEFAULT 'raw';
+ALTER TABLE purchases ADD COLUMN product_name VARCHAR(255) NOT NULL DEFAULT ''`
   }
 ]
 
@@ -521,6 +530,9 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   await addColumn('plants', 'ton_per_cm', 'REAL NOT NULL DEFAULT 1.6')
   await addColumn('plants', 'cft_per_cm', 'REAL NOT NULL DEFAULT 35.31')
   await addColumn('customers', 'share_token', 'TEXT')
+  // Purchasing finished goods (raw vs finished product).
+  await addColumn('purchases', 'material_type', `TEXT NOT NULL DEFAULT 'raw'`)
+  await addColumn('purchases', 'product_name', `TEXT NOT NULL DEFAULT ''`)
 }
 
 /**

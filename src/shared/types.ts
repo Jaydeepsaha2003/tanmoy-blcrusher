@@ -245,6 +245,10 @@ export interface Purchase {
   plant_name?: string
   stock_location_id: number
   stock_location_name?: string
+  /** 'raw' = raw material into a location; 'finished' = a product into finished-goods stock. */
+  material_type: MaterialType
+  /** Product name when material_type = 'finished' (else ''). */
+  product_name: string
   uom: Uom
   quantity: number
   qty_cm: number
@@ -292,6 +296,7 @@ export interface FinishedGood {
   product_name: string
   opening_qty: number
   produced_qty: number
+  purchased_qty: number
   dispatched_qty: number
   loaded_qty: number
   balance_qty: number

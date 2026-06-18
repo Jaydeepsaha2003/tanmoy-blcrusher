@@ -108,6 +108,8 @@ CREATE TABLE IF NOT EXISTS purchases (
   supplier_id       INTEGER NOT NULL REFERENCES suppliers(id),
   plant_id          INTEGER NOT NULL REFERENCES plants(id),
   stock_location_id INTEGER NOT NULL REFERENCES stock_locations(id),
+  material_type     TEXT NOT NULL DEFAULT 'raw',
+  product_name      TEXT NOT NULL DEFAULT '',
   uom               TEXT NOT NULL DEFAULT 'CM',
   quantity          REAL NOT NULL,
   qty_cm            REAL NOT NULL DEFAULT 0,

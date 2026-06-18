@@ -58,7 +58,9 @@ export async function getDashboard(payload: { plant_id?: number } = {}): Promise
     .all()) as DashboardData['finishedByProduct']
 
   const totalPurchased = num(
-    (await d.prepare(`SELECT COALESCE(SUM(qty_cm),0) AS q FROM purchases${plWhere}`).get()) as { q: number }
+    (await d
+      .prepare(`SELECT COALESCE(SUM(qty_cm),0) AS q FROM purchases WHERE COALESCE(material_type,'raw')='raw'${plAnd}`)
+      .get()) as { q: number }
   )
   const totalConsumed = num(
     (await d.prepare(`SELECT COALESCE(SUM(raw_qty),0) AS q FROM productions${plWhere}`).get()) as { q: number }

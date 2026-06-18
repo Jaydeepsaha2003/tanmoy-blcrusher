@@ -1,7 +1,7 @@
 import { getDb, nextNumber } from '../db'
-import type { Purchase, PaymentStatus, Uom } from '@shared/types'
-import { derivePaymentStatus, toCm } from '@shared/types'
-import { addMovement, rawLocationBalance } from './movements'
+import type { Purchase, PaymentStatus, Uom, MaterialType } from '@shared/types'
+import { derivePaymentStatus, toCm, properCase } from '@shared/types'
+import { addMovement, rawLocationBalance, finishedBalance } from './movements'
 import { ensureDefaultLocation } from './stockLocations'
 import { plantUomFactors } from './plants'
 
@@ -65,6 +65,10 @@ export interface PurchaseInput {
   supplier_id: number
   plant_id: number
   stock_location_id?: number
+  /** 'raw' (default) buys raw material into a location; 'finished' buys a product into finished stock. */
+  material_type?: MaterialType
+  /** Product name, required when material_type = 'finished'. */
+  product_name?: string
   uom: Uom
   quantity: number
   rate: number | null
@@ -77,6 +81,11 @@ export interface PurchaseInput {
 export async function createPurchase(p: PurchaseInput): Promise<Purchase> {
   const d = getDb()
   if (!(p.quantity > 0)) throw new Error('Quantity must be greater than 0.')
+  const kind: MaterialType = p.material_type === 'finished' ? 'finished' : 'raw'
+  const product = kind === 'finished' ? properCase(p.product_name || '') : ''
+  if (kind === 'finished' && !product) throw new Error('Select a product to purchase.')
+  // A stock-location is always stored (NOT NULL); for finished purchases it is the
+  // plant's default and is not used for finished-goods tracking.
   const locId = p.stock_location_id || (await ensureDefaultLocation(p.plant_id))
   const uom: Uom = (['CM', 'TON', 'CFT'] as const).includes(p.uom) ? p.uom : 'CM'
   const qtyCm = roundQty(toCm(p.quantity, uom, await plantUomFactors(p.plant_id)))
@@ -86,14 +95,16 @@ export async function createPurchase(p: PurchaseInput): Promise<Purchase> {
     const info = await d
       .prepare(
         `INSERT INTO purchases
-          (purchase_no, supplier_id, plant_id, stock_location_id, uom, quantity, qty_cm, rate, amount, paid_amount, payment_status, date, remarks)
-         VALUES (@purchase_no,@supplier_id,@plant_id,@stock_location_id,@uom,@quantity,@qty_cm,@rate,@amount,@paid_amount,@payment_status,@date,@remarks)`
+          (purchase_no, supplier_id, plant_id, stock_location_id, material_type, product_name, uom, quantity, qty_cm, rate, amount, paid_amount, payment_status, date, remarks)
+         VALUES (@purchase_no,@supplier_id,@plant_id,@stock_location_id,@material_type,@product_name,@uom,@quantity,@qty_cm,@rate,@amount,@paid_amount,@payment_status,@date,@remarks)`
       )
       .run({
         purchase_no: no,
         supplier_id: p.supplier_id,
         plant_id: p.plant_id,
         stock_location_id: locId,
+        material_type: kind,
+        product_name: product,
         uom,
         quantity: p.quantity,
         qty_cm: qtyCm,
@@ -104,16 +115,29 @@ export async function createPurchase(p: PurchaseInput): Promise<Purchase> {
         date: p.date,
         remarks: p.remarks ?? ''
       })
-    await addMovement(d, {
-      type: 'purchase',
-      material_type: 'raw',
-      ref_no: no,
-      plant_id: p.plant_id,
-      stock_location_id: locId,
-      change_qty: qtyCm,
-      date: p.date,
-      note: 'Raw material received'
-    })
+    if (kind === 'finished') {
+      await addMovement(d, {
+        type: 'purchase',
+        material_type: 'finished',
+        ref_no: no,
+        plant_id: p.plant_id,
+        product_name: product,
+        change_qty: qtyCm,
+        date: p.date,
+        note: 'Finished goods purchased'
+      })
+    } else {
+      await addMovement(d, {
+        type: 'purchase',
+        material_type: 'raw',
+        ref_no: no,
+        plant_id: p.plant_id,
+        stock_location_id: locId,
+        change_qty: qtyCm,
+        date: p.date,
+        note: 'Raw material received'
+      })
+    }
     return Number(info.lastInsertRowid)
   })
   return (await d.prepare(`SELECT * FROM purchases WHERE id = ?`).get(id)) as Purchase
@@ -125,6 +149,9 @@ export async function updatePurchase(p: PurchaseInput): Promise<Purchase> {
   if (!(p.quantity > 0)) throw new Error('Quantity must be greater than 0.')
   const old = (await d.prepare(`SELECT * FROM purchases WHERE id = ?`).get(p.id)) as Purchase
   if (!old) throw new Error('Purchase not found.')
+  const kind: MaterialType = p.material_type === 'finished' ? 'finished' : 'raw'
+  const product = kind === 'finished' ? properCase(p.product_name || '') : ''
+  if (kind === 'finished' && !product) throw new Error('Select a product to purchase.')
   const locId = p.stock_location_id || old.stock_location_id || (await ensureDefaultLocation(p.plant_id))
   const uom: Uom = (['CM', 'TON', 'CFT'] as const).includes(p.uom) ? p.uom : 'CM'
   const qtyCm = roundQty(toCm(p.quantity, uom, await plantUomFactors(p.plant_id)))
@@ -132,6 +159,7 @@ export async function updatePurchase(p: PurchaseInput): Promise<Purchase> {
   await d.transaction(async () => {
     await d.prepare(
       `UPDATE purchases SET supplier_id=@supplier_id, plant_id=@plant_id, stock_location_id=@stock_location_id,
+         material_type=@material_type, product_name=@product_name,
          uom=@uom, quantity=@quantity, qty_cm=@qty_cm, rate=@rate, amount=@amount, paid_amount=@paid_amount,
          payment_status=@payment_status, date=@date, remarks=@remarks WHERE id=@id`
     ).run({
@@ -139,6 +167,8 @@ export async function updatePurchase(p: PurchaseInput): Promise<Purchase> {
       supplier_id: p.supplier_id,
       plant_id: p.plant_id,
       stock_location_id: locId,
+      material_type: kind,
+      product_name: product,
       uom,
       quantity: p.quantity,
       qty_cm: qtyCm,
@@ -149,16 +179,42 @@ export async function updatePurchase(p: PurchaseInput): Promise<Purchase> {
       date: p.date,
       remarks: p.remarks ?? ''
     })
-    // Re-point the linked stock movement (in base m³).
-    await d.prepare(
-      `UPDATE stock_movements SET plant_id=?, stock_location_id=?, change_qty=?, date=?
-       WHERE ref_no=? AND type='purchase'`
-    ).run(p.plant_id, locId, qtyCm, p.date, old.purchase_no)
+    // Rebuild the linked stock movement (kind may have changed on edit).
+    await d.prepare(`DELETE FROM stock_movements WHERE ref_no=? AND type='purchase'`).run(old.purchase_no)
+    if (kind === 'finished') {
+      await addMovement(d, {
+        type: 'purchase',
+        material_type: 'finished',
+        ref_no: old.purchase_no,
+        plant_id: p.plant_id,
+        product_name: product,
+        change_qty: qtyCm,
+        date: p.date,
+        note: 'Finished goods purchased'
+      })
+    } else {
+      await addMovement(d, {
+        type: 'purchase',
+        material_type: 'raw',
+        ref_no: old.purchase_no,
+        plant_id: p.plant_id,
+        stock_location_id: locId,
+        change_qty: qtyCm,
+        date: p.date,
+        note: 'Raw material received'
+      })
+    }
 
+    // Guard against negative balances at any affected location/product (old & new).
     if ((await rawLocationBalance(d, old.stock_location_id)) < 0)
       throw new Error('Edit would make the original location stock negative.')
-    if ((await rawLocationBalance(d, locId)) < 0)
+    if (kind === 'raw' && (await rawLocationBalance(d, locId)) < 0)
       throw new Error('Edit would make the location stock negative.')
+    if (old.material_type === 'finished' && old.product_name &&
+        (await finishedBalance(d, old.plant_id, old.product_name)) < 0)
+      throw new Error('Edit would make the original finished-goods stock negative.')
+    if (kind === 'finished' && (await finishedBalance(d, p.plant_id, product)) < 0)
+      throw new Error('Edit would make the finished-goods stock negative.')
   })
   return (await d.prepare(`SELECT * FROM purchases WHERE id = ?`).get(p.id)) as Purchase
 }
@@ -172,8 +228,12 @@ export async function deletePurchase(payload: { id: number }): Promise<{ ok: boo
       await d.prepare(`DELETE FROM stock_movements WHERE ref_no=? AND type='purchase'`).run(
         old.purchase_no
       )
-      if ((await rawLocationBalance(d, old.stock_location_id)) < 0)
+      if (old.material_type === 'finished') {
+        if (old.product_name && (await finishedBalance(d, old.plant_id, old.product_name)) < 0)
+          throw new Error('Cannot delete: these finished goods have already been dispatched or sold.')
+      } else if ((await rawLocationBalance(d, old.stock_location_id)) < 0) {
         throw new Error('Cannot delete: this material has already been consumed in production.')
+      }
       await d.prepare(`DELETE FROM purchases WHERE id = ?`).run(payload.id)
     })
     return { ok: true }

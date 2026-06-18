@@ -50,8 +50,8 @@ export function FinishedGoods(): React.JSX.Element {
     downloadExcel(
       'finished-goods',
       'Finished Goods',
-      ['Plant', 'Product', 'Opening', 'Produced', 'Dispatched', 'To Rack', 'Balance (m³)'],
-      data.map((f) => [f.plant_name, f.product_name, f.opening_qty, f.produced_qty, f.dispatched_qty, f.loaded_qty, f.balance_qty])
+      ['Plant', 'Product', 'Opening', 'Produced', 'Purchased', 'Dispatched', 'To Rack', 'Balance (m³)'],
+      data.map((f) => [f.plant_name, f.product_name, f.opening_qty, f.produced_qty, f.purchased_qty, f.dispatched_qty, f.loaded_qty, f.balance_qty])
     )
   }
 
@@ -92,6 +92,7 @@ export function FinishedGoods(): React.JSX.Element {
                 <TH>Product</TH>
                 <TH className="text-right">Opening</TH>
                 <TH className="text-right">Produced</TH>
+                <TH className="text-right">Purchased</TH>
                 <TH className="text-right">Dispatched</TH>
                 <TH className="text-right">To Rack</TH>
                 <TH className="text-right">Balance (m³)</TH>
@@ -104,6 +105,7 @@ export function FinishedGoods(): React.JSX.Element {
                   <TD>{f.product_name}</TD>
                   <TD className="text-right">{fmtQty(f.opening_qty)}</TD>
                   <TD className="text-right text-success">{fmtQty(f.produced_qty)}</TD>
+                  <TD className="text-right text-success">{fmtQty(f.purchased_qty)}</TD>
                   <TD className="text-right text-destructive">{fmtQty(f.dispatched_qty)}</TD>
                   <TD className="text-right text-warning">{fmtQty(f.loaded_qty)}</TD>
                   <TD className="text-right font-semibold">{fmtQty(f.balance_qty)}</TD>

@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, FileSpreadsheet } from 'lucide-react'
+import { Plus, Pencil, Trash2, FileSpreadsheet, Mountain, Boxes } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { Purchase, PaymentStatus } from '@shared/types'
 import { PageHeader, Page } from '@/components/layout'
@@ -39,6 +39,7 @@ export function Purchases(): React.JSX.Element {
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers', plantId], queryFn: () => api.suppliers.list(plantId) })
   const [filter, setFilter] = React.useState<{ supplier_id?: number; payment_status?: string }>({})
   const { data: locations = [] } = useQuery({ queryKey: ['locations', 0], queryFn: () => api.locations.list() })
+  const { data: products = [] } = useQuery({ queryKey: ['products'], queryFn: () => api.products.list() })
 
   const { data = [] } = useQuery({
     queryKey: ['purchases', filter, plantId],
@@ -68,6 +69,8 @@ export function Purchases(): React.JSX.Element {
       supplier_id: suppliers[0]?.id,
       plant_id: plantId ?? plants[0]?.id,
       stock_location_id: undefined,
+      material_type: 'raw',
+      product_name: '',
       uom: 'CM',
       quantity: '',
       rate: '',
@@ -118,8 +121,8 @@ export function Purchases(): React.JSX.Element {
   return (
     <>
       <PageHeader
-        title="Raw Material Purchase / Inward"
-        description="Record raw material received from suppliers"
+        title="Purchases / Inward"
+        description="Buy raw material into a stock location, or finished products straight into finished-goods stock"
         actions={
           <>
             <Button variant="outline" onClick={exportExcel} disabled={!data.length}>
@@ -154,7 +157,7 @@ export function Purchases(): React.JSX.Element {
                 <TH>Purchase No</TH>
                 <TH>Date</TH>
                 <TH>Supplier</TH>
-                <TH>Plant / Location</TH>
+                <TH>Plant / Item</TH>
                 <TH className="text-right">Quantity</TH>
                 <TH className="text-right">Rate</TH>
                 <TH className="text-right">Amount</TH>
@@ -168,7 +171,16 @@ export function Purchases(): React.JSX.Element {
                   <TD className="font-mono text-xs font-medium">{p.purchase_no}</TD>
                   <TD>{fmtDate(p.date)}</TD>
                   <TD className="font-medium">{p.supplier_name}</TD>
-                  <TD className="text-muted-foreground">{p.plant_name} / {p.stock_location_name}</TD>
+                  <TD className="text-muted-foreground">
+                    {p.material_type === 'finished' ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <Badge variant="default">Finished</Badge>
+                        {p.plant_name} / {p.product_name}
+                      </span>
+                    ) : (
+                      <>{p.plant_name} / {p.stock_location_name}</>
+                    )}
+                  </TD>
                   <TD className="text-right">
                     {fmtQty(p.quantity)} {p.uom}
                     {p.uom !== 'CM' && (
@@ -195,6 +207,28 @@ export function Purchases(): React.JSX.Element {
 
       {form && (
         <Modal open={open} onClose={() => setOpen(false)} title={form.id ? `Edit ${form.purchase_no}` : 'New Purchase'} width="max-w-2xl">
+          {/* What are we buying? */}
+          <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl border bg-muted/40 p-1">
+            {([
+              { key: 'raw', label: 'Raw Material', icon: Mountain },
+              { key: 'finished', label: 'Products (Finished)', icon: Boxes }
+            ] as const).map((opt) => {
+              const active = (form.material_type || 'raw') === opt.key
+              return (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => setForm({ ...form, material_type: opt.key })}
+                  className={
+                    'flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-colors ' +
+                    (active ? 'bg-primary text-primary-foreground shadow-sm' : 'text-foreground/70 hover:bg-accent')
+                  }
+                >
+                  <opt.icon size={16} /> {opt.label}
+                </button>
+              )
+            })}
+          </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Supplier" required>
               <Select value={form.supplier_id || ''} onChange={(e) => setForm({ ...form, supplier_id: Number(e.target.value) })}>
@@ -209,20 +243,36 @@ export function Purchases(): React.JSX.Element {
                 {plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </Select>
             </Field>
-            <Field
-              label="Stock Location"
-              hint="Leave blank to use the plant itself as the default location"
-            >
-              <Select
-                value={form.stock_location_id || ''}
-                onChange={(e) =>
-                  setForm({ ...form, stock_location_id: e.target.value ? Number(e.target.value) : undefined })
-                }
+            {form.material_type === 'finished' ? (
+              <Field
+                label="Product"
+                required
+                hint="Bought quantity is added to this product's finished-goods stock"
               >
-                <option value="">Plant default (auto)</option>
-                {formLocations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-              </Select>
-            </Field>
+                <Select
+                  value={form.product_name || ''}
+                  onChange={(e) => setForm({ ...form, product_name: e.target.value })}
+                >
+                  <option value="">Select product…</option>
+                  {products.map((pr) => <option key={pr.id} value={pr.name}>{pr.name}</option>)}
+                </Select>
+              </Field>
+            ) : (
+              <Field
+                label="Stock Location"
+                hint="Leave blank to use the plant itself as the default location"
+              >
+                <Select
+                  value={form.stock_location_id || ''}
+                  onChange={(e) =>
+                    setForm({ ...form, stock_location_id: e.target.value ? Number(e.target.value) : undefined })
+                  }
+                >
+                  <option value="">Plant default (auto)</option>
+                  {formLocations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </Select>
+              </Field>
+            )}
             <Field label="Unit (UOM)" required>
               <Select value={form.uom || 'CM'} onChange={(e) => setForm({ ...form, uom: e.target.value })}>
                 {UOMS.map((u) => (
@@ -267,7 +317,15 @@ export function Purchases(): React.JSX.Element {
           </div>
           <div className="mt-5 flex justify-end gap-2">
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={submit} disabled={!form.supplier_id || !(Number(form.quantity) > 0) || !(Number(form.rate) > 0)}>
+            <Button
+              onClick={submit}
+              disabled={
+                !form.supplier_id ||
+                !(Number(form.quantity) > 0) ||
+                !(Number(form.rate) > 0) ||
+                (form.material_type === 'finished' && !form.product_name)
+              }
+            >
               Save Purchase
             </Button>
           </div>

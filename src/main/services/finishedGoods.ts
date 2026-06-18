@@ -28,6 +28,7 @@ export async function listFinishedGoods(filter: FinishedFilter = {}): Promise<Fi
   }
   // Date range only constrains produced/dispatched/loaded, not opening or final balance.
   const dateProd = filter.from || filter.to ? buildDateClause(filter, params, 'prodd') : ''
+  const datePurch = filter.from || filter.to ? buildDateClause(filter, params, 'purd') : ''
   const dateDisp = filter.from || filter.to ? buildDateClause(filter, params, 'dispd') : ''
   const dateLoad = filter.from || filter.to ? buildDateClause(filter, params, 'loadd') : ''
 
@@ -36,6 +37,7 @@ export async function listFinishedGoods(filter: FinishedFilter = {}): Promise<Fi
       `SELECT m.plant_id, p.name AS plant_name, m.product_name,
         COALESCE(SUM(CASE WHEN m.type='opening' THEN m.change_qty ELSE 0 END),0) AS opening_qty,
         COALESCE(SUM(CASE WHEN m.type='production_output' ${dateProd} THEN m.change_qty ELSE 0 END),0) AS produced_qty,
+        COALESCE(SUM(CASE WHEN m.type='purchase' ${datePurch} THEN m.change_qty ELSE 0 END),0) AS purchased_qty,
         COALESCE(SUM(CASE WHEN m.type='dispatch' ${dateDisp} THEN -m.change_qty ELSE 0 END),0) AS dispatched_qty,
         COALESCE(SUM(CASE WHEN m.type='rack_load' ${dateLoad} THEN -m.change_qty ELSE 0 END),0) AS loaded_qty,
         COALESCE(SUM(m.change_qty),0) AS balance_qty
@@ -50,6 +52,7 @@ export async function listFinishedGoods(filter: FinishedFilter = {}): Promise<Fi
     ...r,
     opening_qty: round(r.opening_qty),
     produced_qty: round(r.produced_qty),
+    purchased_qty: round(r.purchased_qty),
     dispatched_qty: round(r.dispatched_qty),
     loaded_qty: round(r.loaded_qty),
     balance_qty: round(r.balance_qty)
