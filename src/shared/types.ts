@@ -501,8 +501,11 @@ export interface Dispatch {
   plant_name?: string
   product_name: string
   uom: Uom
+  /** Actual quantity dispatched from the plant (drives stock). Always entered. */
   quantity: number
   qty_cm: number
+  /** Quantity actually sold/received at destination (added later). null = not set yet. */
+  sale_quantity: number | null
   rate: number | null
   amount: number | null
   transport_charge: number

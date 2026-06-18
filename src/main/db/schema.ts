@@ -164,6 +164,7 @@ CREATE TABLE IF NOT EXISTS dispatches (
   uom             TEXT NOT NULL DEFAULT 'CM',
   quantity        REAL NOT NULL,
   qty_cm          REAL NOT NULL DEFAULT 0,
+  sale_quantity   REAL,
   rate            REAL,
   amount          REAL,
   transport_charge REAL NOT NULL DEFAULT 0,

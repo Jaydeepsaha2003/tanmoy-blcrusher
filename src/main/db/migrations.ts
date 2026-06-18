@@ -187,6 +187,7 @@ CREATE TABLE IF NOT EXISTS dispatches (
   uom              VARCHAR(8) NOT NULL DEFAULT 'CM',
   quantity         DOUBLE NOT NULL,
   qty_cm           DOUBLE NOT NULL DEFAULT 0,
+  sale_quantity    DOUBLE,
   rate             DOUBLE,
   amount           DOUBLE,
   transport_charge DOUBLE NOT NULL DEFAULT 0,
@@ -475,6 +476,12 @@ CREATE INDEX idx_crates_customer ON customer_rates(customer_id)`
     id: '005_purchase_finished_goods',
     sql: `ALTER TABLE purchases ADD COLUMN material_type VARCHAR(16) NOT NULL DEFAULT 'raw';
 ALTER TABLE purchases ADD COLUMN product_name VARCHAR(255) NOT NULL DEFAULT ''`
+  },
+  {
+    // Direct sale: actual quantity (existing 'quantity') vs sale quantity. The
+    // bill uses sale_quantity when set, otherwise the actual quantity.
+    id: '006_dispatch_sale_quantity',
+    sql: `ALTER TABLE dispatches ADD COLUMN sale_quantity DOUBLE`
   }
 ]
 
@@ -533,6 +540,8 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   // Purchasing finished goods (raw vs finished product).
   await addColumn('purchases', 'material_type', `TEXT NOT NULL DEFAULT 'raw'`)
   await addColumn('purchases', 'product_name', `TEXT NOT NULL DEFAULT ''`)
+  // Direct sale: separate sale quantity from the actual dispatched quantity.
+  await addColumn('dispatches', 'sale_quantity', 'REAL')
 }
 
 /**

@@ -85,6 +85,7 @@ export interface DispatchInput {
   product_name: string
   uom: Uom
   quantity: number
+  sale_quantity?: number | null
   rate: number | null
   transport_charge?: number
   transport_billed?: boolean | number
@@ -108,11 +109,18 @@ function normalize(p: DispatchInput, factors?: UomFactors): {
   outsourced: boolean
   fields: Record<string, unknown>
 } {
-  if (!(Number(p.quantity) > 0)) throw new Error('Quantity must be greater than 0.')
+  if (!(Number(p.quantity) > 0)) throw new Error('Actual quantity must be greater than 0.')
   if (!['CM', 'TON', 'CFT'].includes(p.uom)) throw new Error('Invalid unit of measure.')
   const product = properCase(p.product_name)
-  const qtyCm = roundQty(toCm(Number(p.quantity), p.uom, factors))
-  const amount = computeAmount(p.rate, Number(p.quantity))
+  const actualQty = Number(p.quantity)
+  // Sale quantity is optional (added later). null = not set yet → bill the actual.
+  const saleQty =
+    p.sale_quantity == null || (p.sale_quantity as unknown) === '' ? null : Number(p.sale_quantity)
+  if (saleQty != null && saleQty < 0) throw new Error('Sale quantity cannot be negative.')
+  const billableQty = saleQty != null ? saleQty : actualQty
+  // Stock always moves by the ACTUAL quantity dispatched from the plant.
+  const qtyCm = roundQty(toCm(actualQty, p.uom, factors))
+  const amount = computeAmount(p.rate, billableQty)
   const transport = Number(p.transport_charge) || 0
   const other = Number(p.other_charge) || 0
   const billed = (amount ?? 0) + (p.transport_billed ? transport : 0) + (p.other_billed ? other : 0)
@@ -128,8 +136,9 @@ function normalize(p: DispatchInput, factors?: UomFactors): {
       plant_id: p.plant_id,
       product_name: product,
       uom: p.uom,
-      quantity: Number(p.quantity),
+      quantity: actualQty,
       qty_cm: qtyCm,
+      sale_quantity: saleQty,
       rate: p.rate,
       amount,
       transport_charge: transport,
@@ -165,10 +174,10 @@ export async function createDispatch(p: DispatchInput): Promise<Dispatch> {
     const info = await d
       .prepare(
         `INSERT INTO dispatches
-          (dispatch_no, customer_id, plant_id, product_name, uom, quantity, qty_cm, rate, amount,
+          (dispatch_no, customer_id, plant_id, product_name, uom, quantity, qty_cm, sale_quantity, rate, amount,
            transport_charge, transport_billed, other_charge, other_billed,
            vehicle_no, vehicle_type, driver, challan_no, outsourced, delivery_status, payment_status, paid_amount, date, remarks)
-         VALUES (@dispatch_no,@customer_id,@plant_id,@product_name,@uom,@quantity,@qty_cm,@rate,@amount,
+         VALUES (@dispatch_no,@customer_id,@plant_id,@product_name,@uom,@quantity,@qty_cm,@sale_quantity,@rate,@amount,
            @transport_charge,@transport_billed,@other_charge,@other_billed,
            @vehicle_no,@vehicle_type,@driver,@challan_no,@outsourced,@delivery_status,@payment_status,@paid_amount,@date,@remarks)`
       )
@@ -200,7 +209,7 @@ export async function updateDispatch(p: DispatchInput): Promise<Dispatch> {
   await d.transaction(async () => {
     await d.prepare(
       `UPDATE dispatches SET customer_id=@customer_id, plant_id=@plant_id, product_name=@product_name,
-        uom=@uom, quantity=@quantity, qty_cm=@qty_cm, rate=@rate, amount=@amount,
+        uom=@uom, quantity=@quantity, qty_cm=@qty_cm, sale_quantity=@sale_quantity, rate=@rate, amount=@amount,
         transport_charge=@transport_charge, transport_billed=@transport_billed,
         other_charge=@other_charge, other_billed=@other_billed,
         vehicle_no=@vehicle_no, vehicle_type=@vehicle_type, driver=@driver, challan_no=@challan_no,
@@ -232,7 +241,9 @@ export async function updateDispatch(p: DispatchInput): Promise<Dispatch> {
 export async function setRate(payload: { id: number; rate: number }): Promise<Dispatch> {
   const d = getDb()
   const row = (await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id)) as Dispatch
-  const amount = computeAmount(payload.rate, row.quantity)
+  // Bill the sale quantity when it has been entered, else the actual quantity.
+  const billableQty = row.sale_quantity != null ? row.sale_quantity : row.quantity
+  const amount = computeAmount(payload.rate, billableQty)
   await d.prepare(`UPDATE dispatches SET rate=?, amount=? WHERE id=?`).run(payload.rate, amount, payload.id)
   return (await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id)) as Dispatch
 }

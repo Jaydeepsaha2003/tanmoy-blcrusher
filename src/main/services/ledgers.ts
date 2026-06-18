@@ -291,7 +291,7 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
     // costs (debit) = raw-material purchases + plant operating expenses.
     const sales = (await d
       .prepare(
-        `SELECT dispatch_no, date, created_at, product_name, quantity, uom,
+        `SELECT dispatch_no, date, created_at, product_name, COALESCE(sale_quantity, quantity) AS quantity, uom,
           (COALESCE(amount,0)
             + CASE WHEN transport_billed=1 THEN transport_charge ELSE 0 END
             + CASE WHEN other_billed=1 THEN other_charge ELSE 0 END) AS billed
@@ -615,7 +615,7 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
   if (partyType === 'customer') {
     const dispatches = (await d
       .prepare(
-        `SELECT dispatch_no, date, created_at, product_name, quantity, uom,
+        `SELECT dispatch_no, date, created_at, product_name, COALESCE(sale_quantity, quantity) AS quantity, uom,
           (COALESCE(amount,0)
             + CASE WHEN transport_billed=1 THEN transport_charge ELSE 0 END
             + CASE WHEN other_billed=1 THEN other_charge ELSE 0 END) AS billed,
