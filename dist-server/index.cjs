@@ -267,6 +267,8 @@ CREATE TABLE IF NOT EXISTS purchases (
   supplier_id       INTEGER NOT NULL REFERENCES suppliers(id),
   plant_id          INTEGER NOT NULL REFERENCES plants(id),
   stock_location_id INTEGER NOT NULL REFERENCES stock_locations(id),
+  material_type     TEXT NOT NULL DEFAULT 'raw',
+  product_name      TEXT NOT NULL DEFAULT '',
   uom               TEXT NOT NULL DEFAULT 'CM',
   quantity          REAL NOT NULL,
   qty_cm            REAL NOT NULL DEFAULT 0,
@@ -762,6 +764,8 @@ CREATE TABLE IF NOT EXISTS purchases (
   supplier_id       INT NOT NULL,
   plant_id          INT NOT NULL,
   stock_location_id INT NOT NULL,
+  material_type     VARCHAR(16) NOT NULL DEFAULT 'raw',
+  product_name      VARCHAR(255) NOT NULL DEFAULT '',
   quantity          DOUBLE NOT NULL,
   rate              DOUBLE,
   amount            DOUBLE,
@@ -1084,6 +1088,13 @@ CREATE TABLE IF NOT EXISTS customer_rates (
 );
 CREATE INDEX idx_products_plant ON products(plant_id);
 CREATE INDEX idx_crates_customer ON customer_rates(customer_id)`
+  },
+  {
+    // Purchasing finished goods: a purchase can be raw material or a finished
+    // product (which lands in finished-goods stock).
+    id: "005_purchase_finished_goods",
+    sql: `ALTER TABLE purchases ADD COLUMN material_type VARCHAR(16) NOT NULL DEFAULT 'raw';
+ALTER TABLE purchases ADD COLUMN product_name VARCHAR(255) NOT NULL DEFAULT ''`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -1133,6 +1144,8 @@ async function sqliteLegacyMigrate(adapter2) {
   await addColumn("plants", "ton_per_cm", "REAL NOT NULL DEFAULT 1.6");
   await addColumn("plants", "cft_per_cm", "REAL NOT NULL DEFAULT 35.31");
   await addColumn("customers", "share_token", "TEXT");
+  await addColumn("purchases", "material_type", `TEXT NOT NULL DEFAULT 'raw'`);
+  await addColumn("purchases", "product_name", `TEXT NOT NULL DEFAULT ''`);
 }
 async function importProductsFromSettings(adapter2) {
   const all = (await adapter2.exec(`SELECT id, name FROM products ORDER BY id`, void 0, null)).rows;
@@ -2223,6 +2236,9 @@ function roundQty(n) {
 async function createPurchase(p) {
   const d = getDb();
   if (!(p.quantity > 0)) throw new Error("Quantity must be greater than 0.");
+  const kind = p.material_type === "finished" ? "finished" : "raw";
+  const product = kind === "finished" ? properCase(p.product_name || "") : "";
+  if (kind === "finished" && !product) throw new Error("Select a product to purchase.");
   const locId = p.stock_location_id || await ensureDefaultLocation(p.plant_id);
   const uom = ["CM", "TON", "CFT"].includes(p.uom) ? p.uom : "CM";
   const qtyCm = roundQty(toCm(p.quantity, uom, await plantUomFactors(p.plant_id)));
@@ -2231,13 +2247,15 @@ async function createPurchase(p) {
     const no = await nextNumber("PUR", "purchase");
     const info = await d.prepare(
       `INSERT INTO purchases
-          (purchase_no, supplier_id, plant_id, stock_location_id, uom, quantity, qty_cm, rate, amount, paid_amount, payment_status, date, remarks)
-         VALUES (@purchase_no,@supplier_id,@plant_id,@stock_location_id,@uom,@quantity,@qty_cm,@rate,@amount,@paid_amount,@payment_status,@date,@remarks)`
+          (purchase_no, supplier_id, plant_id, stock_location_id, material_type, product_name, uom, quantity, qty_cm, rate, amount, paid_amount, payment_status, date, remarks)
+         VALUES (@purchase_no,@supplier_id,@plant_id,@stock_location_id,@material_type,@product_name,@uom,@quantity,@qty_cm,@rate,@amount,@paid_amount,@payment_status,@date,@remarks)`
     ).run({
       purchase_no: no,
       supplier_id: p.supplier_id,
       plant_id: p.plant_id,
       stock_location_id: locId,
+      material_type: kind,
+      product_name: product,
       uom,
       quantity: p.quantity,
       qty_cm: qtyCm,
@@ -2248,16 +2266,29 @@ async function createPurchase(p) {
       date: p.date,
       remarks: p.remarks ?? ""
     });
-    await addMovement(d, {
-      type: "purchase",
-      material_type: "raw",
-      ref_no: no,
-      plant_id: p.plant_id,
-      stock_location_id: locId,
-      change_qty: qtyCm,
-      date: p.date,
-      note: "Raw material received"
-    });
+    if (kind === "finished") {
+      await addMovement(d, {
+        type: "purchase",
+        material_type: "finished",
+        ref_no: no,
+        plant_id: p.plant_id,
+        product_name: product,
+        change_qty: qtyCm,
+        date: p.date,
+        note: "Finished goods purchased"
+      });
+    } else {
+      await addMovement(d, {
+        type: "purchase",
+        material_type: "raw",
+        ref_no: no,
+        plant_id: p.plant_id,
+        stock_location_id: locId,
+        change_qty: qtyCm,
+        date: p.date,
+        note: "Raw material received"
+      });
+    }
     return Number(info.lastInsertRowid);
   });
   return await d.prepare(`SELECT * FROM purchases WHERE id = ?`).get(id);
@@ -2268,6 +2299,9 @@ async function updatePurchase(p) {
   if (!(p.quantity > 0)) throw new Error("Quantity must be greater than 0.");
   const old = await d.prepare(`SELECT * FROM purchases WHERE id = ?`).get(p.id);
   if (!old) throw new Error("Purchase not found.");
+  const kind = p.material_type === "finished" ? "finished" : "raw";
+  const product = kind === "finished" ? properCase(p.product_name || "") : "";
+  if (kind === "finished" && !product) throw new Error("Select a product to purchase.");
   const locId = p.stock_location_id || old.stock_location_id || await ensureDefaultLocation(p.plant_id);
   const uom = ["CM", "TON", "CFT"].includes(p.uom) ? p.uom : "CM";
   const qtyCm = roundQty(toCm(p.quantity, uom, await plantUomFactors(p.plant_id)));
@@ -2275,6 +2309,7 @@ async function updatePurchase(p) {
   await d.transaction(async () => {
     await d.prepare(
       `UPDATE purchases SET supplier_id=@supplier_id, plant_id=@plant_id, stock_location_id=@stock_location_id,
+         material_type=@material_type, product_name=@product_name,
          uom=@uom, quantity=@quantity, qty_cm=@qty_cm, rate=@rate, amount=@amount, paid_amount=@paid_amount,
          payment_status=@payment_status, date=@date, remarks=@remarks WHERE id=@id`
     ).run({
@@ -2282,6 +2317,8 @@ async function updatePurchase(p) {
       supplier_id: p.supplier_id,
       plant_id: p.plant_id,
       stock_location_id: locId,
+      material_type: kind,
+      product_name: product,
       uom,
       quantity: p.quantity,
       qty_cm: qtyCm,
@@ -2292,14 +2329,38 @@ async function updatePurchase(p) {
       date: p.date,
       remarks: p.remarks ?? ""
     });
-    await d.prepare(
-      `UPDATE stock_movements SET plant_id=?, stock_location_id=?, change_qty=?, date=?
-       WHERE ref_no=? AND type='purchase'`
-    ).run(p.plant_id, locId, qtyCm, p.date, old.purchase_no);
+    await d.prepare(`DELETE FROM stock_movements WHERE ref_no=? AND type='purchase'`).run(old.purchase_no);
+    if (kind === "finished") {
+      await addMovement(d, {
+        type: "purchase",
+        material_type: "finished",
+        ref_no: old.purchase_no,
+        plant_id: p.plant_id,
+        product_name: product,
+        change_qty: qtyCm,
+        date: p.date,
+        note: "Finished goods purchased"
+      });
+    } else {
+      await addMovement(d, {
+        type: "purchase",
+        material_type: "raw",
+        ref_no: old.purchase_no,
+        plant_id: p.plant_id,
+        stock_location_id: locId,
+        change_qty: qtyCm,
+        date: p.date,
+        note: "Raw material received"
+      });
+    }
     if (await rawLocationBalance(d, old.stock_location_id) < 0)
       throw new Error("Edit would make the original location stock negative.");
-    if (await rawLocationBalance(d, locId) < 0)
+    if (kind === "raw" && await rawLocationBalance(d, locId) < 0)
       throw new Error("Edit would make the location stock negative.");
+    if (old.material_type === "finished" && old.product_name && await finishedBalance(d, old.plant_id, old.product_name) < 0)
+      throw new Error("Edit would make the original finished-goods stock negative.");
+    if (kind === "finished" && await finishedBalance(d, p.plant_id, product) < 0)
+      throw new Error("Edit would make the finished-goods stock negative.");
   });
   return await d.prepare(`SELECT * FROM purchases WHERE id = ?`).get(p.id);
 }
@@ -2312,8 +2373,12 @@ async function deletePurchase(payload) {
       await d.prepare(`DELETE FROM stock_movements WHERE ref_no=? AND type='purchase'`).run(
         old.purchase_no
       );
-      if (await rawLocationBalance(d, old.stock_location_id) < 0)
+      if (old.material_type === "finished") {
+        if (old.product_name && await finishedBalance(d, old.plant_id, old.product_name) < 0)
+          throw new Error("Cannot delete: these finished goods have already been dispatched or sold.");
+      } else if (await rawLocationBalance(d, old.stock_location_id) < 0) {
         throw new Error("Cannot delete: this material has already been consumed in production.");
+      }
       await d.prepare(`DELETE FROM purchases WHERE id = ?`).run(payload.id);
     });
     return { ok: true };
@@ -2501,12 +2566,14 @@ async function listFinishedGoods(filter = {}) {
     params.product_name = filter.product_name;
   }
   const dateProd = filter.from || filter.to ? buildDateClause(filter, params, "prodd") : "";
+  const datePurch = filter.from || filter.to ? buildDateClause(filter, params, "purd") : "";
   const dateDisp = filter.from || filter.to ? buildDateClause(filter, params, "dispd") : "";
   const dateLoad = filter.from || filter.to ? buildDateClause(filter, params, "loadd") : "";
   const rows = await d.prepare(
     `SELECT m.plant_id, p.name AS plant_name, m.product_name,
         COALESCE(SUM(CASE WHEN m.type='opening' THEN m.change_qty ELSE 0 END),0) AS opening_qty,
         COALESCE(SUM(CASE WHEN m.type='production_output' ${dateProd} THEN m.change_qty ELSE 0 END),0) AS produced_qty,
+        COALESCE(SUM(CASE WHEN m.type='purchase' ${datePurch} THEN m.change_qty ELSE 0 END),0) AS purchased_qty,
         COALESCE(SUM(CASE WHEN m.type='dispatch' ${dateDisp} THEN -m.change_qty ELSE 0 END),0) AS dispatched_qty,
         COALESCE(SUM(CASE WHEN m.type='rack_load' ${dateLoad} THEN -m.change_qty ELSE 0 END),0) AS loaded_qty,
         COALESCE(SUM(m.change_qty),0) AS balance_qty
@@ -2520,6 +2587,7 @@ async function listFinishedGoods(filter = {}) {
     ...r,
     opening_qty: round6(r.opening_qty),
     produced_qty: round6(r.produced_qty),
+    purchased_qty: round6(r.purchased_qty),
     dispatched_qty: round6(r.dispatched_qty),
     loaded_qty: round6(r.loaded_qty),
     balance_qty: round6(r.balance_qty)
@@ -5102,7 +5170,7 @@ async function getDashboard(payload = {}) {
        WHERE m.material_type='finished'${mAnd} GROUP BY m.product_name HAVING qty <> 0 ORDER BY m.product_name`
   ).all();
   const totalPurchased = num2(
-    await d.prepare(`SELECT COALESCE(SUM(qty_cm),0) AS q FROM purchases${plWhere}`).get()
+    await d.prepare(`SELECT COALESCE(SUM(qty_cm),0) AS q FROM purchases WHERE COALESCE(material_type,'raw')='raw'${plAnd}`).get()
   );
   const totalConsumed = num2(
     await d.prepare(`SELECT COALESCE(SUM(raw_qty),0) AS q FROM productions${plWhere}`).get()

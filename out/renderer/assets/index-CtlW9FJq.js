@@ -59140,6 +59140,7 @@ function Purchases() {
   const { data: suppliers = [] } = useQuery({ queryKey: ["suppliers", plantId], queryFn: () => api.suppliers.list(plantId) });
   const [filter, setFilter] = reactExports.useState({});
   const { data: locations = [] } = useQuery({ queryKey: ["locations", 0], queryFn: () => api.locations.list() });
+  const { data: products = [] } = useQuery({ queryKey: ["products"], queryFn: () => api.products.list() });
   const { data = [] } = useQuery({
     queryKey: ["purchases", filter, plantId],
     queryFn: () => api.purchases.list(cleanFilter$2({ ...filter, plant_id: plantId }))
@@ -59164,6 +59165,8 @@ function Purchases() {
       supplier_id: suppliers[0]?.id,
       plant_id: plantId ?? plants[0]?.id,
       stock_location_id: void 0,
+      material_type: "raw",
+      product_name: "",
       uom: "CM",
       quantity: "",
       rate: "",
@@ -59221,8 +59224,8 @@ function Purchases() {
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       PageHeader,
       {
-        title: "Raw Material Purchase / Inward",
-        description: "Record raw material received from suppliers",
+        title: "Purchases / Inward",
+        description: "Buy raw material into a stock location, or finished products straight into finished-goods stock",
         actions: /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", onClick: exportExcel, disabled: !data.length, children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(FileSpreadsheet, { size: 16 }),
@@ -59253,7 +59256,7 @@ function Purchases() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Purchase No" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Date" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Supplier" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plant / Location" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plant / Item" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Quantity" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Rate" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Amount" }),
@@ -59264,11 +59267,16 @@ function Purchases() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-mono text-xs font-medium", children: p2.purchase_no }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: fmtDate(p2.date) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: p2.supplier_name }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-muted-foreground", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: p2.material_type === "finished" ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "inline-flex items-center gap-1.5", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "default", children: "Finished" }),
+            p2.plant_name,
+            " / ",
+            p2.product_name
+          ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
             p2.plant_name,
             " / ",
             p2.stock_location_name
-          ] }),
+          ] }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
             fmtQty(p2.quantity),
             " ",
@@ -59293,11 +59301,49 @@ function Purchases() {
       ] })
     ] }),
     form && /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { open, onClose: () => setOpen(false), title: form.id ? `Edit ${form.purchase_no}` : "New Purchase", width: "max-w-2xl", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-4 grid grid-cols-2 gap-2 rounded-xl border bg-muted/40 p-1", children: [
+        { key: "raw", label: "Raw Material", icon: Mountain },
+        { key: "finished", label: "Products (Finished)", icon: Boxes }
+      ].map((opt) => {
+        const active = (form.material_type || "raw") === opt.key;
+        return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "button",
+          {
+            type: "button",
+            onClick: () => setForm({ ...form, material_type: opt.key }),
+            className: "flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-colors " + (active ? "bg-primary text-primary-foreground shadow-sm" : "text-foreground/70 hover:bg-accent"),
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(opt.icon, { size: 16 }),
+              " ",
+              opt.label
+            ]
+          },
+          opt.key
+        );
+      }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Supplier", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: form.supplier_id || "", onChange: (e3) => setForm({ ...form, supplier_id: Number(e3.target.value) }), children: suppliers.map((s2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: s2.id, children: s2.name }, s2.id)) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Purchase Date", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: form.date, onChange: (e3) => setForm({ ...form, date: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", required: true, hint: plantId ? "Locked to active plant" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: form.plant_id || "", disabled: !!plantId, onChange: (e3) => setForm({ ...form, plant_id: Number(e3.target.value), stock_location_id: void 0 }), children: plants.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.id, children: p2.name }, p2.id)) }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
+        form.material_type === "finished" ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Field,
+          {
+            label: "Product",
+            required: true,
+            hint: "Bought quantity is added to this product's finished-goods stock",
+            children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              Select,
+              {
+                value: form.product_name || "",
+                onChange: (e3) => setForm({ ...form, product_name: e3.target.value }),
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Select product…" }),
+                  products.map((pr) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: pr.name, children: pr.name }, pr.id))
+                ]
+              }
+            )
+          }
+        ) : /* @__PURE__ */ jsxRuntimeExports.jsx(
           Field,
           {
             label: "Stock Location",
@@ -59333,7 +59379,14 @@ function Purchases() {
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 flex justify-end gap-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setOpen(false), children: "Cancel" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: submit, disabled: !form.supplier_id || !(Number(form.quantity) > 0) || !(Number(form.rate) > 0), children: "Save Purchase" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Button,
+          {
+            onClick: submit,
+            disabled: !form.supplier_id || !(Number(form.quantity) > 0) || !(Number(form.rate) > 0) || form.material_type === "finished" && !form.product_name,
+            children: "Save Purchase"
+          }
+        )
       ] })
     ] })
   ] });
@@ -59617,8 +59670,8 @@ function FinishedGoods() {
     downloadExcel(
       "finished-goods",
       "Finished Goods",
-      ["Plant", "Product", "Opening", "Produced", "Dispatched", "To Rack", "Balance (m³)"],
-      data.map((f2) => [f2.plant_name, f2.product_name, f2.opening_qty, f2.produced_qty, f2.dispatched_qty, f2.loaded_qty, f2.balance_qty])
+      ["Plant", "Product", "Opening", "Produced", "Purchased", "Dispatched", "To Rack", "Balance (m³)"],
+      data.map((f2) => [f2.plant_name, f2.product_name, f2.opening_qty, f2.produced_qty, f2.purchased_qty, f2.dispatched_qty, f2.loaded_qty, f2.balance_qty])
     );
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
@@ -59658,6 +59711,7 @@ function FinishedGoods() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Product" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Opening" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Produced" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Purchased" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Dispatched" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "To Rack" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Balance (m³)" })
@@ -59667,6 +59721,7 @@ function FinishedGoods() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: f2.product_name }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtQty(f2.opening_qty) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right text-success", children: fmtQty(f2.produced_qty) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right text-success", children: fmtQty(f2.purchased_qty) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right text-destructive", children: fmtQty(f2.dispatched_qty) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right text-warning", children: fmtQty(f2.loaded_qty) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right font-semibold", children: fmtQty(f2.balance_qty) })
