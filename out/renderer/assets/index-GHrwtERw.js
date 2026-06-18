@@ -59321,61 +59321,88 @@ function Purchases() {
           opt.key
         );
       }) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Supplier", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: form.supplier_id || "", onChange: (e3) => setForm({ ...form, supplier_id: Number(e3.target.value) }), children: suppliers.map((s2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: s2.id, children: s2.name }, s2.id)) }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Purchase Date", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: form.date, onChange: (e3) => setForm({ ...form, date: e3.target.value }) }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", required: true, hint: plantId ? "Locked to active plant" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: form.plant_id || "", disabled: !!plantId, onChange: (e3) => setForm({ ...form, plant_id: Number(e3.target.value), stock_location_id: void 0 }), children: plants.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.id, children: p2.name }, p2.id)) }) }),
-        form.material_type === "finished" ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-          Field,
-          {
-            label: "Product",
-            required: true,
-            hint: "Bought quantity is added to this product's finished-goods stock",
-            children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              Select,
-              {
-                value: form.product_name || "",
-                onChange: (e3) => setForm({ ...form, product_name: e3.target.value }),
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Select product…" }),
-                  products.map((pr) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: pr.name, children: pr.name }, pr.id))
-                ]
-              }
-            )
-          }
-        ) : /* @__PURE__ */ jsxRuntimeExports.jsx(
-          Field,
-          {
-            label: "Stock Location",
-            hint: "Leave blank to use the plant itself as the default location",
-            children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              Select,
-              {
-                value: form.stock_location_id || "",
-                onChange: (e3) => setForm({ ...form, stock_location_id: e3.target.value ? Number(e3.target.value) : void 0 }),
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Plant default (auto)" }),
-                  formLocations.map((l2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: l2.id, children: l2.name }, l2.id))
-                ]
-              }
-            )
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Unit (UOM)", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: form.uom || "CM", onChange: (e3) => setForm({ ...form, uom: e3.target.value }), children: UOMS.map((u2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: u2, children: u2 }, u2)) }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          Field,
-          {
-            label: `Quantity (${form.uom || "CM"})`,
-            required: true,
-            hint: form.uom && form.uom !== "CM" ? `= ${fmtQty(toCm(Number(form.quantity) || 0, form.uom))} m³ added to stock` : "Added to stock in m³",
-            children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.quantity, onChange: (e3) => setForm({ ...form, quantity: e3.target.value }) })
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `Rate per ${form.uom || "CM"}`, required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.rate, onChange: (e3) => setForm({ ...form, rate: e3.target.value }), placeholder: "Enter rate" }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Amount", required: true, hint: "Auto-calculated: rate × quantity", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: fmtMoney((Number(form.quantity) || 0) * (Number(form.rate) || 0)), disabled: true }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Paid Amount", hint: "Sets payment status automatically", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.paid_amount, onChange: (e3) => setForm({ ...form, paid_amount: e3.target.value }) }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Payment Status", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-9 items-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: payBadge$5[derivePaymentStatus((Number(form.quantity) || 0) * (Number(form.rate) || 0), Number(form.paid_amount) || 0)], children: derivePaymentStatus((Number(form.quantity) || 0) * (Number(form.rate) || 0), Number(form.paid_amount) || 0) }) }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.remarks || "", onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) }) })
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-5", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Section$1, { title: "Supplier & Item", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Supplier", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: form.supplier_id || "", onChange: (e3) => setForm({ ...form, supplier_id: Number(e3.target.value) }), children: suppliers.map((s2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: s2.id, children: s2.name }, s2.id)) }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Purchase Date", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: form.date, onChange: (e3) => setForm({ ...form, date: e3.target.value }) }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", required: true, hint: plantId ? "Locked to active plant" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: form.plant_id || "", disabled: !!plantId, onChange: (e3) => setForm({ ...form, plant_id: Number(e3.target.value), stock_location_id: void 0 }), children: plants.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.id, children: p2.name }, p2.id)) }) }),
+          form.material_type === "finished" ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+            Field,
+            {
+              label: "Product",
+              required: true,
+              hint: "Bought quantity is added to this product's finished-goods stock",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                Select,
+                {
+                  value: form.product_name || "",
+                  onChange: (e3) => setForm({ ...form, product_name: e3.target.value }),
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Select product…" }),
+                    products.map((pr) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: pr.name, children: pr.name }, pr.id))
+                  ]
+                }
+              )
+            }
+          ) : /* @__PURE__ */ jsxRuntimeExports.jsx(
+            Field,
+            {
+              label: "Stock Location",
+              hint: "Leave blank to use the plant itself as the default location",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                Select,
+                {
+                  value: form.stock_location_id || "",
+                  onChange: (e3) => setForm({ ...form, stock_location_id: e3.target.value ? Number(e3.target.value) : void 0 }),
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Plant default (auto)" }),
+                    formLocations.map((l2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: l2.id, children: l2.name }, l2.id))
+                  ]
+                }
+              )
+            }
+          )
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Section$1, { title: "Quantity & Rate", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4 sm:grid-cols-3", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Unit (UOM)", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: form.uom || "CM", onChange: (e3) => setForm({ ...form, uom: e3.target.value }), children: UOMS.map((u2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: u2, children: u2 }, u2)) }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            Field,
+            {
+              label: `Quantity (${form.uom || "CM"})`,
+              required: true,
+              hint: form.uom && form.uom !== "CM" ? `= ${fmtQty(toCm(Number(form.quantity) || 0, form.uom))} m³` : "Stored as m³",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.quantity, onChange: (e3) => setForm({ ...form, quantity: e3.target.value }) })
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `Rate per ${form.uom || "CM"}`, required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.rate, onChange: (e3) => setForm({ ...form, rate: e3.target.value }), placeholder: "Enter rate" }) })
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(Section$1, { title: "Payment", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-3", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Paid Amount", hint: "Sets payment status automatically", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.paid_amount, onChange: (e3) => setForm({ ...form, paid_amount: e3.target.value }) }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Payment Status", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-9 items-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: payBadge$5[derivePaymentStatus((Number(form.quantity) || 0) * (Number(form.rate) || 0), Number(form.paid_amount) || 0)], children: derivePaymentStatus((Number(form.quantity) || 0) * (Number(form.rate) || 0), Number(form.paid_amount) || 0) }) }) })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.remarks || "", onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-3 sm:grid-cols-2", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border bg-muted/40 px-4 py-3 text-sm", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: form.material_type === "finished" ? "Adds to finished goods" : "Adds to raw stock" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-1", children: [
+              form.material_type === "finished" ? form.product_name || "— select a product —" : formLocations.find((l2) => l2.id === form.stock_location_id)?.name || "Plant default location",
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "ml-1 text-muted-foreground", children: [
+                "· ",
+                fmtQty(toCm(Number(form.quantity) || 0, form.uom || "CM")),
+                " m³"
+              ] })
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border bg-muted/40 px-4 py-3 text-sm", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: "Amount" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-1", children: [
+              "rate × qty = ",
+              /* @__PURE__ */ jsxRuntimeExports.jsx("b", { className: "text-primary", children: fmtMoney((Number(form.quantity) || 0) * (Number(form.rate) || 0)) })
+            ] })
+          ] })
+        ] })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 flex justify-end gap-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setOpen(false), children: "Cancel" }),
@@ -59389,6 +59416,15 @@ function Purchases() {
         )
       ] })
     ] })
+  ] });
+}
+function Section$1({ title, children }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "space-y-3", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground/80", children: title }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "h-px flex-1 bg-border" })
+    ] }),
+    children
   ] });
 }
 function cleanFilter$2(f2) {
