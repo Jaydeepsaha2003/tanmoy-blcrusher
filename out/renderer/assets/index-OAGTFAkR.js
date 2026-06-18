@@ -59141,6 +59141,7 @@ function Purchases() {
   const [filter, setFilter] = reactExports.useState({});
   const { data: locations = [] } = useQuery({ queryKey: ["locations", 0], queryFn: () => api.locations.list() });
   const { data: products = [] } = useQuery({ queryKey: ["products"], queryFn: () => api.products.list() });
+  const { data: outsourceVendors = [] } = useQuery({ queryKey: ["outsource"], queryFn: () => api.outsource.list() });
   const { data = [] } = useQuery({
     queryKey: ["purchases", filter, plantId],
     queryFn: () => api.purchases.list(cleanFilter$2({ ...filter, plant_id: plantId }))
@@ -59167,6 +59168,7 @@ function Purchases() {
       stock_location_id: void 0,
       material_type: "raw",
       product_name: "",
+      outsource_id: null,
       uom: "CM",
       quantity: "",
       rate: "",
@@ -59267,16 +59269,23 @@ function Purchases() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-mono text-xs font-medium", children: p2.purchase_no }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: fmtDate(p2.date) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: p2.supplier_name }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: p2.material_type === "finished" ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "inline-flex items-center gap-1.5", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "default", children: "Finished" }),
-            p2.plant_name,
-            " / ",
-            p2.product_name
-          ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-            p2.plant_name,
-            " / ",
-            p2.stock_location_name
-          ] }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-muted-foreground", children: [
+            p2.material_type === "finished" ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "inline-flex items-center gap-1.5", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "default", children: "Finished" }),
+              p2.plant_name,
+              " / ",
+              p2.product_name
+            ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+              p2.plant_name,
+              " / ",
+              p2.stock_location_name
+            ] }),
+            p2.outsource_name && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "block text-[11px]", children: [
+              "via ",
+              p2.outsource_name,
+              p2.outsource_head ? ` (${p2.outsource_head})` : ""
+            ] })
+          ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
             fmtQty(p2.quantity),
             " ",
@@ -59361,7 +59370,21 @@ function Purchases() {
                 }
               )
             }
-          )
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Outsource Vendor", hint: "Optional — shows the vendor's head", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            Select,
+            {
+              value: form.outsource_id ?? "",
+              onChange: (e3) => setForm({ ...form, outsource_id: e3.target.value ? Number(e3.target.value) : null }),
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "— None —" }),
+                outsourceVendors.map((o) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: o.id, children: [
+                  o.name,
+                  o.head ? ` — ${o.head}` : ""
+                ] }, o.id))
+              ]
+            }
+          ) })
         ] }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Section$1, { title: "Quantity & Rate", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4 sm:grid-cols-3", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Unit (UOM)", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: form.uom || "CM", onChange: (e3) => setForm({ ...form, uom: e3.target.value }), children: UOMS.map((u2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: u2, children: u2 }, u2)) }) }),
@@ -60210,6 +60233,7 @@ function Dispatch() {
     queryKey: ["customers", plantId],
     queryFn: () => api.customers.list(plantId)
   });
+  const { data: outsourceVendors = [] } = useQuery({ queryKey: ["outsource"], queryFn: () => api.outsource.list() });
   const [filter, setFilter] = reactExports.useState({});
   const { data = [] } = useQuery({
     queryKey: ["dispatches", filter, plantId],
@@ -60237,6 +60261,7 @@ function Dispatch() {
       customer_id: customers[0]?.id,
       plant_id: plantId ?? plants[0]?.id,
       product_name: "",
+      outsource_id: null,
       uom: "CM",
       quantity: "",
       sale_quantity: "",
@@ -60394,7 +60419,11 @@ function Dispatch() {
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-muted-foreground", children: [
             d2.plant_name,
             " / ",
-            d2.product_name
+            d2.product_name,
+            d2.outsourced ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "block text-[11px]", children: [
+              "Outsourced",
+              d2.outsource_name ? ` · ${d2.outsource_name}${d2.outsource_head ? ` (${d2.outsource_head})` : ""}` : ""
+            ] }) : null
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
             fmtQty(d2.quantity),
@@ -60462,7 +60491,7 @@ function Dispatch() {
                       type: "checkbox",
                       className: "mt-0.5 h-4 w-4 shrink-0",
                       checked: !!form.outsourced,
-                      onChange: (e3) => setForm({ ...form, outsourced: e3.target.checked, product_name: "" })
+                      onChange: (e3) => setForm({ ...form, outsourced: e3.target.checked, product_name: "", outsource_id: e3.target.checked ? form.outsource_id : null })
                     }
                   ),
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "font-medium leading-tight", children: [
@@ -60472,7 +60501,21 @@ function Dispatch() {
                 ]
               }
             )
-          ] })
+          ] }),
+          form.outsourced && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Outsource Vendor", hint: "Who the outsourced material came from", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            Select,
+            {
+              value: form.outsource_id ?? "",
+              onChange: (e3) => setForm({ ...form, outsource_id: e3.target.value ? Number(e3.target.value) : null }),
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "— Select vendor —" }),
+                outsourceVendors.map((o) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: o.id, children: [
+                  o.name,
+                  o.head ? ` — ${o.head}` : ""
+                ] }, o.id))
+              ]
+            }
+          ) }) })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Section, { title: "Quantity & Rate", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4 sm:grid-cols-4", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Unit (UOM)", required: true, hint: "1 m³ = 1.6 ton = 35.31 cft", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: form.uom, onChange: (e3) => setForm({ ...form, uom: e3.target.value }), children: UOMS.map((u2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: u2, children: u2 === "CM" ? "m³" : u2 === "TON" ? "Ton" : "CFT" }, u2)) }) }),
@@ -61057,7 +61100,7 @@ function OutsourceVendors() {
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Modal, { open, onClose: () => setOpen(false), title: form.id ? "Edit Vendor" : "New Outsource Vendor", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Vendor Name", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.name || "", onChange: (e3) => setForm({ ...form, name: e3.target.value }), placeholder: "e.g. XYZ Labour Contractor" }) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs(Field, { label: "Head / Type", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(Field, { label: "Head / Type", required: true, hint: "Required — e.g. Labour, Transport, Machinery", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { list: "outsource-heads", value: form.head || "", onChange: (e3) => setForm({ ...form, head: e3.target.value }), placeholder: "Labour, Transport…" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("datalist", { id: "outsource-heads", children: HEADS.map((h2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: h2 }, h2)) })
       ] }),
@@ -61065,7 +61108,7 @@ function OutsourceVendors() {
       /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Textarea, { value: form.remarks || "", onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-end gap-2 pt-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setOpen(false), children: "Cancel" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: () => save.mutate(form), disabled: !form.name?.trim(), children: "Save" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: () => save.mutate(form), disabled: !form.name?.trim() || !form.head?.trim(), children: "Save" })
       ] })
     ] }) })
   ] });
@@ -63635,7 +63678,10 @@ function Payments() {
                     typeLabel$1[payForm.party_type],
                     "…"
                   ] }),
-                  partyList(payForm.party_type).map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.id, children: p2.name }, p2.id))
+                  partyList(payForm.party_type).map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: p2.id, children: [
+                    p2.name,
+                    p2.head ? ` — ${p2.head}` : ""
+                  ] }, p2.id))
                 ]
               }
             ) })

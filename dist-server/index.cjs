@@ -269,6 +269,7 @@ CREATE TABLE IF NOT EXISTS purchases (
   stock_location_id INTEGER NOT NULL REFERENCES stock_locations(id),
   material_type     TEXT NOT NULL DEFAULT 'raw',
   product_name      TEXT NOT NULL DEFAULT '',
+  outsource_id      INTEGER,
   uom               TEXT NOT NULL DEFAULT 'CM',
   quantity          REAL NOT NULL,
   qty_cm            REAL NOT NULL DEFAULT 0,
@@ -324,6 +325,7 @@ CREATE TABLE IF NOT EXISTS dispatches (
   quantity        REAL NOT NULL,
   qty_cm          REAL NOT NULL DEFAULT 0,
   sale_quantity   REAL,
+  outsource_id    INTEGER,
   rate            REAL,
   amount          REAL,
   transport_charge REAL NOT NULL DEFAULT 0,
@@ -767,6 +769,7 @@ CREATE TABLE IF NOT EXISTS purchases (
   stock_location_id INT NOT NULL,
   material_type     VARCHAR(16) NOT NULL DEFAULT 'raw',
   product_name      VARCHAR(255) NOT NULL DEFAULT '',
+  outsource_id      INT,
   quantity          DOUBLE NOT NULL,
   rate              DOUBLE,
   amount            DOUBLE,
@@ -815,6 +818,7 @@ CREATE TABLE IF NOT EXISTS dispatches (
   quantity         DOUBLE NOT NULL,
   qty_cm           DOUBLE NOT NULL DEFAULT 0,
   sale_quantity    DOUBLE,
+  outsource_id     INT,
   rate             DOUBLE,
   amount           DOUBLE,
   transport_charge DOUBLE NOT NULL DEFAULT 0,
@@ -1103,6 +1107,12 @@ ALTER TABLE purchases ADD COLUMN product_name VARCHAR(255) NOT NULL DEFAULT ''`
     // bill uses sale_quantity when set, otherwise the actual quantity.
     id: "006_dispatch_sale_quantity",
     sql: `ALTER TABLE dispatches ADD COLUMN sale_quantity DOUBLE`
+  },
+  {
+    // Tag a sale / purchase with the outsource vendor it came from (shows the head).
+    id: "007_outsource_on_sale_purchase",
+    sql: `ALTER TABLE dispatches ADD COLUMN outsource_id INT;
+ALTER TABLE purchases ADD COLUMN outsource_id INT`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -1155,6 +1165,8 @@ async function sqliteLegacyMigrate(adapter2) {
   await addColumn("purchases", "material_type", `TEXT NOT NULL DEFAULT 'raw'`);
   await addColumn("purchases", "product_name", `TEXT NOT NULL DEFAULT ''`);
   await addColumn("dispatches", "sale_quantity", "REAL");
+  await addColumn("dispatches", "outsource_id", "INTEGER");
+  await addColumn("purchases", "outsource_id", "INTEGER");
 }
 async function importProductsFromSettings(adapter2) {
   const all = (await adapter2.exec(`SELECT id, name FROM products ORDER BY id`, void 0, null)).rows;
@@ -2226,11 +2238,13 @@ async function listPurchases(filter = {}) {
   }
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
   return await d.prepare(
-    `SELECT pu.*, s.name AS supplier_name, p.name AS plant_name, l.name AS stock_location_name
+    `SELECT pu.*, s.name AS supplier_name, p.name AS plant_name, l.name AS stock_location_name,
+        o.name AS outsource_name, o.head AS outsource_head
        FROM purchases pu
        JOIN suppliers s ON s.id = pu.supplier_id
        JOIN plants p ON p.id = pu.plant_id
        JOIN stock_locations l ON l.id = pu.stock_location_id
+       LEFT JOIN outsource o ON o.id = pu.outsource_id
        ${clause}
        ORDER BY pu.date DESC, pu.id DESC`
   ).all(params);
@@ -2256,8 +2270,8 @@ async function createPurchase(p) {
     const no = await nextNumber("PUR", "purchase");
     const info = await d.prepare(
       `INSERT INTO purchases
-          (purchase_no, supplier_id, plant_id, stock_location_id, material_type, product_name, uom, quantity, qty_cm, rate, amount, paid_amount, payment_status, date, remarks)
-         VALUES (@purchase_no,@supplier_id,@plant_id,@stock_location_id,@material_type,@product_name,@uom,@quantity,@qty_cm,@rate,@amount,@paid_amount,@payment_status,@date,@remarks)`
+          (purchase_no, supplier_id, plant_id, stock_location_id, material_type, product_name, outsource_id, uom, quantity, qty_cm, rate, amount, paid_amount, payment_status, date, remarks)
+         VALUES (@purchase_no,@supplier_id,@plant_id,@stock_location_id,@material_type,@product_name,@outsource_id,@uom,@quantity,@qty_cm,@rate,@amount,@paid_amount,@payment_status,@date,@remarks)`
     ).run({
       purchase_no: no,
       supplier_id: p.supplier_id,
@@ -2265,6 +2279,7 @@ async function createPurchase(p) {
       stock_location_id: locId,
       material_type: kind,
       product_name: product,
+      outsource_id: p.outsource_id ?? null,
       uom,
       quantity: p.quantity,
       qty_cm: qtyCm,
@@ -2318,7 +2333,7 @@ async function updatePurchase(p) {
   await d.transaction(async () => {
     await d.prepare(
       `UPDATE purchases SET supplier_id=@supplier_id, plant_id=@plant_id, stock_location_id=@stock_location_id,
-         material_type=@material_type, product_name=@product_name,
+         material_type=@material_type, product_name=@product_name, outsource_id=@outsource_id,
          uom=@uom, quantity=@quantity, qty_cm=@qty_cm, rate=@rate, amount=@amount, paid_amount=@paid_amount,
          payment_status=@payment_status, date=@date, remarks=@remarks WHERE id=@id`
     ).run({
@@ -2328,6 +2343,7 @@ async function updatePurchase(p) {
       stock_location_id: locId,
       material_type: kind,
       product_name: product,
+      outsource_id: p.outsource_id ?? null,
       uom,
       quantity: p.quantity,
       qty_cm: qtyCm,
@@ -2679,10 +2695,12 @@ async function listDispatches(filter = {}) {
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
   return await d.prepare(
     `SELECT di.*, c.name AS customer_name, p.name AS plant_name,
+        o.name AS outsource_name, o.head AS outsource_head,
         ${BILLED_TOTAL_SQL} AS billed_total
        FROM dispatches di
        JOIN customers c ON c.id = di.customer_id
        JOIN plants p ON p.id = di.plant_id
+       LEFT JOIN outsource o ON o.id = di.outsource_id
        ${clause}
        ORDER BY di.date DESC, di.id DESC`
   ).all(params);
@@ -2733,6 +2751,7 @@ function normalize(p, factors) {
       driver: properCase(p.driver),
       challan_no: (p.challan_no ?? "").trim(),
       outsourced: outsourced ? 1 : 0,
+      outsource_id: outsourced ? p.outsource_id ?? null : null,
       delivery_status: p.delivery_status,
       payment_status: derivePaymentStatus(billed, paid),
       paid_amount: paid,
@@ -2757,10 +2776,10 @@ async function createDispatch(p) {
       `INSERT INTO dispatches
           (dispatch_no, customer_id, plant_id, product_name, uom, quantity, qty_cm, sale_quantity, rate, amount,
            transport_charge, transport_billed, other_charge, other_billed,
-           vehicle_no, vehicle_type, driver, challan_no, outsourced, delivery_status, payment_status, paid_amount, date, remarks)
+           vehicle_no, vehicle_type, driver, challan_no, outsourced, outsource_id, delivery_status, payment_status, paid_amount, date, remarks)
          VALUES (@dispatch_no,@customer_id,@plant_id,@product_name,@uom,@quantity,@qty_cm,@sale_quantity,@rate,@amount,
            @transport_charge,@transport_billed,@other_charge,@other_billed,
-           @vehicle_no,@vehicle_type,@driver,@challan_no,@outsourced,@delivery_status,@payment_status,@paid_amount,@date,@remarks)`
+           @vehicle_no,@vehicle_type,@driver,@challan_no,@outsourced,@outsource_id,@delivery_status,@payment_status,@paid_amount,@date,@remarks)`
     ).run({ dispatch_no: no, ...fields });
     if (!outsourced) {
       await addMovement(d, {
@@ -2792,7 +2811,7 @@ async function updateDispatch(p) {
         transport_charge=@transport_charge, transport_billed=@transport_billed,
         other_charge=@other_charge, other_billed=@other_billed,
         vehicle_no=@vehicle_no, vehicle_type=@vehicle_type, driver=@driver, challan_no=@challan_no,
-        outsourced=@outsourced, delivery_status=@delivery_status, payment_status=@payment_status, paid_amount=@paid_amount,
+        outsourced=@outsourced, outsource_id=@outsource_id, delivery_status=@delivery_status, payment_status=@payment_status, paid_amount=@paid_amount,
         date=@date, remarks=@remarks WHERE id=@id`
     ).run({ id: p.id, ...fields });
     await d.prepare(`DELETE FROM stock_movements WHERE ref_no=? AND type='dispatch'`).run(old.dispatch_no);
@@ -4701,11 +4720,14 @@ async function listOutsource() {
 async function createOutsource(p) {
   const d = getDb();
   if (!p.name?.trim()) throw new Error("Name is required.");
+  if (!p.head?.trim()) throw new Error("Head is required.");
   const info = await d.prepare(`INSERT INTO outsource (name, head, contact, remarks) VALUES (?, ?, ?, ?)`).run(properCase(p.name), properCase(p.head), p.contact ?? "", p.remarks ?? "");
   return await d.prepare(`SELECT * FROM outsource WHERE id = ?`).get(info.lastInsertRowid);
 }
 async function updateOutsource(p) {
   const d = getDb();
+  if (!p.name?.trim()) throw new Error("Name is required.");
+  if (!p.head?.trim()) throw new Error("Head is required.");
   await d.prepare(`UPDATE outsource SET name=?, head=?, contact=?, remarks=? WHERE id=?`).run(
     properCase(p.name),
     properCase(p.head),
