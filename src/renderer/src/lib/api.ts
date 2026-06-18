@@ -27,6 +27,7 @@ import type {
   LedgerStatement,
   PartyBalance,
   DueRow,
+  OpeningBalance,
   LedgerType,
   Asset,
   PlantExpense,
@@ -233,7 +234,12 @@ export const api = {
       call<LedgerStatement>('ledgers.get', { party_type, party_id, from, to }),
     balances: (party_type: LedgerType, plant_id?: number) =>
       call<PartyBalance[]>('ledgers.balances', { party_type, plant_id }),
-    allDues: (plant_id?: number) => call<DueRow[]>('ledgers.allDues', { plant_id })
+    allDues: (plant_id?: number) => call<DueRow[]>('ledgers.allDues', { plant_id }),
+    getOpening: (party_type: LedgerType, party_id: number) =>
+      call<OpeningBalance | null>('ledgers.getOpening', { party_type, party_id }),
+    setOpening: (p: OpeningBalance) => call<{ ok: boolean; error?: string }>('ledgers.setOpening', p),
+    deleteOpening: (party_type: LedgerType, party_id: number) =>
+      call<{ ok: boolean }>('ledgers.deleteOpening', { party_type, party_id })
   },
   payments: {
     add: (p: unknown) => call<PaymentEntry>('payments.add', p),

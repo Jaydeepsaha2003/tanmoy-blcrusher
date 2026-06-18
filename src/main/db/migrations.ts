@@ -394,6 +394,16 @@ CREATE TABLE IF NOT EXISTS diesel_issues (
   remarks    TEXT,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS opening_balances (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  party_type  VARCHAR(32) NOT NULL,
+  party_id    INT NOT NULL,
+  amount      DOUBLE NOT NULL DEFAULT 0,
+  direction   VARCHAR(8) NOT NULL DEFAULT 'debit',
+  as_of_date  VARCHAR(32) NOT NULL,
+  remarks     TEXT,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS payments (
   id         INT AUTO_INCREMENT PRIMARY KEY,
   party_type VARCHAR(32) NOT NULL,
@@ -490,6 +500,21 @@ ALTER TABLE purchases ADD COLUMN product_name VARCHAR(255) NOT NULL DEFAULT ''`
     id: '007_outsource_on_sale_purchase',
     sql: `ALTER TABLE dispatches ADD COLUMN outsource_id INT;
 ALTER TABLE purchases ADD COLUMN outsource_id INT`
+  },
+  {
+    // Per-account opening balances (financial-year carry-forward is computed).
+    id: '008_opening_balances',
+    sql: `CREATE TABLE IF NOT EXISTS opening_balances (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  party_type  VARCHAR(32) NOT NULL,
+  party_id    INT NOT NULL,
+  amount      DOUBLE NOT NULL DEFAULT 0,
+  direction   VARCHAR(8) NOT NULL DEFAULT 'debit',
+  as_of_date  VARCHAR(32) NOT NULL,
+  remarks     TEXT,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_opening_party ON opening_balances(party_type, party_id)`
   }
 ]
 

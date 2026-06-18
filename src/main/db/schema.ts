@@ -414,6 +414,17 @@ CREATE TABLE IF NOT EXISTS diesel_issues (
   created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
+CREATE TABLE IF NOT EXISTS opening_balances (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  party_type  TEXT NOT NULL,
+  party_id    INTEGER NOT NULL,
+  amount      REAL NOT NULL DEFAULT 0,
+  direction   TEXT NOT NULL DEFAULT 'debit',
+  as_of_date  TEXT NOT NULL,
+  remarks     TEXT NOT NULL DEFAULT '',
+  created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS payments (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   party_type TEXT NOT NULL,
@@ -453,4 +464,5 @@ CREATE INDEX IF NOT EXISTS idx_move_loc ON stock_movements(stock_location_id);
 CREATE INDEX IF NOT EXISTS idx_products_plant ON products(plant_id);
 CREATE INDEX IF NOT EXISTS idx_crates_customer ON customer_rates(customer_id);
 CREATE INDEX IF NOT EXISTS idx_customers_token ON customers(share_token);
+CREATE INDEX IF NOT EXISTS idx_opening_party ON opening_balances(party_type, party_id);
 `

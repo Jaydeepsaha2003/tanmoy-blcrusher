@@ -7,7 +7,8 @@ import type {
   LedgerEntry,
   LedgerStatement,
   PartyBalance,
-  DueRow
+  DueRow,
+  OpeningBalance
 } from '@shared/types'
 
 const PARTY_TABLE: Record<PartyType, string> = {
@@ -185,9 +186,32 @@ interface RawEntry {
  * Rack:        debit = transport bills + rack expenses (costs); credit = rack sales (revenue).
  *              Positive balance = profit on the rack (excl. raw material cost).
  */
+/** Party ledgers that support a manual opening balance. */
+const OPENING_TYPES: LedgerType[] = ['customer', 'supplier', 'transporter', 'outsource']
+
+/** A synthetic 'Opening Balance' entry from the stored opening, or null. */
+async function openingEntry(partyType: LedgerType, partyId: number): Promise<RawEntry | null> {
+  if (!OPENING_TYPES.includes(partyType)) return null
+  const row = (await getDb()
+    .prepare(`SELECT amount, direction, as_of_date FROM opening_balances WHERE party_type = ? AND party_id = ?`)
+    .get(partyType, partyId)) as { amount: number; direction: string; as_of_date: string } | undefined
+  if (!row || !(row.amount > 0)) return null
+  return {
+    date: row.as_of_date || '1900-04-01',
+    created_at: '',
+    particulars: 'Opening Balance',
+    ref: 'OPENING',
+    debit: row.direction === 'debit' ? roundMoney(row.amount) : 0,
+    credit: row.direction === 'credit' ? roundMoney(row.amount) : 0
+  }
+}
+
 async function buildEntries(partyType: LedgerType, partyId: number): Promise<RawEntry[]> {
   const d = getDb()
   const entries: RawEntry[] = []
+  // Seed the manual opening balance (carry-forward into later FYs is computed by getLedger).
+  const op = await openingEntry(partyType, partyId)
+  if (op) entries.push(op)
 
   if (partyType === 'rack') {
     const loadings = (await d
@@ -882,7 +906,7 @@ export async function getLedger(payload: {
   if (payload.from) {
     entries.push({
       date: payload.from,
-      particulars: 'Opening balance',
+      particulars: 'Opening Balance b/f',
       ref: '',
       debit: 0,
       credit: 0,
@@ -974,6 +998,63 @@ export async function getPartyBalances(payload: {
     })
   }
   return result
+}
+
+/* ---------------- Opening balances (per account; FY carry-forward is computed) ---------------- */
+
+export async function getOpeningBalance(payload: {
+  party_type: LedgerType
+  party_id: number
+}): Promise<OpeningBalance | null> {
+  const row = (await getDb()
+    .prepare(
+      `SELECT id, party_type, party_id, amount, direction, as_of_date, remarks
+       FROM opening_balances WHERE party_type = ? AND party_id = ?`
+    )
+    .get(payload.party_type, payload.party_id)) as OpeningBalance | undefined
+  return row ?? null
+}
+
+export async function setOpeningBalance(payload: {
+  party_type: LedgerType
+  party_id: number
+  amount: number
+  direction: 'debit' | 'credit'
+  as_of_date: string
+  remarks?: string
+}): Promise<{ ok: boolean; error?: string }> {
+  if (!OPENING_TYPES.includes(payload.party_type))
+    return { ok: false, error: 'Opening balance is only available for customer, supplier, transporter and outsource ledgers.' }
+  if (!payload.party_id) return { ok: false, error: 'Select a party.' }
+  const amount = roundMoney(Number(payload.amount) || 0)
+  const direction = payload.direction === 'credit' ? 'credit' : 'debit'
+  const asOf = payload.as_of_date || new Date().toISOString().slice(0, 10)
+  const d = getDb()
+  await d.transaction(async () => {
+    // One opening per account — replace any existing.
+    await d
+      .prepare(`DELETE FROM opening_balances WHERE party_type = ? AND party_id = ?`)
+      .run(payload.party_type, payload.party_id)
+    if (amount > 0) {
+      await d
+        .prepare(
+          `INSERT INTO opening_balances (party_type, party_id, amount, direction, as_of_date, remarks)
+           VALUES (?, ?, ?, ?, ?, ?)`
+        )
+        .run(payload.party_type, payload.party_id, amount, direction, asOf, payload.remarks ?? '')
+    }
+  })
+  return { ok: true }
+}
+
+export async function deleteOpeningBalance(payload: {
+  party_type: LedgerType
+  party_id: number
+}): Promise<{ ok: boolean }> {
+  await getDb()
+    .prepare(`DELETE FROM opening_balances WHERE party_type = ? AND party_id = ?`)
+    .run(payload.party_type, payload.party_id)
+  return { ok: true }
 }
 
 /**

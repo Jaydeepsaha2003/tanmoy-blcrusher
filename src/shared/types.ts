@@ -457,6 +457,17 @@ export interface PaymentEntry {
   created_at: string
 }
 
+/** A one-time opening balance for a party ledger; FY carry-forward is computed. */
+export interface OpeningBalance {
+  id?: number
+  party_type: LedgerType
+  party_id: number
+  amount: number
+  direction: 'debit' | 'credit'
+  as_of_date: string
+  remarks: string
+}
+
 export interface LedgerEntry {
   date: string
   particulars: string

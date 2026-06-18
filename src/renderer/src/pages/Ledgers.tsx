@@ -59,6 +59,17 @@ function drcr(t: LedgerType, v: number): string {
   return (debitPositive ? v > 0 : v < 0) ? 'Dr' : 'Cr'
 }
 
+/** Ledgers that support a manual opening balance. */
+const OPENING_TYPES: LedgerType[] = ['customer', 'supplier', 'transporter', 'outsource']
+
+/** Financial year (Apr–Mar) start-year for a date, and its label e.g. "2025-26". */
+function fyStartYearOf(d: Date): number {
+  return d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1
+}
+function fyLabel(y: number): string {
+  return `${y}-${String((y + 1) % 100).padStart(2, '0')}`
+}
+
 export function Ledgers(): React.JSX.Element {
   const qc = useQueryClient()
   const toast = useToast()
@@ -67,7 +78,27 @@ export function Ledgers(): React.JSX.Element {
   const [partyId, setPartyId] = React.useState<number | undefined>(initial.id)
   const [from, setFrom] = React.useState('')
   const [to, setTo] = React.useState('')
+  const [fy, setFy] = React.useState<number | ''>('')
   const [payForm, setPayForm] = React.useState<any>(null)
+  const [openingForm, setOpeningForm] = React.useState<any>(null)
+
+  const fyYears = React.useMemo(() => {
+    const cur = fyStartYearOf(new Date())
+    return Array.from({ length: 7 }, (_, i) => cur + 1 - i)
+  }, [])
+
+  function selectFy(value: string): void {
+    if (value === '') {
+      setFy('')
+      setFrom('')
+      setTo('')
+      return
+    }
+    const y = Number(value)
+    setFy(y)
+    setFrom(`${y}-04-01`)
+    setTo(`${y + 1}-03-31`)
+  }
 
   const { data: balances = [] } = useQuery({
     queryKey: ['ledger-balances', partyType],
@@ -110,6 +141,31 @@ export function Ledgers(): React.JSX.Element {
   function switchType(t: LedgerType): void {
     setPartyType(t)
     setPartyId(undefined)
+  }
+
+  const saveOpening = useMutation({
+    mutationFn: (p: any) => api.ledgers.setOpening(p),
+    onSuccess: (res) => {
+      if (res.ok) {
+        refresh()
+        setOpeningForm(null)
+        toast.success('Opening balance saved.')
+      } else toast.error(res.error || 'Could not save opening balance.')
+    },
+    onError: (e: Error) => toast.error(e.message)
+  })
+
+  async function openOpening(): Promise<void> {
+    if (!partyId) return
+    const existing = await api.ledgers.getOpening(partyType, partyId).catch(() => null)
+    setOpeningForm({
+      party_type: partyType,
+      party_id: partyId,
+      amount: existing?.amount ?? '',
+      direction: existing?.direction ?? (partyType === 'customer' ? 'debit' : 'credit'),
+      as_of_date: existing?.as_of_date || (fy ? `${fy}-04-01` : today()),
+      remarks: existing?.remarks ?? ''
+    })
   }
 
   function openPayment(): void {
@@ -174,6 +230,11 @@ export function Ledgers(): React.JSX.Element {
               <Button variant="outline" className="no-print" onClick={exportExcel} disabled={!ledger?.entries.length}>
                 <FileSpreadsheet size={16} /> Excel
               </Button>
+              {OPENING_TYPES.includes(partyType) && (
+                <Button variant="outline" className="no-print" onClick={openOpening}>
+                  Opening Balance
+                </Button>
+              )}
               {partyType !== 'rack' && partyType !== 'company' && partyType !== 'plant' && partyType !== 'business' && (
                 <Button className="no-print" onClick={openPayment}>
                   <Plus size={16} /> Record Payment
@@ -207,9 +268,13 @@ export function Ledgers(): React.JSX.Element {
           </Select>
           {partyId && (
             <>
-              <Input type="date" className="w-full sm:w-36" value={from} onChange={(e) => setFrom(e.target.value)} />
+              <Select className="w-full sm:w-36" value={fy === '' ? '' : String(fy)} onChange={(e) => selectFy(e.target.value)} title="Financial year">
+                <option value="">All time</option>
+                {fyYears.map((y) => <option key={y} value={y}>FY {fyLabel(y)}</option>)}
+              </Select>
+              <Input type="date" className="w-full sm:w-36" value={from} onChange={(e) => { setFrom(e.target.value); setFy('') }} />
               <span className="text-muted-foreground">to</span>
-              <Input type="date" className="w-full sm:w-36" value={to} onChange={(e) => setTo(e.target.value)} />
+              <Input type="date" className="w-full sm:w-36" value={to} onChange={(e) => { setTo(e.target.value); setFy('') }} />
               <Button variant="ghost" size="sm" onClick={() => setPartyId(undefined)}>
                 <ArrowLeft size={15} /> All {partyLabel[partyType].toLowerCase()}s
               </Button>
@@ -294,7 +359,7 @@ export function Ledgers(): React.JSX.Element {
                 </THead>
                 <TBody>
                   {ledger.entries.map((e, i) => {
-                    const opening = e.particulars === 'Opening balance'
+                    const opening = e.particulars.toLowerCase().startsWith('opening balance')
                     return (
                       <TR key={i} className={opening ? 'bg-muted/30' : ''}>
                         <TD className="whitespace-nowrap">{fmtDate(e.date)}</TD>
@@ -373,6 +438,43 @@ export function Ledgers(): React.JSX.Element {
                 disabled={!(Number(payForm.amount) > 0)}
               >
                 Save Payment
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {openingForm && (
+        <Modal open onClose={() => setOpeningForm(null)} title={`Opening Balance — ${selected?.name ?? ''}`}>
+          <div className="space-y-4">
+            <div className="rounded-lg border border-primary/30 bg-accent/40 px-3.5 py-2.5 text-xs text-accent-foreground">
+              The opening balance is the account's starting figure. Each financial year's opening is the
+              previous year's closing automatically — you only set this once.
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="As-of date" hint="Usually the start of your first financial year">
+                <Input type="date" value={openingForm.as_of_date} onChange={(e) => setOpeningForm({ ...openingForm, as_of_date: e.target.value })} />
+              </Field>
+              <Field label="Amount" hint="Set 0 to clear the opening balance">
+                <Input type="number" step="0.01" value={openingForm.amount} onChange={(e) => setOpeningForm({ ...openingForm, amount: e.target.value })} />
+              </Field>
+              <Field
+                label="Type"
+                hint={partyType === 'customer' ? 'Dr = they owe you · Cr = advance from them' : 'Cr = you owe them · Dr = advance you paid'}
+              >
+                <Select value={openingForm.direction} onChange={(e) => setOpeningForm({ ...openingForm, direction: e.target.value })}>
+                  <option value="debit">Debit (Dr)</option>
+                  <option value="credit">Credit (Cr)</option>
+                </Select>
+              </Field>
+              <Field label="Remarks">
+                <Input value={openingForm.remarks} onChange={(e) => setOpeningForm({ ...openingForm, remarks: e.target.value })} />
+              </Field>
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" onClick={() => setOpeningForm(null)}>Cancel</Button>
+              <Button onClick={() => saveOpening.mutate({ ...openingForm, amount: Number(openingForm.amount) || 0 })}>
+                Save Opening Balance
               </Button>
             </div>
           </div>
