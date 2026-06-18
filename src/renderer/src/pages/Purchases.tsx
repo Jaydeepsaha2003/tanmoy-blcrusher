@@ -229,90 +229,125 @@ export function Purchases(): React.JSX.Element {
               )
             })}
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Supplier" required>
-              <Select value={form.supplier_id || ''} onChange={(e) => setForm({ ...form, supplier_id: Number(e.target.value) })}>
-                {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </Select>
-            </Field>
-            <Field label="Purchase Date" required>
-              <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
-            </Field>
-            <Field label="Plant" required hint={plantId ? 'Locked to active plant' : undefined}>
-              <Select value={form.plant_id || ''} disabled={!!plantId} onChange={(e) => setForm({ ...form, plant_id: Number(e.target.value), stock_location_id: undefined })}>
-                {plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </Select>
-            </Field>
-            {form.material_type === 'finished' ? (
-              <Field
-                label="Product"
-                required
-                hint="Bought quantity is added to this product's finished-goods stock"
-              >
-                <Select
-                  value={form.product_name || ''}
-                  onChange={(e) => setForm({ ...form, product_name: e.target.value })}
-                >
-                  <option value="">Select product…</option>
-                  {products.map((pr) => <option key={pr.id} value={pr.name}>{pr.name}</option>)}
-                </Select>
-              </Field>
-            ) : (
-              <Field
-                label="Stock Location"
-                hint="Leave blank to use the plant itself as the default location"
-              >
-                <Select
-                  value={form.stock_location_id || ''}
-                  onChange={(e) =>
-                    setForm({ ...form, stock_location_id: e.target.value ? Number(e.target.value) : undefined })
+          <div className="space-y-5">
+            {/* Supplier & item */}
+            <Section title="Supplier & Item">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="Supplier" required>
+                  <Select value={form.supplier_id || ''} onChange={(e) => setForm({ ...form, supplier_id: Number(e.target.value) })}>
+                    {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </Select>
+                </Field>
+                <Field label="Purchase Date" required>
+                  <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+                </Field>
+                <Field label="Plant" required hint={plantId ? 'Locked to active plant' : undefined}>
+                  <Select value={form.plant_id || ''} disabled={!!plantId} onChange={(e) => setForm({ ...form, plant_id: Number(e.target.value), stock_location_id: undefined })}>
+                    {plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </Select>
+                </Field>
+                {form.material_type === 'finished' ? (
+                  <Field
+                    label="Product"
+                    required
+                    hint="Bought quantity is added to this product's finished-goods stock"
+                  >
+                    <Select
+                      value={form.product_name || ''}
+                      onChange={(e) => setForm({ ...form, product_name: e.target.value })}
+                    >
+                      <option value="">Select product…</option>
+                      {products.map((pr) => <option key={pr.id} value={pr.name}>{pr.name}</option>)}
+                    </Select>
+                  </Field>
+                ) : (
+                  <Field
+                    label="Stock Location"
+                    hint="Leave blank to use the plant itself as the default location"
+                  >
+                    <Select
+                      value={form.stock_location_id || ''}
+                      onChange={(e) =>
+                        setForm({ ...form, stock_location_id: e.target.value ? Number(e.target.value) : undefined })
+                      }
+                    >
+                      <option value="">Plant default (auto)</option>
+                      {formLocations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                    </Select>
+                  </Field>
+                )}
+              </div>
+            </Section>
+
+            {/* Quantity & rate */}
+            <Section title="Quantity & Rate">
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                <Field label="Unit (UOM)" required>
+                  <Select value={form.uom || 'CM'} onChange={(e) => setForm({ ...form, uom: e.target.value })}>
+                    {UOMS.map((u) => (
+                      <option key={u} value={u}>
+                        {u}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field
+                  label={`Quantity (${form.uom || 'CM'})`}
+                  required
+                  hint={
+                    form.uom && form.uom !== 'CM'
+                      ? `= ${fmtQty(toCm(Number(form.quantity) || 0, form.uom, formPlant))} m³`
+                      : 'Stored as m³'
                   }
                 >
-                  <option value="">Plant default (auto)</option>
-                  {formLocations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-                </Select>
-              </Field>
-            )}
-            <Field label="Unit (UOM)" required>
-              <Select value={form.uom || 'CM'} onChange={(e) => setForm({ ...form, uom: e.target.value })}>
-                {UOMS.map((u) => (
-                  <option key={u} value={u}>
-                    {u}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field
-              label={`Quantity (${form.uom || 'CM'})`}
-              required
-              hint={
-                form.uom && form.uom !== 'CM'
-                  ? `= ${fmtQty(toCm(Number(form.quantity) || 0, form.uom, formPlant))} m³ added to stock`
-                  : 'Added to stock in m³'
-              }
-            >
-              <Input type="number" step="0.001" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
-            </Field>
-            <Field label={`Rate per ${form.uom || 'CM'}`} required>
-              <Input type="number" step="0.01" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} placeholder="Enter rate" />
-            </Field>
-            <Field label="Amount" required hint="Auto-calculated: rate × quantity">
-              <Input value={fmtMoney((Number(form.quantity) || 0) * (Number(form.rate) || 0))} disabled />
-            </Field>
-            <Field label="Paid Amount" hint="Sets payment status automatically">
-              <Input type="number" step="0.01" value={form.paid_amount} onChange={(e) => setForm({ ...form, paid_amount: e.target.value })} />
-            </Field>
-            <Field label="Payment Status">
-              <div className="flex h-9 items-center">
-                <Badge variant={payBadge[derivePaymentStatus((Number(form.quantity) || 0) * (Number(form.rate) || 0), Number(form.paid_amount) || 0)]}>
-                  {derivePaymentStatus((Number(form.quantity) || 0) * (Number(form.rate) || 0), Number(form.paid_amount) || 0)}
-                </Badge>
+                  <Input type="number" step="0.001" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
+                </Field>
+                <Field label={`Rate per ${form.uom || 'CM'}`} required>
+                  <Input type="number" step="0.01" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} placeholder="Enter rate" />
+                </Field>
               </div>
-            </Field>
-            <div className="col-span-2">
+            </Section>
+
+            {/* Payment */}
+            <Section title="Payment">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <Field label="Paid Amount" hint="Sets payment status automatically">
+                  <Input type="number" step="0.01" value={form.paid_amount} onChange={(e) => setForm({ ...form, paid_amount: e.target.value })} />
+                </Field>
+                <Field label="Payment Status">
+                  <div className="flex h-9 items-center">
+                    <Badge variant={payBadge[derivePaymentStatus((Number(form.quantity) || 0) * (Number(form.rate) || 0), Number(form.paid_amount) || 0)]}>
+                      {derivePaymentStatus((Number(form.quantity) || 0) * (Number(form.rate) || 0), Number(form.paid_amount) || 0)}
+                    </Badge>
+                  </div>
+                </Field>
+              </div>
               <Field label="Remarks">
                 <Input value={form.remarks || ''} onChange={(e) => setForm({ ...form, remarks: e.target.value })} />
               </Field>
+            </Section>
+
+            {/* Summary */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border bg-muted/40 px-4 py-3 text-sm">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {form.material_type === 'finished' ? 'Adds to finished goods' : 'Adds to raw stock'}
+                </div>
+                <div className="mt-1">
+                  {form.material_type === 'finished'
+                    ? form.product_name || '— select a product —'
+                    : formLocations.find((l) => l.id === form.stock_location_id)?.name || 'Plant default location'}
+                  <span className="ml-1 text-muted-foreground">
+                    · {fmtQty(toCm(Number(form.quantity) || 0, form.uom || 'CM', formPlant))} m³
+                  </span>
+                </div>
+              </div>
+              <div className="rounded-xl border bg-muted/40 px-4 py-3 text-sm">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Amount</div>
+                <div className="mt-1">
+                  rate × qty = <b className="text-primary">{fmtMoney((Number(form.quantity) || 0) * (Number(form.rate) || 0))}</b>
+                </div>
+              </div>
             </div>
           </div>
           <div className="mt-5 flex justify-end gap-2">
@@ -332,6 +367,18 @@ export function Purchases(): React.JSX.Element {
         </Modal>
       )}
     </>
+  )
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }): React.JSX.Element {
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center gap-3">
+        <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground/80">{title}</span>
+        <span className="h-px flex-1 bg-border" />
+      </div>
+      {children}
+    </section>
   )
 }
 
