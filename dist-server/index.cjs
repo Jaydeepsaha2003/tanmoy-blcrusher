@@ -1135,25 +1135,29 @@ async function sqliteLegacyMigrate(adapter2) {
   await addColumn("customers", "share_token", "TEXT");
 }
 async function importProductsFromSettings(adapter2) {
-  const rows = (await adapter2.exec(
-    `SELECT DISTINCT ps.plant_id AS plant_id, ps.product_name AS product_name
-       FROM production_settings ps`,
+  const all = (await adapter2.exec(`SELECT id, name FROM products ORDER BY id`, void 0, null)).rows;
+  const keep = /* @__PURE__ */ new Map();
+  for (const p of all) {
+    const key = (p.name || "").trim().toLowerCase();
+    if (!key) continue;
+    if (!keep.has(key)) keep.set(key, p.id);
+    else await adapter2.exec(`DELETE FROM products WHERE id = ?`, [p.id], null);
+  }
+  const names = (await adapter2.exec(
+    `SELECT DISTINCT product_name FROM production_settings`,
     void 0,
     null
   )).rows;
-  for (const r of rows) {
-    if (!r.product_name) continue;
-    const existing = (await adapter2.exec(
-      `SELECT id FROM products WHERE plant_id = ? AND LOWER(name) = LOWER(?)`,
-      [r.plant_id, r.product_name],
-      null
-    )).rows;
-    if (existing.length > 0) continue;
+  for (const r of names) {
+    const name = (r.product_name || "").trim();
+    if (!name) continue;
+    if (keep.has(name.toLowerCase())) continue;
     await adapter2.exec(
-      `INSERT INTO products (plant_id, name, description, status) VALUES (?, ?, '', 'active')`,
-      [r.plant_id, r.product_name],
+      `INSERT INTO products (plant_id, name, description, status) VALUES (0, ?, '', 'active')`,
+      [name],
       null
     );
+    keep.set(name.toLowerCase(), 0);
   }
 }
 async function seedDefaults(adapter2) {
@@ -2044,48 +2048,34 @@ async function deleteCustomer(payload) {
 }
 
 // src/main/services/products.ts
-async function listProducts(payload = {}) {
-  const d = getDb();
-  const clause = payload.plant_id ? "WHERE p.plant_id = @plant_id" : "";
-  return await d.prepare(
-    `SELECT p.*, pl.name AS plant_name
-       FROM products p
-       JOIN plants pl ON pl.id = p.plant_id
-       ${clause}
-       ORDER BY pl.name, p.name`
-  ).all(payload);
+async function listProducts(_payload = {}) {
+  return await getDb().prepare(`SELECT id, name, description, status, created_at FROM products ORDER BY name`).all();
 }
 async function createProduct(p) {
   const d = getDb();
-  if (!p.plant_id) throw new Error("Select a plant for this product.");
   const name = properCase(p.name);
   if (!name) throw new Error("Product name is required.");
-  const dup = await d.prepare(`SELECT id FROM products WHERE plant_id = ? AND LOWER(name) = LOWER(?)`).get(p.plant_id, name);
-  if (dup) throw new Error("A product with this name already exists for this plant.");
-  const info = await d.prepare(`INSERT INTO products (plant_id, name, description, status) VALUES (?, ?, ?, ?)`).run(p.plant_id, name, p.description ?? "", p.status ?? "active");
+  const dup = await d.prepare(`SELECT id FROM products WHERE LOWER(name) = LOWER(?)`).get(name);
+  if (dup) throw new Error("A product with this name already exists.");
+  const info = await d.prepare(`INSERT INTO products (plant_id, name, description, status) VALUES (0, ?, ?, ?)`).run(name, p.description ?? "", p.status ?? "active");
   return await d.prepare(`SELECT * FROM products WHERE id = ?`).get(info.lastInsertRowid);
 }
 async function updateProduct(p) {
   const d = getDb();
   const name = properCase(p.name);
   if (!name) throw new Error("Product name is required.");
-  const dup = await d.prepare(`SELECT id FROM products WHERE plant_id = ? AND LOWER(name) = LOWER(?) AND id <> ?`).get(p.plant_id, name, p.id);
-  if (dup) throw new Error("A product with this name already exists for this plant.");
-  await d.prepare(`UPDATE products SET plant_id=?, name=?, description=?, status=? WHERE id=?`).run(p.plant_id, name, p.description ?? "", p.status ?? "active", p.id);
+  const dup = await d.prepare(`SELECT id FROM products WHERE LOWER(name) = LOWER(?) AND id <> ?`).get(name, p.id);
+  if (dup) throw new Error("A product with this name already exists.");
+  await d.prepare(`UPDATE products SET name=?, description=?, status=? WHERE id=?`).run(name, p.description ?? "", p.status ?? "active", p.id);
   return await d.prepare(`SELECT * FROM products WHERE id = ?`).get(p.id);
 }
 async function deleteProduct(payload) {
   const d = getDb();
   const prod = await d.prepare(`SELECT * FROM products WHERE id = ?`).get(payload.id);
   if (!prod) return { ok: false, error: "Product not found." };
-  const used = await d.prepare(
-    `SELECT COUNT(*) AS c FROM production_settings WHERE plant_id = ? AND LOWER(product_name) = LOWER(?)`
-  ).get(prod.plant_id, prod.name);
+  const used = await d.prepare(`SELECT COUNT(*) AS c FROM production_settings WHERE LOWER(product_name) = LOWER(?)`).get(prod.name);
   if (used.c > 0) {
-    return {
-      ok: false,
-      error: "Cannot delete: this product is used in Production Settings for its plant."
-    };
+    return { ok: false, error: "Cannot delete: this product is used in Production Settings." };
   }
   await d.prepare(`DELETE FROM products WHERE id = ?`).run(payload.id);
   return { ok: true };
@@ -2100,25 +2090,23 @@ function nowIso() {
 async function listCustomerRates(payload) {
   if (!payload.customer_id) return [];
   return await getDb().prepare(
-    `SELECT cr.*, pl.name AS plant_name
-       FROM customer_rates cr
-       JOIN plants pl ON pl.id = cr.plant_id
-       WHERE cr.customer_id = ?
-       ORDER BY pl.name, cr.product_name, cr.uom`
+    `SELECT id, customer_id, product_name, uom, rate, updated_at
+       FROM customer_rates
+       WHERE customer_id = ?
+       ORDER BY product_name, uom`
   ).all(payload.customer_id);
 }
 async function saveCustomerRates(payload) {
   const d = getDb();
   if (!payload.customer_id) return { ok: false, error: "Select a customer." };
   const items = (payload.items ?? []).map((i) => ({
-    plant_id: Number(i.plant_id),
     product_name: properCase(i.product_name),
     uom: VALID_UOM.includes(i.uom) ? i.uom : "CM",
     rate: Number(i.rate) || 0
-  })).filter((i) => i.plant_id && i.product_name);
+  })).filter((i) => i.product_name);
   const seen = /* @__PURE__ */ new Set();
   for (const i of items) {
-    const key = `${i.plant_id}|${i.product_name.toLowerCase()}|${i.uom}`;
+    const key = `${i.product_name.toLowerCase()}|${i.uom}`;
     if (seen.has(key)) {
       return { ok: false, error: `Duplicate rate for ${i.product_name} (${i.uom}).` };
     }
@@ -2129,10 +2117,10 @@ async function saveCustomerRates(payload) {
     await d.prepare(`DELETE FROM customer_rates WHERE customer_id = ?`).run(payload.customer_id);
     const stmt = d.prepare(
       `INSERT INTO customer_rates (customer_id, plant_id, product_name, uom, rate, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)`
+       VALUES (?, 0, ?, ?, ?, ?)`
     );
     for (const i of items) {
-      await stmt.run(payload.customer_id, i.plant_id, i.product_name, i.uom, i.rate, ts);
+      await stmt.run(payload.customer_id, i.product_name, i.uom, i.rate, ts);
     }
   });
   return { ok: true };
@@ -2172,24 +2160,20 @@ async function publicRateList(payload) {
   const customer = await d.prepare(`SELECT id, name FROM customers WHERE share_token = ?`).get(token);
   if (!customer) return null;
   const rows = await d.prepare(
-    `SELECT cr.product_name, cr.uom, cr.rate, cr.updated_at, pl.name AS plant_name
-       FROM customer_rates cr
-       JOIN plants pl ON pl.id = cr.plant_id
-       WHERE cr.customer_id = ?
-       ORDER BY pl.name, cr.product_name, cr.uom`
+    `SELECT product_name, uom, rate, updated_at
+       FROM customer_rates
+       WHERE customer_id = ?
+       ORDER BY product_name, uom`
   ).all(customer.id);
-  const groupMap = /* @__PURE__ */ new Map();
   let updated = null;
   for (const r of rows) {
-    if (!groupMap.has(r.plant_name)) groupMap.set(r.plant_name, []);
-    groupMap.get(r.plant_name).push({ product_name: r.product_name, uom: r.uom, rate: r.rate });
     if (r.updated_at && (!updated || r.updated_at > updated)) updated = r.updated_at;
   }
   return {
     customer_name: customer.name,
     business_name: await getBusinessNameInternal(),
     updated_at: updated,
-    groups: [...groupMap.entries()].map(([plant_name, rates]) => ({ plant_name, rates }))
+    rates: rows.map((r) => ({ product_name: r.product_name, uom: r.uom, rate: r.rate }))
   };
 }
 
@@ -5511,57 +5495,81 @@ function esc(s) {
 function fmtRate(n) {
   return Number(n).toLocaleString("en-IN", { maximumFractionDigits: 2 });
 }
+function initials(name) {
+  return (name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
+}
 function renderRatePage(data) {
-  const updated = data.updated_at ? new Date(data.updated_at).toLocaleDateString("en-IN") : "";
-  const sections = data.groups.length ? data.groups.map(
-    (g) => `
-        <section class="card">
-          <h2>${esc(g.plant_name)}</h2>
-          <table>
-            <thead><tr><th>Product</th><th>Unit</th><th class="r">Rate</th></tr></thead>
-            <tbody>
-              ${g.rates.map(
-      (r) => `<tr><td>${esc(r.product_name)}</td><td>${esc(r.uom)}</td><td class="r">\u20B9 ${fmtRate(r.rate)}</td></tr>`
-    ).join("")}
-            </tbody>
-          </table>
-        </section>`
-  ).join("") : `<section class="card"><p class="muted">No rates have been published yet. Please contact us.</p></section>`;
+  const updated = data.updated_at ? new Date(data.updated_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "";
+  const rows = data.rates.length ? data.rates.map(
+    (r) => `
+            <tr>
+              <td class="prod">${esc(r.product_name)}</td>
+              <td><span class="unit">${esc(r.uom)}</span></td>
+              <td class="r">\u20B9${fmtRate(r.rate)}</td>
+            </tr>`
+  ).join("") : "";
+  const body = data.rates.length ? `<div class="card">
+         <table>
+           <thead><tr><th>Product</th><th>Unit</th><th class="r">Rate</th></tr></thead>
+           <tbody>${rows}</tbody>
+         </table>
+       </div>` : `<div class="card empty">No rates have been published yet. Please contact us for a quote.</div>`;
   return `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
 <meta name="robots" content="noindex,nofollow"/>
+<meta name="theme-color" content="#0b1220"/>
 <title>${esc(data.business_name)} \u2014 Rate List</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
 <style>
-  :root { color-scheme: light; }
+  :root { color-scheme: light; --bg:#eef1f6; --ink:#0f1729; --muted:#64748b; --line:#eceef2; --brand:#1f6feb; --brand2:#0b3aa3; }
   * { box-sizing: border-box; }
-  body { margin:0; font-family: system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:#f4f5f7; color:#1f2430; }
-  .wrap { max-width: 760px; margin: 0 auto; padding: 20px 16px 48px; }
-  header { text-align:center; padding: 22px 0 10px; }
-  header .biz { font-size: 22px; font-weight: 800; letter-spacing:-.01em; }
-  header .sub { color:#6b7280; font-size: 13px; margin-top:2px; }
-  .pill { display:inline-block; margin-top:12px; background:#1f6feb; color:#fff; font-weight:600; font-size:13px; padding:6px 14px; border-radius:999px; }
-  .card { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:14px 16px; margin-top:16px; box-shadow:0 1px 2px rgba(0,0,0,.04); }
-  .card h2 { margin:0 0 10px; font-size:15px; font-weight:700; color:#111827; }
-  table { width:100%; border-collapse: collapse; font-size:14px; }
-  th, td { text-align:left; padding:9px 8px; border-bottom:1px solid #f0f1f3; }
-  th { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:#6b7280; }
-  tr:last-child td { border-bottom:none; }
-  .r { text-align:right; font-variant-numeric: tabular-nums; font-weight:600; white-space:nowrap; }
-  .muted { color:#6b7280; }
-  footer { text-align:center; color:#9aa1ab; font-size:12px; margin-top:24px; }
+  html,body { margin:0; }
+  body { font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg);
+         color:var(--ink); -webkit-font-smoothing:antialiased; line-height:1.5; }
+  .wrap { max-width: 600px; margin:0 auto; padding: 0 16px 56px; }
+  .hero { margin: 18px 0 0; border-radius: 22px; padding: 30px 24px 26px; color:#fff; text-align:center;
+          background: radial-gradient(120% 120% at 50% -10%, #2b7bff 0%, var(--brand) 45%, var(--brand2) 100%);
+          box-shadow: 0 18px 40px -18px rgba(31,111,235,.6); }
+  .avatar { width:56px; height:56px; border-radius:16px; margin:0 auto 12px; display:flex; align-items:center;
+            justify-content:center; font-weight:800; font-size:20px; letter-spacing:.02em;
+            background:rgba(255,255,255,.18); backdrop-filter:blur(4px); border:1px solid rgba(255,255,255,.25); }
+  .hero .biz { font-size: 23px; font-weight: 800; letter-spacing:-.02em; }
+  .hero .sub { opacity:.92; font-size: 13.5px; margin-top:4px; font-weight:500; }
+  .badge { display:inline-block; margin-top:14px; background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.28);
+           color:#fff; font-weight:600; font-size:12px; padding:6px 14px; border-radius:999px; letter-spacing:.02em; }
+  .card { background:#fff; border:1px solid #e8ebf1; border-radius:18px; margin-top:18px; overflow:hidden;
+          box-shadow: 0 6px 24px -16px rgba(15,23,41,.25); }
+  .card.empty { padding:28px 20px; text-align:center; color:var(--muted); font-size:14px; }
+  table { width:100%; border-collapse: collapse; font-size:15px; }
+  thead th { background:#f8fafc; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.06em;
+             color:var(--muted); font-weight:700; padding:12px 18px; border-bottom:1px solid var(--line); }
+  thead th.r, td.r { text-align:right; }
+  tbody td { padding:14px 18px; border-bottom:1px solid var(--line); }
+  tbody tr:last-child td { border-bottom:none; }
+  tbody tr:nth-child(even) { background:#fcfdfe; }
+  .prod { font-weight:600; }
+  .unit { display:inline-block; background:#eef4ff; color:#2563cc; font-weight:600; font-size:12px;
+          padding:3px 9px; border-radius:7px; }
+  td.r { font-weight:700; font-variant-numeric: tabular-nums; white-space:nowrap; }
+  footer { text-align:center; color:#94a0b3; font-size:12px; margin-top:22px; line-height:1.7; }
+  footer b { color:#64748b; font-weight:600; }
 </style>
 </head><body>
   <div class="wrap">
-    <header>
+    <div class="hero">
+      <div class="avatar">${esc(initials(data.business_name))}</div>
       <div class="biz">${esc(data.business_name)}</div>
-      <div class="sub">Rate List for ${esc(data.customer_name)}</div>
-      <div class="pill">Current Prices</div>
-    </header>
-    ${sections}
+      <div class="sub">Rate list prepared for ${esc(data.customer_name)}</div>
+      <div class="badge">CURRENT PRICES</div>
+    </div>
+    ${body}
     <footer>
-      ${updated ? `Rates last updated ${esc(updated)}. ` : ""}Prices are indicative and subject to change.
+      ${updated ? `<b>Updated ${esc(updated)}</b><br/>` : ""}
+      Prices are indicative and subject to change. Please confirm before placing an order.
     </footer>
   </div>
 </body></html>`;

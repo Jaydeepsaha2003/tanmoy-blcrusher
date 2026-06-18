@@ -11275,7 +11275,7 @@ const api = {
     delete: (id2) => call("customers.delete", { id: id2 })
   },
   products: {
-    list: (plant_id) => call("products.list", { plant_id }),
+    list: () => call("products.list"),
     create: (p2) => call("products.create", p2),
     update: (p2) => call("products.update", p2),
     delete: (id2) => call("products.delete", { id: id2 })
@@ -35360,7 +35360,7 @@ const Input = reactExports.forwardRef(
     {
       ref,
       className: cn(
-        "flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+        "flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1 text-sm shadow-sm transition-all placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-50",
         className
       ),
       ...props
@@ -35373,7 +35373,7 @@ const Textarea = reactExports.forwardRef(({ className, ...props }, ref) => /* @_
   {
     ref,
     className: cn(
-      "flex min-h-[64px] w-full rounded-md border border-input bg-card px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+      "flex min-h-[68px] w-full rounded-lg border border-input bg-card px-3 py-2 text-sm shadow-sm transition-all placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-50",
       className
     ),
     ...props
@@ -35385,7 +35385,7 @@ const Select = reactExports.forwardRef(({ className, children, ...props }, ref) 
   {
     ref,
     className: cn(
-      "flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+      "flex h-9 w-full cursor-pointer rounded-lg border border-input bg-card px-3 py-1 text-sm shadow-sm transition-all focus-visible:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-50",
       className
     ),
     ...props,
@@ -35400,7 +35400,7 @@ function Label$1({
   return /* @__PURE__ */ jsxRuntimeExports.jsx(
     "label",
     {
-      className: cn("text-sm font-medium text-foreground/80 mb-1.5 block", className),
+      className: cn("mb-1.5 block text-[13px] font-semibold text-foreground/75", className),
       ...props
     }
   );
@@ -35524,26 +35524,27 @@ function Modal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
   if (!open) return null;
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-3 pt-8 sm:p-4 sm:pt-16", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-3 pt-8 backdrop-blur-sm sm:p-4 sm:pt-16", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
       className: cn(
-        "relative w-full rounded-xl border bg-card shadow-xl animate-in",
+        "animate-in relative w-full rounded-2xl border bg-card shadow-2xl ring-1 ring-black/5",
         width
       ),
       children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between border-b px-5 py-3.5", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-base font-semibold", children: title }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between border-b px-6 py-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-[17px] font-semibold tracking-tight", children: title }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             "button",
             {
               onClick: onClose,
-              className: "rounded-md p-1 text-muted-foreground hover:bg-accent",
+              className: "rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+              "aria-label": "Close",
               children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 18 })
             }
           )
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-5", children })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-6", children })
       ]
     }
   ) });
@@ -35621,8 +35622,7 @@ const NAV = [
     heading: "Direct Sales",
     items: [
       { to: "/dispatch", label: "Direct Sale", icon: Send, module: "dispatch" },
-      { to: "/deliveries", label: "Delivery Status", icon: ClipboardCheck, module: "dispatch" },
-      { to: "/rate-list", label: "Rate List", icon: Tags, module: "masters" }
+      { to: "/deliveries", label: "Delivery Status", icon: ClipboardCheck, module: "dispatch" }
     ]
   },
   {
@@ -59360,11 +59360,7 @@ function ProductionSettings() {
     queryFn: () => api.productionSettings.list(plantId),
     enabled: !!plantId
   });
-  const { data: products = [] } = useQuery({
-    queryKey: ["products", plantId],
-    queryFn: () => api.products.list(plantId),
-    enabled: !!plantId
-  });
+  const { data: products = [] } = useQuery({ queryKey: ["products"], queryFn: () => api.products.list() });
   const [rows, setRows] = reactExports.useState([]);
   reactExports.useEffect(() => {
     setRows(
@@ -59417,7 +59413,7 @@ function ProductionSettings() {
           ] }, i))
         ] }),
         products.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2 text-xs text-destructive", children: [
-          "No products for this plant yet. Add them in the ",
+          "No products yet. Add them in the ",
           /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: "Products" }),
           " menu first."
         ] }),
@@ -59696,12 +59692,7 @@ function cleanFilter$1(f2) {
 function Products() {
   const qc2 = useQueryClient();
   const toast = useToast();
-  const { plantId } = usePlant();
-  const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
-  const { data = [] } = useQuery({
-    queryKey: ["products", plantId],
-    queryFn: () => api.products.list(plantId)
-  });
+  const { data = [] } = useQuery({ queryKey: ["products"], queryFn: () => api.products.list() });
   const [open, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState({ status: "active" });
   const save = useMutation({
@@ -59713,10 +59704,6 @@ function Products() {
     },
     onError: (e3) => toast.error(e3.message)
   });
-  function openNew() {
-    setForm({ status: "active", plant_id: plantId ?? plants[0]?.id, description: "" });
-    setOpen(true);
-  }
   async function remove(p2) {
     const ok2 = await confirmDialog({ title: "Delete product", message: `Delete "${p2.name}"?` });
     if (!ok2) return;
@@ -59731,24 +59718,25 @@ function Products() {
       PageHeader,
       {
         title: "Products",
-        description: "Finished-goods products per plant. These feed the Production Settings and Rate List dropdowns.",
-        actions: /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { onClick: openNew, disabled: !plants.length, children: [
+        description: "Your finished-goods products, shared across all plants. They feed the Production Settings and Rate List dropdowns.",
+        actions: /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { onClick: () => {
+          setForm({ status: "active", description: "" });
+          setOpen(true);
+        }, children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 16 }),
           " New Product"
         ] })
       }
     ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(Page, { children: plants.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "Create a plant first." }) : data.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No products yet. Add your products (e.g. 30/40, 10mm, Dust)." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table, { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Page, { children: data.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No products yet. Add your products (e.g. 30/40, 10mm, Stone Dust)." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table, { children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Product" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plant" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Description" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Status" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
       ] }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: data.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: p2.name }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: p2.plant_name }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: p2.description || "-" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: p2.status === "active" ? "success" : "muted", children: p2.status }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
@@ -59761,14 +59749,6 @@ function Products() {
       ] }, p2.id)) })
     ] }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Modal, { open, onClose: () => setOpen(false), title: form.id ? "Edit Product" : "New Product", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-        Select,
-        {
-          value: form.plant_id || "",
-          onChange: (e3) => setForm({ ...form, plant_id: Number(e3.target.value) }),
-          children: plants.map((pl2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: pl2.id, children: pl2.name }, pl2.id))
-        }
-      ) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product Name", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
         Input,
         {
@@ -59797,228 +59777,13 @@ function Products() {
       ) }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-end gap-2 pt-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setOpen(false), children: "Cancel" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: () => save.mutate(form), disabled: !form.name?.trim() || !form.plant_id, children: "Save" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: () => save.mutate(form), disabled: !form.name?.trim(), children: "Save" })
       ] })
     ] }) })
   ] });
 }
-function RateList() {
-  const qc2 = useQueryClient();
-  const toast = useToast();
-  const { data: customers = [] } = useQuery({ queryKey: ["customers", 0], queryFn: () => api.customers.list() });
-  const { data: products = [] } = useQuery({ queryKey: ["products", 0], queryFn: () => api.products.list() });
-  const [customerId, setCustomerId] = reactExports.useState(void 0);
-  reactExports.useEffect(() => {
-    if (!customerId && customers.length) setCustomerId(customers[0].id);
-  }, [customers, customerId]);
-  const { data: rates = [] } = useQuery({
-    queryKey: ["rates", customerId],
-    queryFn: () => api.rates.list(customerId),
-    enabled: !!customerId
-  });
-  const [rows, setRows] = reactExports.useState([]);
-  reactExports.useEffect(() => {
-    setRows(
-      rates.map((r2) => {
-        const match = products.find(
-          (p2) => p2.plant_id === r2.plant_id && p2.name.toLowerCase() === r2.product_name.toLowerCase()
-        );
-        return {
-          product_id: match?.id ?? "",
-          plant_id: r2.plant_id,
-          product_name: r2.product_name,
-          uom: r2.uom,
-          rate: r2.rate
-        };
-      })
-    );
-  }, [rates, products]);
-  const [share, setShare] = reactExports.useState(null);
-  reactExports.useEffect(() => setShare(null), [customerId]);
-  const save = useMutation({
-    mutationFn: () => api.rates.save(
-      customerId,
-      rows.filter((r2) => r2.product_id !== "" && r2.product_name).map((r2) => ({
-        plant_id: r2.plant_id,
-        product_name: r2.product_name,
-        uom: r2.uom,
-        rate: Number(r2.rate) || 0
-      }))
-    ),
-    onSuccess: (res) => {
-      if (res.ok) {
-        qc2.invalidateQueries({ queryKey: ["rates"] });
-        toast.success("Rate list saved.");
-      } else toast.error(res.error || "Could not save.");
-    },
-    onError: (e3) => toast.error(e3.message)
-  });
-  function update(i, patch) {
-    setRows((rs) => rs.map((r2, idx) => idx === i ? { ...r2, ...patch } : r2));
-  }
-  function onPickProduct(i, productId) {
-    const prod = products.find((p2) => p2.id === Number(productId));
-    if (!prod) {
-      update(i, { product_id: "", product_name: "", plant_id: 0 });
-      return;
-    }
-    update(i, { product_id: prod.id, product_name: prod.name, plant_id: prod.plant_id });
-  }
-  const origin = typeof window !== "undefined" && window.location.origin.startsWith("http") ? window.location.origin : "";
-  const fullUrl = share ? `${origin}${share.path}` : "";
-  async function makeLink() {
-    if (!customerId) return;
-    try {
-      const res = await api.rates.shareLink(customerId);
-      setShare({ path: res.path });
-      const url = `${origin}${res.path}`;
-      try {
-        await navigator.clipboard.writeText(url || res.path);
-        toast.success("Share link copied to clipboard.");
-      } catch {
-        toast.success("Share link ready.");
-      }
-    } catch (e3) {
-      toast.error(e3.message);
-    }
-  }
-  async function revoke() {
-    if (!customerId) return;
-    await api.rates.removeShareLink(customerId);
-    setShare(null);
-    toast.success("Share link revoked. The old URL no longer works.");
-  }
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx(
-      PageHeader,
-      {
-        title: "Rate List",
-        description: "Set per-customer rates by product and unit, and share a live, no-login link with each customer."
-      }
-    ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(Page, { children: customers.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "Add a customer first." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "max-w-3xl space-y-4", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "mb-1 block text-xs font-semibold uppercase text-muted-foreground", children: "Customer" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          Select,
-          {
-            className: "w-full sm:w-80",
-            value: customerId || "",
-            onChange: (e3) => setCustomerId(Number(e3.target.value)),
-            children: customers.map((c2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: c2.id, children: c2.name }, c2.id))
-          }
-        )
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "space-y-3 pt-5", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 text-sm font-semibold", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Link2, { size: 16 }),
-          " Shareable rate link (no login)"
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: "Generate a private link to send this customer. It always shows your current saved rates — when you edit and save here, their page updates automatically." }),
-        share ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col gap-2 sm:flex-row", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { readOnly: true, value: fullUrl || share.path, className: "font-mono text-xs" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                Button,
-                {
-                  variant: "outline",
-                  size: "sm",
-                  onClick: () => {
-                    navigator.clipboard?.writeText(fullUrl || share.path);
-                    toast.success("Copied.");
-                  },
-                  children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(Copy, { size: 14 }),
-                    " Copy"
-                  ]
-                }
-              ),
-              origin && /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: fullUrl, target: "_blank", rel: "noreferrer", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", size: "sm", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(ExternalLink, { size: 14 }),
-                " Open"
-              ] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "ghost", size: "sm", onClick: revoke, children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(CircleX, { size: 14, className: "text-destructive" }),
-                " Revoke"
-              ] })
-            ] })
-          ] }),
-          !origin && /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-xs text-muted-foreground", children: [
-            "On the web app this becomes a full link like",
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "font-mono", children: [
-              " https://yourdomain",
-              share.path
-            ] }),
-            "."
-          ] })
-        ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", size: "sm", onClick: makeLink, children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Link2, { size: 14 }),
-          " Generate & copy link"
-        ] })
-      ] }) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(CardContent, { className: "pt-5", children: products.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "Add products first (Products menu) — rates are set per product." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-[1fr_110px_130px_40px] gap-2 px-1 text-xs font-semibold uppercase text-muted-foreground", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Product" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Unit" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Rate (₹/unit)" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", {})
-          ] }),
-          rows.map((r2, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-[1fr_110px_130px_40px] gap-2", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: r2.product_id, onChange: (e3) => onPickProduct(i, e3.target.value), children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Select product…" }),
-              products.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: p2.id, children: [
-                p2.name,
-                " — ",
-                p2.plant_name
-              ] }, p2.id))
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: r2.uom, onChange: (e3) => update(i, { uom: e3.target.value }), children: UOMS.map((u2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: u2, children: u2 }, u2)) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              Input,
-              {
-                type: "number",
-                step: "0.01",
-                value: r2.rate,
-                onChange: (e3) => update(i, { rate: e3.target.value })
-              }
-            ),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              Button,
-              {
-                variant: "ghost",
-                size: "icon",
-                onClick: () => setRows((rs) => rs.filter((_, idx) => idx !== i)),
-                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" })
-              }
-            )
-          ] }, i)),
-          rows.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-1 py-2 text-sm text-muted-foreground", children: "No rates yet for this customer. Add a product rate below." })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(
-          Button,
-          {
-            variant: "outline",
-            size: "sm",
-            className: "mt-3",
-            onClick: () => setRows((rs) => [
-              ...rs,
-              { product_id: "", plant_id: 0, product_name: "", uom: "CM", rate: "" }
-            ]),
-            children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 15 }),
-              " Add Product Rate"
-            ]
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-5 flex justify-end border-t pt-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { onClick: () => save.mutate(), disabled: !customerId, children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Save, { size: 16 }),
-          " Save Rate List"
-        ] }) })
-      ] }) }) })
-    ] }) })
-  ] });
+function shareOrigin() {
+  return typeof window !== "undefined" && window.location.origin.startsWith("http") ? window.location.origin : "";
 }
 function Customers() {
   const qc2 = useQueryClient();
@@ -60027,8 +59792,10 @@ function Customers() {
   const { data = [] } = useQuery({ queryKey: ["customers", plantId], queryFn: () => api.customers.list(plantId) });
   const { data: companies = [] } = useQuery({ queryKey: ["companies"], queryFn: api.companies.list });
   const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
+  const { data: products = [] } = useQuery({ queryKey: ["products"], queryFn: () => api.products.list() });
   const [open, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState({});
+  const [ratesFor, setRatesFor] = reactExports.useState(null);
   function exportExcel() {
     downloadExcel(
       "customers",
@@ -60055,12 +59822,26 @@ function Customers() {
       toast.success("Customer deleted.");
     } else toast.error(res.error || "Could not delete customer.");
   }
+  async function copyShareUrl(c2) {
+    try {
+      const res = await api.rates.shareLink(c2.id);
+      const url = `${shareOrigin()}${res.path}`;
+      try {
+        await navigator.clipboard.writeText(url || res.path);
+        toast.success(`Rate-list link for ${c2.name} copied to clipboard.`);
+      } catch {
+        toast.success("Rate-list link ready.");
+      }
+    } catch (e3) {
+      toast.error(e3.message);
+    }
+  }
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       PageHeader,
       {
         title: "Customers / Parties",
-        description: "Customers you sell finished goods to",
+        description: "Customers you sell finished goods to — set their rate list and share a live price link.",
         actions: /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", onClick: exportExcel, disabled: !data.length, children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(FileSpreadsheet, { size: 16 }),
@@ -60092,11 +59873,13 @@ function Customers() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: c2.contact || "-" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtQty(c2.total_dispatched) }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => {
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Rate list", onClick: () => setRatesFor(c2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Tags, { size: 15 }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Copy shareable rate link", onClick: () => copyShareUrl(c2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Link2, { size: 15 }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Edit", onClick: () => {
             setForm(c2);
             setOpen(true);
           }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => remove(c2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Delete", onClick: () => remove(c2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
         ] })
       ] }, c2.id)) })
     ] }) }),
@@ -60159,8 +59942,163 @@ function Customers() {
           ] })
         ] })
       }
-    )
+    ),
+    ratesFor && /* @__PURE__ */ jsxRuntimeExports.jsx(RatesModal, { customer: ratesFor, products, onClose: () => setRatesFor(null) })
   ] });
+}
+function RatesModal({
+  customer,
+  products,
+  onClose
+}) {
+  const qc2 = useQueryClient();
+  const toast = useToast();
+  const { data: rates = [] } = useQuery({
+    queryKey: ["rates", customer.id],
+    queryFn: () => api.rates.list(customer.id)
+  });
+  const [rows, setRows] = reactExports.useState([]);
+  reactExports.useEffect(() => {
+    setRows(rates.map((r2) => ({ product_name: r2.product_name, uom: r2.uom, rate: r2.rate })));
+  }, [rates]);
+  const [share, setShare] = reactExports.useState(null);
+  const origin = shareOrigin();
+  const fullUrl = share ? `${origin}${share.path}` : "";
+  const save = useMutation({
+    mutationFn: () => api.rates.save(
+      customer.id,
+      rows.filter((r2) => r2.product_name).map((r2) => ({ product_name: r2.product_name, uom: r2.uom, rate: Number(r2.rate) || 0 }))
+    ),
+    onSuccess: (res) => {
+      if (res.ok) {
+        qc2.invalidateQueries({ queryKey: ["rates", customer.id] });
+        toast.success("Rate list saved.");
+        onClose();
+      } else toast.error(res.error || "Could not save.");
+    },
+    onError: (e3) => toast.error(e3.message)
+  });
+  function update(i, patch) {
+    setRows((rs) => rs.map((r2, idx) => idx === i ? { ...r2, ...patch } : r2));
+  }
+  async function makeLink() {
+    try {
+      const res = await api.rates.shareLink(customer.id);
+      setShare({ path: res.path });
+      try {
+        await navigator.clipboard.writeText(`${origin}${res.path}` || res.path);
+        toast.success("Share link copied.");
+      } catch {
+        toast.success("Share link ready.");
+      }
+    } catch (e3) {
+      toast.error(e3.message);
+    }
+  }
+  async function revoke() {
+    await api.rates.removeShareLink(customer.id);
+    setShare(null);
+    toast.success("Share link revoked.");
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(Modal, { open: true, onClose, title: `Rate List — ${customer.name}`, width: "max-w-2xl", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-5", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-lg border bg-muted/30 p-3.5", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 text-sm font-semibold", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Link2, { size: 15 }),
+        " Shareable rate link (no login)"
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-xs text-muted-foreground", children: "Send this customer a private link. It always shows your current saved rates — edits here update their page automatically." }),
+      share ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-2.5 space-y-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col gap-2 sm:flex-row", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { readOnly: true, value: fullUrl || share.path, className: "font-mono text-xs" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              Button,
+              {
+                variant: "outline",
+                size: "sm",
+                onClick: () => {
+                  navigator.clipboard?.writeText(fullUrl || share.path);
+                  toast.success("Copied.");
+                },
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Copy, { size: 14 }),
+                  " Copy"
+                ]
+              }
+            ),
+            origin && /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: fullUrl, target: "_blank", rel: "noreferrer", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", size: "sm", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(ExternalLink, { size: 14 }),
+              " Open"
+            ] }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "ghost", size: "sm", onClick: revoke, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(CircleX, { size: 14, className: "text-destructive" }),
+              " Revoke"
+            ] })
+          ] })
+        ] }),
+        !origin && /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-xs text-muted-foreground", children: [
+          "On the web app this becomes a full link like",
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "font-mono", children: [
+            " https://yourdomain",
+            share.path
+          ] }),
+          "."
+        ] })
+      ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", size: "sm", className: "mt-2.5", onClick: makeLink, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Link2, { size: 14 }),
+        " Generate & copy link"
+      ] })
+    ] }),
+    products.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "Add products first (Products menu) — rates are set per product." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-[1fr_96px_120px_36px] gap-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Product" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Unit" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Rate (₹/unit)" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", {})
+        ] }),
+        rows.map((r2, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-[1fr_96px_120px_36px] gap-2", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: r2.product_name, onChange: (e3) => update(i, { product_name: e3.target.value }), children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Select product…" }),
+            r2.product_name && !products.some((p2) => p2.name === r2.product_name) && /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: r2.product_name, children: r2.product_name }),
+            products.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.name, children: p2.name }, p2.id))
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: r2.uom, onChange: (e3) => update(i, { uom: e3.target.value }), children: UOMS.map((u2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: u2, children: u2 }, u2)) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            Input,
+            {
+              type: "number",
+              step: "0.01",
+              value: r2.rate,
+              onChange: (e3) => update(i, { rate: e3.target.value })
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => setRows((rs) => rs.filter((_, idx) => idx !== i)), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+        ] }, i)),
+        rows.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-1 py-1.5 text-sm text-muted-foreground", children: "No rates yet. Add a product rate below." })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        Button,
+        {
+          variant: "outline",
+          size: "sm",
+          className: "mt-3",
+          onClick: () => setRows((rs) => [...rs, { product_name: "", uom: "CM", rate: "" }]),
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 15 }),
+            " Add Product Rate"
+          ]
+        }
+      )
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-end gap-2 border-t pt-4", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: onClose, children: "Cancel" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { onClick: () => save.mutate(), disabled: products.length === 0, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Save, { size: 16 }),
+        " Save Rate List"
+      ] })
+    ] })
+  ] }) });
 }
 const payBadge$4 = {
   paid: "success",
@@ -64711,7 +64649,6 @@ function AppRoutes() {
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/production", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "production", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ProductionEntry, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/finished-goods", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "production", children: /* @__PURE__ */ jsxRuntimeExports.jsx(FinishedGoods, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/products", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "masters", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Products, {}) }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/rate-list", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "masters", children: /* @__PURE__ */ jsxRuntimeExports.jsx(RateList, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/customers", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "masters", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Customers, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/transporters", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "masters", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Transporters, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/companies", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "masters", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Companies, {}) }) }),
