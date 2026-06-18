@@ -40,11 +40,13 @@ export async function listPurchases(filter: PurchaseFilter = {}): Promise<Purcha
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''
   return (await d
     .prepare(
-      `SELECT pu.*, s.name AS supplier_name, p.name AS plant_name, l.name AS stock_location_name
+      `SELECT pu.*, s.name AS supplier_name, p.name AS plant_name, l.name AS stock_location_name,
+        o.name AS outsource_name, o.head AS outsource_head
        FROM purchases pu
        JOIN suppliers s ON s.id = pu.supplier_id
        JOIN plants p ON p.id = pu.plant_id
        JOIN stock_locations l ON l.id = pu.stock_location_id
+       LEFT JOIN outsource o ON o.id = pu.outsource_id
        ${clause}
        ORDER BY pu.date DESC, pu.id DESC`
     )
@@ -69,6 +71,8 @@ export interface PurchaseInput {
   material_type?: MaterialType
   /** Product name, required when material_type = 'finished'. */
   product_name?: string
+  /** Optional outsource vendor this purchase came through. */
+  outsource_id?: number | null
   uom: Uom
   quantity: number
   rate: number | null
@@ -95,8 +99,8 @@ export async function createPurchase(p: PurchaseInput): Promise<Purchase> {
     const info = await d
       .prepare(
         `INSERT INTO purchases
-          (purchase_no, supplier_id, plant_id, stock_location_id, material_type, product_name, uom, quantity, qty_cm, rate, amount, paid_amount, payment_status, date, remarks)
-         VALUES (@purchase_no,@supplier_id,@plant_id,@stock_location_id,@material_type,@product_name,@uom,@quantity,@qty_cm,@rate,@amount,@paid_amount,@payment_status,@date,@remarks)`
+          (purchase_no, supplier_id, plant_id, stock_location_id, material_type, product_name, outsource_id, uom, quantity, qty_cm, rate, amount, paid_amount, payment_status, date, remarks)
+         VALUES (@purchase_no,@supplier_id,@plant_id,@stock_location_id,@material_type,@product_name,@outsource_id,@uom,@quantity,@qty_cm,@rate,@amount,@paid_amount,@payment_status,@date,@remarks)`
       )
       .run({
         purchase_no: no,
@@ -105,6 +109,7 @@ export async function createPurchase(p: PurchaseInput): Promise<Purchase> {
         stock_location_id: locId,
         material_type: kind,
         product_name: product,
+        outsource_id: p.outsource_id ?? null,
         uom,
         quantity: p.quantity,
         qty_cm: qtyCm,
@@ -159,7 +164,7 @@ export async function updatePurchase(p: PurchaseInput): Promise<Purchase> {
   await d.transaction(async () => {
     await d.prepare(
       `UPDATE purchases SET supplier_id=@supplier_id, plant_id=@plant_id, stock_location_id=@stock_location_id,
-         material_type=@material_type, product_name=@product_name,
+         material_type=@material_type, product_name=@product_name, outsource_id=@outsource_id,
          uom=@uom, quantity=@quantity, qty_cm=@qty_cm, rate=@rate, amount=@amount, paid_amount=@paid_amount,
          payment_status=@payment_status, date=@date, remarks=@remarks WHERE id=@id`
     ).run({
@@ -169,6 +174,7 @@ export async function updatePurchase(p: PurchaseInput): Promise<Purchase> {
       stock_location_id: locId,
       material_type: kind,
       product_name: product,
+      outsource_id: p.outsource_id ?? null,
       uom,
       quantity: p.quantity,
       qty_cm: qtyCm,

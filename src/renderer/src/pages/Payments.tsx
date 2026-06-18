@@ -53,7 +53,7 @@ export function Payments(): React.JSX.Element {
   const { data: customers = [] } = useQuery({ queryKey: ['customers', 'all'], queryFn: () => api.customers.list() })
   const { data: transporters = [] } = useQuery({ queryKey: ['transporters', 'all'], queryFn: () => api.transporters.list() })
   const { data: outsource = [] } = useQuery({ queryKey: ['outsource', 'all'], queryFn: () => api.outsource.list() })
-  const partyList = (t: PartyType): { id: number; name: string }[] =>
+  const partyList = (t: PartyType): { id: number; name: string; head?: string }[] =>
     t === 'customer' ? customers : t === 'supplier' ? suppliers : t === 'transporter' ? transporters : outsource
 
   const [typeFilter, setTypeFilter] = React.useState<PartyType | ''>('')
@@ -279,7 +279,7 @@ export function Payments(): React.JSX.Element {
                     <option value="">Select {typeLabel[payForm.party_type as PartyType]}…</option>
                     {partyList(payForm.party_type).map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.name}
+                        {p.name}{p.head ? ` — ${p.head}` : ''}
                       </option>
                     ))}
                   </Select>

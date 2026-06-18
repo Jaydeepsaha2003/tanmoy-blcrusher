@@ -140,6 +140,7 @@ CREATE TABLE IF NOT EXISTS purchases (
   stock_location_id INT NOT NULL,
   material_type     VARCHAR(16) NOT NULL DEFAULT 'raw',
   product_name      VARCHAR(255) NOT NULL DEFAULT '',
+  outsource_id      INT,
   quantity          DOUBLE NOT NULL,
   rate              DOUBLE,
   amount            DOUBLE,
@@ -188,6 +189,7 @@ CREATE TABLE IF NOT EXISTS dispatches (
   quantity         DOUBLE NOT NULL,
   qty_cm           DOUBLE NOT NULL DEFAULT 0,
   sale_quantity    DOUBLE,
+  outsource_id     INT,
   rate             DOUBLE,
   amount           DOUBLE,
   transport_charge DOUBLE NOT NULL DEFAULT 0,
@@ -482,6 +484,12 @@ ALTER TABLE purchases ADD COLUMN product_name VARCHAR(255) NOT NULL DEFAULT ''`
     // bill uses sale_quantity when set, otherwise the actual quantity.
     id: '006_dispatch_sale_quantity',
     sql: `ALTER TABLE dispatches ADD COLUMN sale_quantity DOUBLE`
+  },
+  {
+    // Tag a sale / purchase with the outsource vendor it came from (shows the head).
+    id: '007_outsource_on_sale_purchase',
+    sql: `ALTER TABLE dispatches ADD COLUMN outsource_id INT;
+ALTER TABLE purchases ADD COLUMN outsource_id INT`
   }
 ]
 
@@ -542,6 +550,9 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   await addColumn('purchases', 'product_name', `TEXT NOT NULL DEFAULT ''`)
   // Direct sale: separate sale quantity from the actual dispatched quantity.
   await addColumn('dispatches', 'sale_quantity', 'REAL')
+  // Outsource vendor tag on sales and purchases.
+  await addColumn('dispatches', 'outsource_id', 'INTEGER')
+  await addColumn('purchases', 'outsource_id', 'INTEGER')
 }
 
 /**

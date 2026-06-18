@@ -40,6 +40,7 @@ export function Purchases(): React.JSX.Element {
   const [filter, setFilter] = React.useState<{ supplier_id?: number; payment_status?: string }>({})
   const { data: locations = [] } = useQuery({ queryKey: ['locations', 0], queryFn: () => api.locations.list() })
   const { data: products = [] } = useQuery({ queryKey: ['products'], queryFn: () => api.products.list() })
+  const { data: outsourceVendors = [] } = useQuery({ queryKey: ['outsource'], queryFn: () => api.outsource.list() })
 
   const { data = [] } = useQuery({
     queryKey: ['purchases', filter, plantId],
@@ -71,6 +72,7 @@ export function Purchases(): React.JSX.Element {
       stock_location_id: undefined,
       material_type: 'raw',
       product_name: '',
+      outsource_id: null,
       uom: 'CM',
       quantity: '',
       rate: '',
@@ -180,6 +182,11 @@ export function Purchases(): React.JSX.Element {
                     ) : (
                       <>{p.plant_name} / {p.stock_location_name}</>
                     )}
+                    {p.outsource_name && (
+                      <span className="block text-[11px]">
+                        via {p.outsource_name}{p.outsource_head ? ` (${p.outsource_head})` : ''}
+                      </span>
+                    )}
                   </TD>
                   <TD className="text-right">
                     {fmtQty(p.quantity)} {p.uom}
@@ -276,6 +283,17 @@ export function Purchases(): React.JSX.Element {
                     </Select>
                   </Field>
                 )}
+                <Field label="Outsource Vendor" hint="Optional — shows the vendor's head">
+                  <Select
+                    value={form.outsource_id ?? ''}
+                    onChange={(e) => setForm({ ...form, outsource_id: e.target.value ? Number(e.target.value) : null })}
+                  >
+                    <option value="">— None —</option>
+                    {outsourceVendors.map((o) => (
+                      <option key={o.id} value={o.id}>{o.name}{o.head ? ` — ${o.head}` : ''}</option>
+                    ))}
+                  </Select>
+                </Field>
               </div>
             </Section>
 

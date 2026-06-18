@@ -14,6 +14,7 @@ export async function createOutsource(p: {
 }): Promise<Outsource> {
   const d = getDb()
   if (!p.name?.trim()) throw new Error('Name is required.')
+  if (!p.head?.trim()) throw new Error('Head is required.')
   const info = await d
     .prepare(`INSERT INTO outsource (name, head, contact, remarks) VALUES (?, ?, ?, ?)`)
     .run(properCase(p.name), properCase(p.head), p.contact ?? '', p.remarks ?? '')
@@ -28,6 +29,8 @@ export async function updateOutsource(p: {
   remarks: string
 }): Promise<Outsource> {
   const d = getDb()
+  if (!p.name?.trim()) throw new Error('Name is required.')
+  if (!p.head?.trim()) throw new Error('Head is required.')
   await d.prepare(`UPDATE outsource SET name=?, head=?, contact=?, remarks=? WHERE id=?`).run(
     properCase(p.name),
     properCase(p.head),

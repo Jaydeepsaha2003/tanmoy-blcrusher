@@ -110,7 +110,7 @@ export function OutsourceVendors(): React.JSX.Element {
           <Field label="Vendor Name">
             <Input value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. XYZ Labour Contractor" />
           </Field>
-          <Field label="Head / Type">
+          <Field label="Head / Type" required hint="Required — e.g. Labour, Transport, Machinery">
             <Input list="outsource-heads" value={form.head || ''} onChange={(e) => setForm({ ...form, head: e.target.value })} placeholder="Labour, Transport…" />
             <datalist id="outsource-heads">{HEADS.map((h) => <option key={h} value={h} />)}</datalist>
           </Field>
@@ -122,7 +122,7 @@ export function OutsourceVendors(): React.JSX.Element {
           </Field>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={() => save.mutate(form)} disabled={!form.name?.trim()}>Save</Button>
+            <Button onClick={() => save.mutate(form)} disabled={!form.name?.trim() || !form.head?.trim()}>Save</Button>
           </div>
         </div>
       </Modal>

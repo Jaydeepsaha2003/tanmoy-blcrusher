@@ -59,10 +59,12 @@ export async function listDispatches(filter: DispatchFilter = {}): Promise<Dispa
   return (await d
     .prepare(
       `SELECT di.*, c.name AS customer_name, p.name AS plant_name,
+        o.name AS outsource_name, o.head AS outsource_head,
         ${BILLED_TOTAL_SQL} AS billed_total
        FROM dispatches di
        JOIN customers c ON c.id = di.customer_id
        JOIN plants p ON p.id = di.plant_id
+       LEFT JOIN outsource o ON o.id = di.outsource_id
        ${clause}
        ORDER BY di.date DESC, di.id DESC`
     )
@@ -96,6 +98,7 @@ export interface DispatchInput {
   driver: string
   challan_no: string
   outsourced?: boolean | number
+  outsource_id?: number | null
   delivery_status: DeliveryStatus
   paid_amount?: number
   date: string
@@ -150,6 +153,7 @@ function normalize(p: DispatchInput, factors?: UomFactors): {
       driver: properCase(p.driver),
       challan_no: (p.challan_no ?? '').trim(),
       outsourced: outsourced ? 1 : 0,
+      outsource_id: outsourced ? (p.outsource_id ?? null) : null,
       delivery_status: p.delivery_status,
       payment_status: derivePaymentStatus(billed, paid),
       paid_amount: paid,
@@ -176,10 +180,10 @@ export async function createDispatch(p: DispatchInput): Promise<Dispatch> {
         `INSERT INTO dispatches
           (dispatch_no, customer_id, plant_id, product_name, uom, quantity, qty_cm, sale_quantity, rate, amount,
            transport_charge, transport_billed, other_charge, other_billed,
-           vehicle_no, vehicle_type, driver, challan_no, outsourced, delivery_status, payment_status, paid_amount, date, remarks)
+           vehicle_no, vehicle_type, driver, challan_no, outsourced, outsource_id, delivery_status, payment_status, paid_amount, date, remarks)
          VALUES (@dispatch_no,@customer_id,@plant_id,@product_name,@uom,@quantity,@qty_cm,@sale_quantity,@rate,@amount,
            @transport_charge,@transport_billed,@other_charge,@other_billed,
-           @vehicle_no,@vehicle_type,@driver,@challan_no,@outsourced,@delivery_status,@payment_status,@paid_amount,@date,@remarks)`
+           @vehicle_no,@vehicle_type,@driver,@challan_no,@outsourced,@outsource_id,@delivery_status,@payment_status,@paid_amount,@date,@remarks)`
       )
       .run({ dispatch_no: no, ...fields })
     if (!outsourced) {
@@ -213,7 +217,7 @@ export async function updateDispatch(p: DispatchInput): Promise<Dispatch> {
         transport_charge=@transport_charge, transport_billed=@transport_billed,
         other_charge=@other_charge, other_billed=@other_billed,
         vehicle_no=@vehicle_no, vehicle_type=@vehicle_type, driver=@driver, challan_no=@challan_no,
-        outsourced=@outsourced, delivery_status=@delivery_status, payment_status=@payment_status, paid_amount=@paid_amount,
+        outsourced=@outsourced, outsource_id=@outsource_id, delivery_status=@delivery_status, payment_status=@payment_status, paid_amount=@paid_amount,
         date=@date, remarks=@remarks WHERE id=@id`
     ).run({ id: p.id, ...fields })
     // Rebuild the stock movement to match the current outsourced flag.

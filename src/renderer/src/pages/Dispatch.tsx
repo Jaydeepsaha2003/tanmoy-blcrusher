@@ -45,6 +45,7 @@ export function Dispatch(): React.JSX.Element {
     queryKey: ['customers', plantId],
     queryFn: () => api.customers.list(plantId)
   })
+  const { data: outsourceVendors = [] } = useQuery({ queryKey: ['outsource'], queryFn: () => api.outsource.list() })
   const [filter, setFilter] = React.useState<{
     customer_id?: number
     delivery_status?: string
@@ -79,6 +80,7 @@ export function Dispatch(): React.JSX.Element {
       customer_id: customers[0]?.id,
       plant_id: plantId ?? plants[0]?.id,
       product_name: '',
+      outsource_id: null,
       uom: 'CM' as Uom,
       quantity: '',
       sale_quantity: '',
@@ -218,7 +220,14 @@ export function Dispatch(): React.JSX.Element {
                   <TD className="font-mono text-xs font-medium">{d.dispatch_no}</TD>
                   <TD>{fmtDate(d.date)}</TD>
                   <TD className="font-medium">{d.customer_name}</TD>
-                  <TD className="text-muted-foreground">{d.plant_name} / {d.product_name}</TD>
+                  <TD className="text-muted-foreground">
+                    {d.plant_name} / {d.product_name}
+                    {d.outsourced ? (
+                      <span className="block text-[11px]">
+                        Outsourced{d.outsource_name ? ` · ${d.outsource_name}${d.outsource_head ? ` (${d.outsource_head})` : ''}` : ''}
+                      </span>
+                    ) : null}
+                  </TD>
                   <TD className="text-right">
                     {fmtQty(d.quantity)} <span className="text-xs text-muted-foreground">{d.uom}</span>
                     {d.sale_quantity != null && (
@@ -302,7 +311,7 @@ export function Dispatch(): React.JSX.Element {
                     type="checkbox"
                     className="mt-0.5 h-4 w-4 shrink-0"
                     checked={!!form.outsourced}
-                    onChange={(e) => setForm({ ...form, outsourced: e.target.checked, product_name: '' })}
+                    onChange={(e) => setForm({ ...form, outsourced: e.target.checked, product_name: '', outsource_id: e.target.checked ? form.outsource_id : null })}
                   />
                   <span className="font-medium leading-tight">
                     Outsourced
@@ -310,6 +319,21 @@ export function Dispatch(): React.JSX.Element {
                   </span>
                 </label>
               </div>
+              {form.outsourced && (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <Field label="Outsource Vendor" hint="Who the outsourced material came from">
+                    <Select
+                      value={form.outsource_id ?? ''}
+                      onChange={(e) => setForm({ ...form, outsource_id: e.target.value ? Number(e.target.value) : null })}
+                    >
+                      <option value="">— Select vendor —</option>
+                      {outsourceVendors.map((o) => (
+                        <option key={o.id} value={o.id}>{o.name}{o.head ? ` — ${o.head}` : ''}</option>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+              )}
             </Section>
 
             {/* Quantity & rate */}

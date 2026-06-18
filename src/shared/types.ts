@@ -249,6 +249,10 @@ export interface Purchase {
   material_type: MaterialType
   /** Product name when material_type = 'finished' (else ''). */
   product_name: string
+  /** Optional outsource vendor this purchase came through. */
+  outsource_id: number | null
+  outsource_name?: string
+  outsource_head?: string
   uom: Uom
   quantity: number
   qty_cm: number
@@ -517,6 +521,10 @@ export interface Dispatch {
   driver: string
   challan_no: string
   outsourced: number
+  /** When outsourced, the outsource vendor the material came from. */
+  outsource_id: number | null
+  outsource_name?: string
+  outsource_head?: string
   delivery_status: DeliveryStatus
   payment_status: PaymentStatus
   paid_amount: number
