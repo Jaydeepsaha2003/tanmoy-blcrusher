@@ -23,7 +23,7 @@ import {
 import { useToast } from '@/components/toast'
 import { confirmDialog } from '@/components/confirm'
 import { usePlant } from '@/lib/plant'
-import { fmtQty, fmtMoney, fmtDate, today, downloadExcel } from '@/lib/utils'
+import { fmtQty, fmtMoney, fmtDate, today, downloadExcel, cn } from '@/lib/utils'
 
 const payBadge: Record<PaymentStatus, 'success' | 'warning' | 'destructive'> = {
   paid: 'success',
@@ -238,123 +238,165 @@ export function Dispatch(): React.JSX.Element {
 
       {form && (
         <Modal open={open} onClose={() => setOpen(false)} title={form.id ? `Edit ${form.dispatch_no}` : 'New Direct Sale'} width="max-w-3xl">
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-            <Field label="Customer / Party" required>
-              <Select value={form.customer_id || ''} onChange={(e) => setForm({ ...form, customer_id: Number(e.target.value) })}>
-                {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </Select>
-            </Field>
-            <Field label="Plant" required hint={plantId ? 'Locked to active plant' : undefined}>
-              <Select value={form.plant_id || ''} disabled={!!plantId} onChange={(e) => setForm({ ...form, plant_id: Number(e.target.value), product_name: '' })}>
-                {plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </Select>
-            </Field>
-            <Field label="Date" required>
-              <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
-            </Field>
-            <Field label="Product" required hint={!form.outsourced && selProduct ? `Available: ${fmtQty(selProduct.balance_qty)} m³` : undefined}>
-              {form.outsourced ? (
-                <Input value={form.product_name} onChange={(e) => setForm({ ...form, product_name: e.target.value })} placeholder="Outsourced product name" />
-              ) : (
-                <Select value={form.product_name} onChange={(e) => setForm({ ...form, product_name: e.target.value })}>
-                  <option value="">Select product…</option>
-                  {avail.map((a) => <option key={a.product_name} value={a.product_name}>{a.product_name} ({fmtQty(a.balance_qty)} m³)</option>)}
-                  {form.id && form.product_name && !avail.some((a) => a.product_name === form.product_name) && (
-                    <option value={form.product_name}>{form.product_name}</option>
-                  )}
-                </Select>
-              )}
-            </Field>
-            <div className="col-span-2 -mt-1 md:col-span-3">
-              <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                <input type="checkbox" className="h-4 w-4" checked={!!form.outsourced} onChange={(e) => setForm({ ...form, outsourced: e.target.checked, product_name: '' })} />
-                Outsourced material — sold directly without holding plant stock
-              </label>
-            </div>
-            <Field label="Unit of Measure" required hint="1 m³ = 1.6 ton = 35.31 cft">
-              <Select value={form.uom} onChange={(e) => setForm({ ...form, uom: e.target.value as Uom })}>
-                {UOMS.map((u) => <option key={u} value={u}>{u === 'CM' ? 'Cubic Meter (m³)' : u === 'TON' ? 'Ton' : 'Cubic Feet (CFT)'}</option>)}
-              </Select>
-            </Field>
-            <Field label={`Quantity (${form.uom})`} required hint={qtyCm > 0 ? `= ${fmtQty(qtyCm)} m³` : undefined}>
-              <Input type="number" step="0.001" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
-            </Field>
-            <Field label={`Rate per ${form.uom}`}>
-              <Input type="number" step="0.01" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} placeholder="Optional" />
-            </Field>
-            <Field label="Vehicle Type" required>
-              <Select value={form.vehicle_type} onChange={(e) => setForm({ ...form, vehicle_type: e.target.value as VehicleType })}>
-                <option value="own">Own Vehicle</option>
-                <option value="rented">Rented</option>
-                <option value="party">From Party</option>
-              </Select>
-            </Field>
-            <Field label="Vehicle No.">
-              <Input value={form.vehicle_no} onChange={(e) => setForm({ ...form, vehicle_no: e.target.value })} placeholder="e.g. JH-01-AB-1234" />
-            </Field>
-            <Field label="Driver">
-              <Input value={form.driver} onChange={(e) => setForm({ ...form, driver: e.target.value })} />
-            </Field>
-            <Field label="Challan No.">
-              <Input value={form.challan_no} onChange={(e) => setForm({ ...form, challan_no: e.target.value })} />
-            </Field>
-            <div />
-
-            <ChargeField
-              label="Transport Charges"
-              amount={form.transport_charge}
-              billed={form.transport_billed}
-              onAmount={(v) => setForm({ ...form, transport_charge: v })}
-              onBilled={(v) => setForm({ ...form, transport_billed: v })}
-            />
-            <ChargeField
-              label="Other Charges"
-              amount={form.other_charge}
-              billed={form.other_billed}
-              onAmount={(v) => setForm({ ...form, other_charge: v })}
-              onBilled={(v) => setForm({ ...form, other_billed: v })}
-            />
-            <div />
-
-            <Field label="Delivery Status" required>
-              <Select value={form.delivery_status} onChange={(e) => setForm({ ...form, delivery_status: e.target.value })}>
-                <option value="pending">Pending</option>
-                <option value="delivered">Delivered</option>
-              </Select>
-            </Field>
-            <Field label="Amount Received" hint="Sets payment status automatically">
-              <Input type="number" step="0.01" value={form.paid_amount} onChange={(e) => setForm({ ...form, paid_amount: e.target.value })} />
-            </Field>
-            <Field label="Payment Status">
-              <div className="flex h-9 items-center">
-                <Badge variant={payBadge[derivePaymentStatus(invoiceTotal, Number(form.paid_amount) || 0)]}>
-                  {derivePaymentStatus(invoiceTotal, Number(form.paid_amount) || 0)}
-                </Badge>
+          <div className="space-y-5">
+            {/* Customer & product */}
+            <Section title="Customer & Product">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <Field label="Customer / Party" required>
+                  <Select value={form.customer_id || ''} onChange={(e) => setForm({ ...form, customer_id: Number(e.target.value) })}>
+                    {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </Select>
+                </Field>
+                <Field label="Plant" required hint={plantId ? 'Locked to active plant' : undefined}>
+                  <Select value={form.plant_id || ''} disabled={!!plantId} onChange={(e) => setForm({ ...form, plant_id: Number(e.target.value), product_name: '' })}>
+                    {plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </Select>
+                </Field>
+                <Field label="Date" required>
+                  <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+                </Field>
               </div>
-            </Field>
-            <div className="col-span-2 md:col-span-3">
-              <Field label="Remarks">
-                <Input value={form.remarks || ''} onChange={(e) => setForm({ ...form, remarks: e.target.value })} />
-              </Field>
-            </div>
-          </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div className="sm:col-span-2">
+                  <Field label="Product" required hint={!form.outsourced && selProduct ? `Available: ${fmtQty(selProduct.balance_qty)} m³` : undefined}>
+                    {form.outsourced ? (
+                      <Input value={form.product_name} onChange={(e) => setForm({ ...form, product_name: e.target.value })} placeholder="Outsourced product name" />
+                    ) : (
+                      <Select value={form.product_name} onChange={(e) => setForm({ ...form, product_name: e.target.value })}>
+                        <option value="">Select product…</option>
+                        {avail.map((a) => <option key={a.product_name} value={a.product_name}>{a.product_name} ({fmtQty(a.balance_qty)} m³)</option>)}
+                        {form.id && form.product_name && !avail.some((a) => a.product_name === form.product_name) && (
+                          <option value={form.product_name}>{form.product_name}</option>
+                        )}
+                      </Select>
+                    )}
+                  </Field>
+                </div>
+                <label
+                  className={cn(
+                    'flex cursor-pointer items-start gap-2 self-end rounded-lg border px-3 py-2 text-sm transition-colors',
+                    form.outsourced ? 'border-primary bg-primary/5' : 'border-input hover:bg-accent'
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 shrink-0"
+                    checked={!!form.outsourced}
+                    onChange={(e) => setForm({ ...form, outsourced: e.target.checked, product_name: '' })}
+                  />
+                  <span className="font-medium leading-tight">
+                    Outsourced
+                    <span className="block text-[11px] font-normal text-muted-foreground">Sold without using plant stock</span>
+                  </span>
+                </label>
+              </div>
+            </Section>
 
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/60 px-4 py-2.5 text-sm">
-            <span>
-              {form.outsourced ? (
-                <span className="font-medium text-primary">Outsourced — no plant stock used</span>
-              ) : (
-                <>
-                  Available: <b>{fmtQty(available)} m³</b>
-                  {qtyCm > available && <span className="ml-2 font-medium text-destructive">— exceeds stock!</span>}
-                </>
-              )}
-            </span>
-            <span>
-              Goods <b>{fmtMoney(goods)}</b>
-              {billedExtra > 0 && <> + charges <b>{fmtMoney(billedExtra)}</b></>}
-              {' = Invoice '}<b>{fmtMoney(invoiceTotal)}</b>
-            </span>
+            {/* Quantity & rate */}
+            <Section title="Quantity & Rate">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <Field label="Unit of Measure" required hint="1 m³ = 1.6 ton = 35.31 cft">
+                  <Select value={form.uom} onChange={(e) => setForm({ ...form, uom: e.target.value as Uom })}>
+                    {UOMS.map((u) => <option key={u} value={u}>{u === 'CM' ? 'Cubic Meter (m³)' : u === 'TON' ? 'Ton' : 'Cubic Feet (CFT)'}</option>)}
+                  </Select>
+                </Field>
+                <Field label={`Quantity (${form.uom})`} required hint={qtyCm > 0 ? `= ${fmtQty(qtyCm)} m³` : undefined}>
+                  <Input type="number" step="0.001" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
+                </Field>
+                <Field label={`Rate per ${form.uom}`}>
+                  <Input type="number" step="0.01" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} placeholder="Optional" />
+                </Field>
+              </div>
+            </Section>
+
+            {/* Vehicle & delivery */}
+            <Section title="Vehicle & Delivery">
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                <Field label="Vehicle Type" required>
+                  <Select value={form.vehicle_type} onChange={(e) => setForm({ ...form, vehicle_type: e.target.value as VehicleType })}>
+                    <option value="own">Own Vehicle</option>
+                    <option value="rented">Rented</option>
+                    <option value="party">From Party</option>
+                  </Select>
+                </Field>
+                <Field label="Vehicle No.">
+                  <Input value={form.vehicle_no} onChange={(e) => setForm({ ...form, vehicle_no: e.target.value })} placeholder="e.g. JH-01-AB-1234" />
+                </Field>
+                <Field label="Driver">
+                  <Input value={form.driver} onChange={(e) => setForm({ ...form, driver: e.target.value })} />
+                </Field>
+                <Field label="Challan No.">
+                  <Input value={form.challan_no} onChange={(e) => setForm({ ...form, challan_no: e.target.value })} />
+                </Field>
+                <Field label="Delivery Status" required>
+                  <Select value={form.delivery_status} onChange={(e) => setForm({ ...form, delivery_status: e.target.value })}>
+                    <option value="pending">Pending</option>
+                    <option value="delivered">Delivered</option>
+                  </Select>
+                </Field>
+              </div>
+            </Section>
+
+            {/* Charges & payment */}
+            <Section title="Charges & Payment">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <ChargeField
+                  label="Transport Charges"
+                  amount={form.transport_charge}
+                  billed={form.transport_billed}
+                  onAmount={(v) => setForm({ ...form, transport_charge: v })}
+                  onBilled={(v) => setForm({ ...form, transport_billed: v })}
+                />
+                <ChargeField
+                  label="Other Charges"
+                  amount={form.other_charge}
+                  billed={form.other_billed}
+                  onAmount={(v) => setForm({ ...form, other_charge: v })}
+                  onBilled={(v) => setForm({ ...form, other_billed: v })}
+                />
+                <Field label="Amount Received" hint="Sets payment status automatically">
+                  <Input type="number" step="0.01" value={form.paid_amount} onChange={(e) => setForm({ ...form, paid_amount: e.target.value })} />
+                </Field>
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <Field label="Payment Status">
+                  <div className="flex h-9 items-center">
+                    <Badge variant={payBadge[derivePaymentStatus(invoiceTotal, Number(form.paid_amount) || 0)]}>
+                      {derivePaymentStatus(invoiceTotal, Number(form.paid_amount) || 0)}
+                    </Badge>
+                  </div>
+                </Field>
+                <div className="sm:col-span-2">
+                  <Field label="Remarks">
+                    <Input value={form.remarks || ''} onChange={(e) => setForm({ ...form, remarks: e.target.value })} />
+                  </Field>
+                </div>
+              </div>
+            </Section>
+
+            {/* Summary */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border bg-muted/40 px-4 py-3 text-sm">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Stock</div>
+                {form.outsourced ? (
+                  <div className="mt-1 font-medium text-primary">Outsourced — no plant stock used</div>
+                ) : (
+                  <div className="mt-1">
+                    Available <b>{fmtQty(available)} m³</b>
+                    {qtyCm > available && <span className="ml-2 font-semibold text-destructive">— exceeds stock!</span>}
+                  </div>
+                )}
+              </div>
+              <div className="rounded-xl border bg-muted/40 px-4 py-3 text-sm">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Invoice</div>
+                <div className="mt-1">
+                  Goods <b>{fmtMoney(goods)}</b>
+                  {billedExtra > 0 && <> + charges <b>{fmtMoney(billedExtra)}</b></>}
+                  {' = '}
+                  <b className="text-primary">{fmtMoney(invoiceTotal)}</b>
+                </div>
+              </div>
+            </div>
           </div>
           <div className="mt-5 flex justify-end gap-2">
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
@@ -365,6 +407,18 @@ export function Dispatch(): React.JSX.Element {
         </Modal>
       )}
     </>
+  )
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }): React.JSX.Element {
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center gap-3">
+        <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground/80">{title}</span>
+        <span className="h-px flex-1 bg-border" />
+      </div>
+      {children}
+    </section>
   )
 }
 
