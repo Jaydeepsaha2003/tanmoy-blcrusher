@@ -11331,6 +11331,7 @@ const api = {
     update: (p2) => call("dispatches.update", p2),
     setRate: (id2, rate) => call("dispatches.setRate", { id: id2, rate }),
     setDelivery: (id2, delivery_status) => call("dispatches.setDelivery", { id: id2, delivery_status }),
+    setDispatch: (id2, dispatch_status) => call("dispatches.setDispatch", { id: id2, dispatch_status }),
     setPayment: (id2, paid_amount, payment_status) => call("dispatches.setPayment", { id: id2, paid_amount, payment_status }),
     delete: (id2) => call("dispatches.delete", { id: id2 })
   },
@@ -11448,6 +11449,10 @@ const api = {
     ),
     getWorkdays: () => call("system.getWorkdays"),
     setWorkdays: (weekly_offs) => call("system.setWorkdays", { weekly_offs })
+  },
+  budget: {
+    get: (plant_id, from, to) => call("budget.get", { plant_id, from, to }),
+    save: (plant_id, from, to, items) => call("budget.save", { plant_id, from, to, items })
   },
   dashboard: {
     get: (plant_id) => call("dashboard.get", { plant_id })
@@ -12211,6 +12216,25 @@ const Mountain = createLucideIcon("Mountain", [
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
+const PackageCheck = createLucideIcon("PackageCheck", [
+  ["path", { d: "m16 16 2 2 4-4", key: "gfu2re" }],
+  [
+    "path",
+    {
+      d: "M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l2-1.14",
+      key: "e7tb2h"
+    }
+  ],
+  ["path", { d: "m7.5 4.27 9 5.15", key: "1c824w" }],
+  ["polyline", { points: "3.29 7 12 12 20.71 7", key: "ousv84" }],
+  ["line", { x1: "12", x2: "12", y1: "22", y2: "12", key: "a4e8g8" }]
+]);
+/**
+ * @license lucide-react v0.468.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
 const PackageOpen = createLucideIcon("PackageOpen", [
   ["path", { d: "M12 22v-9", key: "x3hkom" }],
   [
@@ -12305,6 +12329,23 @@ const Pencil = createLucideIcon("Pencil", [
     }
   ],
   ["path", { d: "m15 5 4 4", key: "1mk7zo" }]
+]);
+/**
+ * @license lucide-react v0.468.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const PiggyBank = createLucideIcon("PiggyBank", [
+  [
+    "path",
+    {
+      d: "M19 5c-1.5 0-2.8 1.4-3 2-3.5-1.5-11-.3-11 5 0 1.8 0 3 2 4.5V20h4v-2h3v2h4v-4c1-.5 1.7-1 2-2h2v-4h-2c0-1-.5-1.5-1-2V5z",
+      key: "1ivx2i"
+    }
+  ],
+  ["path", { d: "M2 9v1c0 1.1.9 2 2 2h1", key: "nm575m" }],
+  ["path", { d: "M16 11h.01", key: "xkw8gn" }]
 ]);
 /**
  * @license lucide-react v0.468.0 - ISC
@@ -12556,6 +12597,16 @@ const Truck = createLucideIcon("Truck", [
   ],
   ["circle", { cx: "17", cy: "18", r: "2", key: "332jqn" }],
   ["circle", { cx: "7", cy: "18", r: "2", key: "19iecd" }]
+]);
+/**
+ * @license lucide-react v0.468.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const Undo2 = createLucideIcon("Undo2", [
+  ["path", { d: "M9 14 4 9l5-5", key: "102s5s" }],
+  ["path", { d: "M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11", key: "f3b9sd" }]
 ]);
 /**
  * @license lucide-react v0.468.0 - ISC
@@ -16809,21 +16860,21 @@ var CFB = /* @__PURE__ */ function _CFB() {
     hms = hms << 6 | date2.getMinutes();
     hms = hms << 5 | date2.getSeconds() >>> 1;
     buf.write_shift(2, hms);
-    var ymd = date2.getFullYear() - 1980;
-    ymd = ymd << 4 | date2.getMonth() + 1;
-    ymd = ymd << 5 | date2.getDate();
-    buf.write_shift(2, ymd);
+    var ymd2 = date2.getFullYear() - 1980;
+    ymd2 = ymd2 << 4 | date2.getMonth() + 1;
+    ymd2 = ymd2 << 5 | date2.getDate();
+    buf.write_shift(2, ymd2);
   }
   function parse_dos_date(buf) {
     var hms = buf.read_shift(2) & 65535;
-    var ymd = buf.read_shift(2) & 65535;
+    var ymd2 = buf.read_shift(2) & 65535;
     var val = /* @__PURE__ */ new Date();
-    var d2 = ymd & 31;
-    ymd >>>= 5;
-    var m2 = ymd & 15;
-    ymd >>>= 4;
+    var d2 = ymd2 & 31;
+    ymd2 >>>= 5;
+    var m2 = ymd2 & 15;
+    ymd2 >>>= 4;
     val.setMilliseconds(0);
-    val.setFullYear(ymd + 1980);
+    val.setFullYear(ymd2 + 1980);
     val.setMonth(m2 - 1);
     val.setDate(d2);
     var S2 = hms & 31;
@@ -35637,6 +35688,7 @@ const NAV = [
     heading: "Direct Sales",
     items: [
       { to: "/dispatch", label: "Direct Sale", icon: Send, module: "dispatch" },
+      { to: "/dispatch-queue", label: "Dispatch", icon: PackageCheck, module: "dispatch" },
       { to: "/deliveries", label: "Delivery Status", icon: ClipboardCheck, module: "dispatch" },
       { to: "/rate-chart", label: "Rate Chart", icon: IndianRupee, module: "masters" }
     ]
@@ -35645,6 +35697,7 @@ const NAV = [
     heading: "Accounts",
     items: [
       { to: "/plant-expenses", label: "Plant Expenses", icon: Receipt, module: "plantExpenses" },
+      { to: "/budget", label: "Budget", icon: PiggyBank, module: "plantExpenses" },
       { to: "/diesel", label: "Diesel", icon: Fuel, module: "diesel" },
       { to: "/payroll", label: "Payroll", icon: HardHat, module: "payroll" },
       { to: "/ledgers", label: "Ledgers", icon: BookOpen, module: "ledgers" },
@@ -43993,7 +44046,7 @@ function formatLocale(locale2) {
   };
 }
 var pads = { "-": "", "_": " ", "0": "0" }, numberRe = /^\s*\d+/, percentRe = /^%/, requoteRe = /[\\^$*+?|[\]().{}]/g;
-function pad(value, fill2, width) {
+function pad$1(value, fill2, width) {
   var sign2 = value < 0 ? "-" : "", string2 = (sign2 ? -value : value) + "", length = string2.length;
   return sign2 + (length < width ? new Array(width - length + 1).join(fill2) + string2 : string2);
 }
@@ -44087,38 +44140,38 @@ function parseUnixTimestampSeconds(d2, string2, i) {
   return n2 ? (d2.s = +n2[0], i + n2[0].length) : -1;
 }
 function formatDayOfMonth(d2, p2) {
-  return pad(d2.getDate(), p2, 2);
+  return pad$1(d2.getDate(), p2, 2);
 }
 function formatHour24(d2, p2) {
-  return pad(d2.getHours(), p2, 2);
+  return pad$1(d2.getHours(), p2, 2);
 }
 function formatHour12(d2, p2) {
-  return pad(d2.getHours() % 12 || 12, p2, 2);
+  return pad$1(d2.getHours() % 12 || 12, p2, 2);
 }
 function formatDayOfYear(d2, p2) {
-  return pad(1 + timeDay.count(timeYear(d2), d2), p2, 3);
+  return pad$1(1 + timeDay.count(timeYear(d2), d2), p2, 3);
 }
 function formatMilliseconds(d2, p2) {
-  return pad(d2.getMilliseconds(), p2, 3);
+  return pad$1(d2.getMilliseconds(), p2, 3);
 }
 function formatMicroseconds(d2, p2) {
   return formatMilliseconds(d2, p2) + "000";
 }
 function formatMonthNumber(d2, p2) {
-  return pad(d2.getMonth() + 1, p2, 2);
+  return pad$1(d2.getMonth() + 1, p2, 2);
 }
 function formatMinutes(d2, p2) {
-  return pad(d2.getMinutes(), p2, 2);
+  return pad$1(d2.getMinutes(), p2, 2);
 }
 function formatSeconds(d2, p2) {
-  return pad(d2.getSeconds(), p2, 2);
+  return pad$1(d2.getSeconds(), p2, 2);
 }
 function formatWeekdayNumberMonday(d2) {
   var day = d2.getDay();
   return day === 0 ? 7 : day;
 }
 function formatWeekNumberSunday(d2, p2) {
-  return pad(timeSunday.count(timeYear(d2) - 1, d2), p2, 2);
+  return pad$1(timeSunday.count(timeYear(d2) - 1, d2), p2, 2);
 }
 function dISO(d2) {
   var day = d2.getDay();
@@ -44126,66 +44179,66 @@ function dISO(d2) {
 }
 function formatWeekNumberISO(d2, p2) {
   d2 = dISO(d2);
-  return pad(timeThursday.count(timeYear(d2), d2) + (timeYear(d2).getDay() === 4), p2, 2);
+  return pad$1(timeThursday.count(timeYear(d2), d2) + (timeYear(d2).getDay() === 4), p2, 2);
 }
 function formatWeekdayNumberSunday(d2) {
   return d2.getDay();
 }
 function formatWeekNumberMonday(d2, p2) {
-  return pad(timeMonday.count(timeYear(d2) - 1, d2), p2, 2);
+  return pad$1(timeMonday.count(timeYear(d2) - 1, d2), p2, 2);
 }
 function formatYear(d2, p2) {
-  return pad(d2.getFullYear() % 100, p2, 2);
+  return pad$1(d2.getFullYear() % 100, p2, 2);
 }
 function formatYearISO(d2, p2) {
   d2 = dISO(d2);
-  return pad(d2.getFullYear() % 100, p2, 2);
+  return pad$1(d2.getFullYear() % 100, p2, 2);
 }
 function formatFullYear(d2, p2) {
-  return pad(d2.getFullYear() % 1e4, p2, 4);
+  return pad$1(d2.getFullYear() % 1e4, p2, 4);
 }
 function formatFullYearISO(d2, p2) {
   var day = d2.getDay();
   d2 = day >= 4 || day === 0 ? timeThursday(d2) : timeThursday.ceil(d2);
-  return pad(d2.getFullYear() % 1e4, p2, 4);
+  return pad$1(d2.getFullYear() % 1e4, p2, 4);
 }
 function formatZone(d2) {
   var z2 = d2.getTimezoneOffset();
-  return (z2 > 0 ? "-" : (z2 *= -1, "+")) + pad(z2 / 60 | 0, "0", 2) + pad(z2 % 60, "0", 2);
+  return (z2 > 0 ? "-" : (z2 *= -1, "+")) + pad$1(z2 / 60 | 0, "0", 2) + pad$1(z2 % 60, "0", 2);
 }
 function formatUTCDayOfMonth(d2, p2) {
-  return pad(d2.getUTCDate(), p2, 2);
+  return pad$1(d2.getUTCDate(), p2, 2);
 }
 function formatUTCHour24(d2, p2) {
-  return pad(d2.getUTCHours(), p2, 2);
+  return pad$1(d2.getUTCHours(), p2, 2);
 }
 function formatUTCHour12(d2, p2) {
-  return pad(d2.getUTCHours() % 12 || 12, p2, 2);
+  return pad$1(d2.getUTCHours() % 12 || 12, p2, 2);
 }
 function formatUTCDayOfYear(d2, p2) {
-  return pad(1 + utcDay.count(utcYear(d2), d2), p2, 3);
+  return pad$1(1 + utcDay.count(utcYear(d2), d2), p2, 3);
 }
 function formatUTCMilliseconds(d2, p2) {
-  return pad(d2.getUTCMilliseconds(), p2, 3);
+  return pad$1(d2.getUTCMilliseconds(), p2, 3);
 }
 function formatUTCMicroseconds(d2, p2) {
   return formatUTCMilliseconds(d2, p2) + "000";
 }
 function formatUTCMonthNumber(d2, p2) {
-  return pad(d2.getUTCMonth() + 1, p2, 2);
+  return pad$1(d2.getUTCMonth() + 1, p2, 2);
 }
 function formatUTCMinutes(d2, p2) {
-  return pad(d2.getUTCMinutes(), p2, 2);
+  return pad$1(d2.getUTCMinutes(), p2, 2);
 }
 function formatUTCSeconds(d2, p2) {
-  return pad(d2.getUTCSeconds(), p2, 2);
+  return pad$1(d2.getUTCSeconds(), p2, 2);
 }
 function formatUTCWeekdayNumberMonday(d2) {
   var dow = d2.getUTCDay();
   return dow === 0 ? 7 : dow;
 }
 function formatUTCWeekNumberSunday(d2, p2) {
-  return pad(utcSunday.count(utcYear(d2) - 1, d2), p2, 2);
+  return pad$1(utcSunday.count(utcYear(d2) - 1, d2), p2, 2);
 }
 function UTCdISO(d2) {
   var day = d2.getUTCDay();
@@ -44193,28 +44246,28 @@ function UTCdISO(d2) {
 }
 function formatUTCWeekNumberISO(d2, p2) {
   d2 = UTCdISO(d2);
-  return pad(utcThursday.count(utcYear(d2), d2) + (utcYear(d2).getUTCDay() === 4), p2, 2);
+  return pad$1(utcThursday.count(utcYear(d2), d2) + (utcYear(d2).getUTCDay() === 4), p2, 2);
 }
 function formatUTCWeekdayNumberSunday(d2) {
   return d2.getUTCDay();
 }
 function formatUTCWeekNumberMonday(d2, p2) {
-  return pad(utcMonday.count(utcYear(d2) - 1, d2), p2, 2);
+  return pad$1(utcMonday.count(utcYear(d2) - 1, d2), p2, 2);
 }
 function formatUTCYear(d2, p2) {
-  return pad(d2.getUTCFullYear() % 100, p2, 2);
+  return pad$1(d2.getUTCFullYear() % 100, p2, 2);
 }
 function formatUTCYearISO(d2, p2) {
   d2 = UTCdISO(d2);
-  return pad(d2.getUTCFullYear() % 100, p2, 2);
+  return pad$1(d2.getUTCFullYear() % 100, p2, 2);
 }
 function formatUTCFullYear(d2, p2) {
-  return pad(d2.getUTCFullYear() % 1e4, p2, 4);
+  return pad$1(d2.getUTCFullYear() % 1e4, p2, 4);
 }
 function formatUTCFullYearISO(d2, p2) {
   var day = d2.getUTCDay();
   d2 = day >= 4 || day === 0 ? utcThursday(d2) : utcThursday.ceil(d2);
-  return pad(d2.getUTCFullYear() % 1e4, p2, 4);
+  return pad$1(d2.getUTCFullYear() % 1e4, p2, 4);
 }
 function formatUTCZone() {
   return "+0000";
@@ -59143,7 +59196,7 @@ function derivePaymentStatus(total, paid) {
     return "paid";
   return "partial";
 }
-const payBadge$5 = {
+const payBadge$6 = {
   paid: "success",
   partial: "warning",
   unpaid: "destructive"
@@ -59314,7 +59367,7 @@ function Purchases() {
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: p2.rate == null ? "-" : fmtMoney(p2.rate) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtMoney(p2.amount) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: payBadge$5[p2.payment_status], children: p2.payment_status }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: payBadge$6[p2.payment_status], children: p2.payment_status }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => {
               setForm({ ...p2, rate: p2.rate ?? "" });
@@ -59418,7 +59471,7 @@ function Purchases() {
         /* @__PURE__ */ jsxRuntimeExports.jsxs(Section$1, { title: "Payment", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-3", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Paid Amount", hint: "Sets payment status automatically", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.paid_amount, onChange: (e3) => setForm({ ...form, paid_amount: e3.target.value }) }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Payment Status", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-9 items-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: payBadge$5[derivePaymentStatus((Number(form.quantity) || 0) * (Number(form.rate) || 0), Number(form.paid_amount) || 0)], children: derivePaymentStatus((Number(form.quantity) || 0) * (Number(form.rate) || 0), Number(form.paid_amount) || 0) }) }) })
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Payment Status", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-9 items-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: payBadge$6[derivePaymentStatus((Number(form.quantity) || 0) * (Number(form.rate) || 0), Number(form.paid_amount) || 0)], children: derivePaymentStatus((Number(form.quantity) || 0) * (Number(form.rate) || 0), Number(form.paid_amount) || 0) }) }) })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.remarks || "", onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) })
         ] }),
@@ -60436,7 +60489,7 @@ function RatesModal({
     ] })
   ] }) });
 }
-const payBadge$4 = {
+const payBadge$5 = {
   paid: "success",
   partial: "warning",
   unpaid: "destructive"
@@ -60669,7 +60722,7 @@ function Dispatch() {
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-mono text-xs", children: d2.challan_no || "-" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: d2.delivery_status === "delivered" ? "success" : "muted", children: d2.delivery_status }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: payBadge$4[d2.payment_status], children: d2.payment_status }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: payBadge$5[d2.payment_status], children: d2.payment_status }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => {
               setForm({ ...d2, rate: d2.rate ?? "", sale_quantity: d2.sale_quantity ?? "", transport_billed: !!d2.transport_billed, other_billed: !!d2.other_billed });
@@ -60791,7 +60844,7 @@ function Dispatch() {
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Amount Received", hint: "Sets payment status automatically", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.paid_amount, onChange: (e3) => setForm({ ...form, paid_amount: e3.target.value }) }) })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-3", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Payment Status", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-9 items-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: payBadge$4[derivePaymentStatus(invoiceTotal, Number(form.paid_amount) || 0)], children: derivePaymentStatus(invoiceTotal, Number(form.paid_amount) || 0) }) }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Payment Status", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-9 items-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: payBadge$5[derivePaymentStatus(invoiceTotal, Number(form.paid_amount) || 0)], children: derivePaymentStatus(invoiceTotal, Number(form.paid_amount) || 0) }) }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sm:col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.remarks || "", onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) }) })
           ] })
         ] }),
@@ -60877,6 +60930,214 @@ function cleanFilter(f2) {
   const out = {};
   for (const [k2, v2] of Object.entries(f2)) if (v2 != null && v2 !== "") out[k2] = v2;
   return out;
+}
+const payBadge$4 = {
+  paid: "success",
+  partial: "warning",
+  unpaid: "destructive"
+};
+function DispatchQueue() {
+  const qc2 = useQueryClient();
+  const toast = useToast();
+  const { plantId } = usePlant();
+  const [view, setView] = reactExports.useState("pending");
+  const filter = view === "all" ? { plant_id: plantId } : { dispatch_status: view, plant_id: plantId };
+  const { data = [] } = useQuery({
+    queryKey: ["dispatches", "dispatch", view, plantId],
+    queryFn: () => api.dispatches.list(filter)
+  });
+  const setDispatch = useMutation({
+    mutationFn: (v2) => api.dispatches.setDispatch(v2.id, v2.status),
+    onSuccess: () => {
+      qc2.invalidateQueries({ queryKey: ["dispatches"] });
+      toast.success("Dispatch status updated.");
+    },
+    onError: (e3) => toast.error(e3.message)
+  });
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      PageHeader,
+      {
+        title: "Dispatch",
+        description: "Every direct sale lands here — mark each one Dispatched once it leaves"
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(Page, { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: view === "pending" ? "default" : "outline", size: "sm", onClick: () => setView("pending"), children: "To Dispatch" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: view === "dispatched" ? "default" : "outline", size: "sm", onClick: () => setView("dispatched"), children: "Dispatched" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: view === "all" ? "default" : "outline", size: "sm", onClick: () => setView("all"), children: "All" })
+      ] }),
+      data.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No sales in this view." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Sale No" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Date" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Customer" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plant / Product" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Qty" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Dispatch" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Payment" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: data.map((d2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-mono text-xs", children: d2.dispatch_no }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: fmtDate(d2.date) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: d2.customer_name }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-muted-foreground", children: [
+            d2.plant_name,
+            " / ",
+            d2.product_name
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
+            fmtQty(d2.quantity),
+            " ",
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-muted-foreground", children: d2.uom })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: d2.dispatch_status === "dispatched" ? "success" : "warning", children: d2.dispatch_status === "dispatched" ? "Dispatched" : "To Dispatch" }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: payBadge$4[d2.payment_status], children: d2.payment_status }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: d2.dispatch_status === "dispatched" ? /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", size: "sm", onClick: () => setDispatch.mutate({ id: d2.id, status: "pending" }), children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Undo2, { size: 14 }),
+            " Mark To Dispatch"
+          ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "success", size: "sm", onClick: () => setDispatch.mutate({ id: d2.id, status: "dispatched" }), children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(PackageCheck, { size: 14 }),
+            " Mark Dispatched"
+          ] }) })
+        ] }, d2.id)) })
+      ] })
+    ] })
+  ] });
+}
+function pad(n2) {
+  return String(n2).padStart(2, "0");
+}
+function ymd(d2) {
+  return `${d2.getFullYear()}-${pad(d2.getMonth() + 1)}-${pad(d2.getDate())}`;
+}
+function monthRange(d2) {
+  return {
+    from: `${d2.getFullYear()}-${pad(d2.getMonth() + 1)}-01`,
+    to: ymd(new Date(d2.getFullYear(), d2.getMonth() + 1, 0))
+  };
+}
+function fyRange(d2) {
+  const y2 = d2.getMonth() >= 3 ? d2.getFullYear() : d2.getFullYear() - 1;
+  return { from: `${y2}-04-01`, to: `${y2 + 1}-03-31` };
+}
+function Budget() {
+  const qc2 = useQueryClient();
+  const toast = useToast();
+  const { plantId } = usePlant();
+  const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
+  const [plant, setPlant] = reactExports.useState(plantId);
+  reactExports.useEffect(() => {
+    if (plantId) setPlant(plantId);
+  }, [plantId]);
+  reactExports.useEffect(() => {
+    if (!plant && plants.length) setPlant(plants[0].id);
+  }, [plants, plant]);
+  const [range3, setRange] = reactExports.useState(() => monthRange(/* @__PURE__ */ new Date()));
+  const { data: report } = useQuery({
+    queryKey: ["budget", plant, range3.from, range3.to],
+    queryFn: () => api.budget.get(plant, range3.from, range3.to),
+    enabled: !!plant && !!range3.from && !!range3.to
+  });
+  const [edits, setEdits] = reactExports.useState({});
+  reactExports.useEffect(() => {
+    if (report) {
+      const m2 = {};
+      for (const it of report.items) m2[it.head] = it.budget ? String(it.budget) : "";
+      setEdits(m2);
+    }
+  }, [report]);
+  const save = useMutation({
+    mutationFn: () => api.budget.save(
+      plant,
+      range3.from,
+      range3.to,
+      (report?.items ?? []).map((it) => ({ head: it.head, amount: Number(edits[it.head]) || 0 }))
+    ),
+    onSuccess: (res) => {
+      if (res.ok) {
+        qc2.invalidateQueries({ queryKey: ["budget"] });
+        toast.success("Budget saved.");
+      } else toast.error(res.error || "Could not save budget.");
+    },
+    onError: (e3) => toast.error(e3.message)
+  });
+  const totalBudget = (report?.items ?? []).reduce((s2, it) => s2 + (Number(edits[it.head]) || 0), 0);
+  const totalActual = report?.total_actual ?? 0;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(PageHeader, { title: "Plant Budget", description: "Plan spend per head and track it against actual, for any period" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(Page, { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap items-end gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { className: "w-full sm:w-52", value: plant ?? "", disabled: !!plantId, onChange: (e3) => setPlant(Number(e3.target.value)), children: plants.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.id, children: p2.name }, p2.id)) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", size: "sm", onClick: () => setRange(monthRange(/* @__PURE__ */ new Date())), children: "This Month" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", size: "sm", onClick: () => setRange(fyRange(/* @__PURE__ */ new Date())), children: "This FY" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", className: "w-36", value: range3.from, onChange: (e3) => setRange({ ...range3, from: e3.target.value }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-muted-foreground", children: "to" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", className: "w-36", value: range3.to, onChange: (e3) => setRange({ ...range3, to: e3.target.value }) })
+        ] })
+      ] }),
+      plants.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "Create a plant first." }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "pt-5", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(Table, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(TH, { className: "flex items-center gap-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Wallet, { size: 14 }),
+              " Head"
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Budget" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actual" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Variance" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Used %" })
+          ] }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(TBody, { children: [
+            (report?.items ?? []).map((it) => {
+              const budget = Number(edits[it.head]) || 0;
+              const variance = Math.round((budget - it.actual + Number.EPSILON) * 100) / 100;
+              const usedPct = budget > 0 ? Math.round(it.actual / budget * 100) : null;
+              return /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: it.label }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  Input,
+                  {
+                    type: "number",
+                    step: "0.01",
+                    className: "ml-auto h-8 w-32 text-right",
+                    value: edits[it.head] ?? "",
+                    placeholder: "0",
+                    onChange: (e3) => setEdits({ ...edits, [it.head]: e3.target.value })
+                  }
+                ) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: fmtMoney(it.actual) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: cn("tnum text-right font-semibold", variance < 0 ? "text-destructive" : "text-success"), children: [
+                  fmtMoney(Math.abs(variance)),
+                  " ",
+                  variance < 0 ? "over" : "left"
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right text-muted-foreground", children: usedPct == null ? "-" : `${usedPct}%` })
+              ] }, it.head);
+            }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { className: "border-t-2 bg-muted/40 font-bold", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: "Total" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: fmtMoney(totalBudget) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: fmtMoney(totalActual) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: cn("tnum text-right", totalBudget - totalActual < 0 ? "text-destructive" : "text-success"), children: [
+                fmtMoney(Math.abs(totalBudget - totalActual)),
+                " ",
+                totalBudget - totalActual < 0 ? "over" : "left"
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: totalBudget > 0 ? `${Math.round(totalActual / totalBudget * 100)}%` : "-" })
+            ] })
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-4 flex justify-end", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { onClick: () => save.mutate(), disabled: !plant, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Save, { size: 16 }),
+          " Save Budget"
+        ] }) })
+      ] }) })
+    ] })
+  ] });
 }
 function Transporters() {
   const qc2 = useQueryClient();
@@ -65201,6 +65462,8 @@ function AppRoutes() {
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/racks/:id", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "racks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(RackDetail, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/ledgers", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "ledgers", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Ledgers, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/dispatch", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "dispatch", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Dispatch, {}) }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/dispatch-queue", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "dispatch", children: /* @__PURE__ */ jsxRuntimeExports.jsx(DispatchQueue, {}) }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/budget", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "plantExpenses", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Budget, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/payments", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "payments", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Payments, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/deliveries", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "dispatch", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Deliveries, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/movements", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "movements", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Movements, {}) }) }),

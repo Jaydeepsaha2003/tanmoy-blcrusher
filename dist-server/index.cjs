@@ -357,6 +357,7 @@ CREATE TABLE IF NOT EXISTS dispatches (
   driver          TEXT NOT NULL DEFAULT '',
   challan_no      TEXT NOT NULL DEFAULT '',
   delivery_status TEXT NOT NULL DEFAULT 'pending',
+  dispatch_status TEXT NOT NULL DEFAULT 'pending',
   payment_status  TEXT NOT NULL DEFAULT 'unpaid',
   paid_amount     REAL NOT NULL DEFAULT 0,
   date            TEXT NOT NULL,
@@ -604,6 +605,16 @@ CREATE TABLE IF NOT EXISTS opening_balances (
   created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
+CREATE TABLE IF NOT EXISTS budgets (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  plant_id   INTEGER NOT NULL REFERENCES plants(id),
+  head       TEXT NOT NULL,
+  from_date  TEXT NOT NULL,
+  to_date    TEXT NOT NULL,
+  amount     REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS payments (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   party_type TEXT NOT NULL,
@@ -646,6 +657,7 @@ CREATE INDEX IF NOT EXISTS idx_customers_token ON customers(share_token);
 CREATE INDEX IF NOT EXISTS idx_opening_party ON opening_balances(party_type, party_id);
 CREATE INDEX IF NOT EXISTS idx_ratechart_loc ON rate_chart(stock_location_id);
 CREATE INDEX IF NOT EXISTS idx_transport_loc ON transport_charges(stock_location_id);
+CREATE INDEX IF NOT EXISTS idx_budget_plant ON budgets(plant_id);
 `;
 
 // src/main/crypto.ts
@@ -883,6 +895,7 @@ CREATE TABLE IF NOT EXISTS dispatches (
   challan_no       VARCHAR(64) NOT NULL DEFAULT '',
   outsourced       INT NOT NULL DEFAULT 0,
   delivery_status  VARCHAR(32) NOT NULL DEFAULT 'pending',
+  dispatch_status  VARCHAR(32) NOT NULL DEFAULT 'pending',
   payment_status   VARCHAR(32) NOT NULL DEFAULT 'unpaid',
   paid_amount      DOUBLE NOT NULL DEFAULT 0,
   date             VARCHAR(32) NOT NULL,
@@ -1085,6 +1098,15 @@ CREATE TABLE IF NOT EXISTS opening_balances (
   remarks     TEXT,
   created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS budgets (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  plant_id   INT NOT NULL,
+  head       VARCHAR(32) NOT NULL,
+  from_date  VARCHAR(32) NOT NULL,
+  to_date    VARCHAR(32) NOT NULL,
+  amount     DOUBLE NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS payments (
   id         INT AUTO_INCREMENT PRIMARY KEY,
   party_type VARCHAR(32) NOT NULL,
@@ -1214,6 +1236,21 @@ CREATE TABLE IF NOT EXISTS transport_charges (
 );
 CREATE INDEX idx_ratechart_loc ON rate_chart(stock_location_id);
 CREATE INDEX idx_transport_loc ON transport_charges(stock_location_id)`
+  },
+  {
+    // Dispatch stage on direct sales + plant-wise budgets.
+    id: "010_dispatch_status_and_budgets",
+    sql: `ALTER TABLE dispatches ADD COLUMN dispatch_status VARCHAR(32) NOT NULL DEFAULT 'pending';
+CREATE TABLE IF NOT EXISTS budgets (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  plant_id   INT NOT NULL,
+  head       VARCHAR(32) NOT NULL,
+  from_date  VARCHAR(32) NOT NULL,
+  to_date    VARCHAR(32) NOT NULL,
+  amount     DOUBLE NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_budget_plant ON budgets(plant_id)`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -1239,6 +1276,7 @@ async function sqliteLegacyMigrate(adapter2) {
   await addColumn("dispatches", "paid_amount", "REAL NOT NULL DEFAULT 0");
   await adapter2.execRaw(`UPDATE dispatches SET qty_cm = quantity WHERE qty_cm = 0 AND quantity <> 0`);
   await addColumn("dispatches", "outsourced", "INTEGER NOT NULL DEFAULT 0");
+  await addColumn("dispatches", "dispatch_status", `TEXT NOT NULL DEFAULT 'pending'`);
   await addColumn("rack_loadings", "outsourced", "INTEGER NOT NULL DEFAULT 0");
   await addColumn("rack_sales", "truck_no", `TEXT NOT NULL DEFAULT ''`);
   await addColumn("rack_unloadings", "transporter_id", "INTEGER");
@@ -1512,6 +1550,7 @@ var PREFIX_MODULE = {
   ledgers: "ledgers",
   payments: "payments",
   plantExpenses: "plantExpenses",
+  budget: "plantExpenses",
   diesel: "diesel",
   employees: "payroll",
   wages: "payroll",
@@ -2877,6 +2916,10 @@ async function listDispatches(filter = {}) {
     where.push("di.delivery_status = @delivery_status");
     params.delivery_status = filter.delivery_status;
   }
+  if (filter.dispatch_status) {
+    where.push("di.dispatch_status = @dispatch_status");
+    params.dispatch_status = filter.dispatch_status;
+  }
   if (filter.payment_status) {
     where.push("di.payment_status = @payment_status");
     params.payment_status = filter.payment_status;
@@ -2976,11 +3019,11 @@ async function createDispatch(p) {
       `INSERT INTO dispatches
           (dispatch_no, customer_id, plant_id, product_name, uom, quantity, qty_cm, sale_quantity, rate, amount,
            transport_charge, transport_billed, other_charge, other_billed,
-           vehicle_no, vehicle_type, driver, challan_no, outsourced, outsource_id, delivery_status, payment_status, paid_amount, date, remarks)
+           vehicle_no, vehicle_type, driver, challan_no, outsourced, outsource_id, delivery_status, dispatch_status, payment_status, paid_amount, date, remarks)
          VALUES (@dispatch_no,@customer_id,@plant_id,@product_name,@uom,@quantity,@qty_cm,@sale_quantity,@rate,@amount,
            @transport_charge,@transport_billed,@other_charge,@other_billed,
-           @vehicle_no,@vehicle_type,@driver,@challan_no,@outsourced,@outsource_id,@delivery_status,@payment_status,@paid_amount,@date,@remarks)`
-    ).run({ dispatch_no: no, ...fields });
+           @vehicle_no,@vehicle_type,@driver,@challan_no,@outsourced,@outsource_id,@delivery_status,@dispatch_status,@payment_status,@paid_amount,@date,@remarks)`
+    ).run({ dispatch_no: no, dispatch_status: "pending", ...fields });
     if (!outsourced) {
       await addMovement(d, {
         type: "dispatch",
@@ -3048,6 +3091,12 @@ async function setDelivery(payload) {
     payload.delivery_status,
     payload.id
   );
+  return await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id);
+}
+async function setDispatch(payload) {
+  const d = getDb();
+  const status = payload.dispatch_status === "dispatched" ? "dispatched" : "pending";
+  await d.prepare(`UPDATE dispatches SET dispatch_status=? WHERE id=?`).run(status, payload.id);
   return await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id);
 }
 async function setPayment(payload) {
@@ -4770,18 +4819,18 @@ async function assetReport(payload) {
        FROM plant_expenses WHERE asset_id = ?`
   ).get(payload.id);
   const wages = (await d.prepare(`SELECT COALESCE(SUM(amount),0) AS q FROM wage_entries WHERE asset_id = ?`).get(payload.id)).q;
-  const money6 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
-  const net = money6(exp.rent - dieselCost - exp.maintenance - exp.other - wages);
+  const money7 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+  const net = money7(exp.rent - dieselCost - exp.maintenance - exp.other - wages);
   return {
     asset_id: payload.id,
     asset_name: a.name,
     business_name: a.business_name,
-    diesel_litres: money6(litres2),
-    diesel_cost: money6(dieselCost),
-    maintenance: money6(exp.maintenance),
-    other_expense: money6(exp.other),
-    wages: money6(wages),
-    rent_income: money6(exp.rent),
+    diesel_litres: money7(litres2),
+    diesel_cost: money7(dieselCost),
+    maintenance: money7(exp.maintenance),
+    other_expense: money7(exp.other),
+    wages: money7(wages),
+    rent_income: money7(exp.rent),
     net
   };
 }
@@ -4927,6 +4976,72 @@ async function updatePlantExpense(p) {
 async function deletePlantExpense(payload) {
   const d = getDb();
   await d.prepare(`DELETE FROM plant_expenses WHERE id = ?`).run(payload.id);
+  return { ok: true };
+}
+
+// src/main/services/budget.ts
+var HEADS = [
+  { head: "electricity", label: "Electricity", source: "expense" },
+  { head: "maintenance", label: "Maintenance", source: "expense" },
+  { head: "tipper_rent", label: "Tipper Rent", source: "expense" },
+  { head: "equipment_rent", label: "Equipment Rent", source: "expense" },
+  { head: "other", label: "Other", source: "expense" },
+  { head: "diesel", label: "Diesel", source: "diesel" },
+  { head: "payroll", label: "Payroll / Wages", source: "payroll" }
+];
+function money4(n) {
+  const v = Number(n);
+  return Number.isFinite(v) ? Math.round((v + Number.EPSILON) * 100) / 100 : 0;
+}
+async function getBudget(payload) {
+  const d = getDb();
+  const { plant_id, from, to } = payload;
+  const empty = { plant_id, from, to, items: [], total_budget: 0, total_actual: 0 };
+  if (!plant_id || !from || !to) return empty;
+  const saved = await d.prepare(`SELECT head, amount FROM budgets WHERE plant_id = ? AND from_date = ? AND to_date = ?`).all(plant_id, from, to);
+  const budgetByHead = new Map(saved.map((r) => [r.head, money4(r.amount)]));
+  const expRows = await d.prepare(
+    `SELECT category, COALESCE(SUM(amount),0) AS amt FROM plant_expenses
+       WHERE plant_id = ? AND date >= ? AND date <= ? GROUP BY category`
+  ).all(plant_id, from, to);
+  const expByCat = new Map(expRows.map((r) => [r.category, money4(r.amt)]));
+  const diesel = await d.prepare(
+    `SELECT COALESCE(SUM(amount),0) AS amt FROM diesel_purchases
+       WHERE plant_id = ? AND date >= ? AND date <= ?`
+  ).get(plant_id, from, to);
+  const payroll = await d.prepare(
+    `SELECT COALESCE(SUM(amount),0) AS amt FROM wage_entries
+       WHERE plant_id = ? AND date >= ? AND date <= ?`
+  ).get(plant_id, from, to);
+  const items = HEADS.map((h) => {
+    const budget = budgetByHead.get(h.head) ?? 0;
+    const actual = h.source === "diesel" ? money4(diesel.amt) : h.source === "payroll" ? money4(payroll.amt) : expByCat.get(h.head) ?? 0;
+    return { head: h.head, label: h.label, budget, actual, variance: money4(budget - actual) };
+  });
+  return {
+    plant_id,
+    from,
+    to,
+    items,
+    total_budget: money4(items.reduce((s, i) => s + i.budget, 0)),
+    total_actual: money4(items.reduce((s, i) => s + i.actual, 0))
+  };
+}
+async function saveBudget(payload) {
+  const d = getDb();
+  if (!payload.plant_id) return { ok: false, error: "Select a plant." };
+  if (!payload.from || !payload.to) return { ok: false, error: "Select a date range." };
+  const valid = new Set(HEADS.map((h) => h.head));
+  await d.transaction(async () => {
+    await d.prepare(`DELETE FROM budgets WHERE plant_id = ? AND from_date = ? AND to_date = ?`).run(payload.plant_id, payload.from, payload.to);
+    const stmt = d.prepare(
+      `INSERT INTO budgets (plant_id, head, from_date, to_date, amount) VALUES (?, ?, ?, ?, ?)`
+    );
+    for (const it of payload.items ?? []) {
+      if (!valid.has(it.head)) continue;
+      await stmt.run(payload.plant_id, it.head, payload.from, payload.to, money4(it.amount));
+    }
+  });
   return { ok: true };
 }
 
@@ -5097,7 +5212,7 @@ async function setWorkdaySettings(payload) {
 }
 
 // src/main/services/payroll.ts
-function money4(n) {
+function money5(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 async function workingDaysIn(period) {
@@ -5208,13 +5323,13 @@ async function resolve2(p) {
   if (!p.period) throw new Error("Pay period is required.");
   const workingDays = await workingDaysIn(p.period);
   const daysWorked = Number(p.days_worked) || 0;
-  const earned = emp.wage_type === "monthly" ? workingDays > 0 ? money4(emp.monthly_salary / workingDays * daysWorked) : 0 : money4(emp.daily_wage * daysWorked);
+  const earned = emp.wage_type === "monthly" ? workingDays > 0 ? money5(emp.monthly_salary / workingDays * daysWorked) : 0 : money5(emp.daily_wage * daysWorked);
   const otHours = Number(p.ot_hours) || 0;
   const otRate = p.ot_rate == null || p.ot_rate === "" ? emp.ot_rate : Number(p.ot_rate);
-  const otAmount = money4(otHours * otRate);
-  const deduction = money4(Number(p.deduction) || 0);
-  const gross = money4(earned + otAmount);
-  const amount = money4(gross - deduction);
+  const otAmount = money5(otHours * otRate);
+  const deduction = money5(Number(p.deduction) || 0);
+  const gross = money5(earned + otAmount);
+  const amount = money5(gross - deduction);
   if (!(amount > 0)) throw new Error("Net wage must be greater than 0.");
   return {
     employee_id: p.employee_id,
@@ -5232,7 +5347,7 @@ async function resolve2(p) {
     gross,
     amount,
     payment_status: derivePaymentStatus(amount, Number(p.paid_amount) || 0),
-    paid_amount: money4(Number(p.paid_amount) || 0),
+    paid_amount: money5(Number(p.paid_amount) || 0),
     date: p.date,
     remarks: p.remarks ?? ""
   };
@@ -5414,7 +5529,7 @@ async function listActivity(filter = {}) {
 function num2(row) {
   return Math.round(((row?.q ?? 0) + Number.EPSILON) * 1e3) / 1e3;
 }
-function money5(row) {
+function money6(row) {
   return Math.round(((row?.q ?? 0) + Number.EPSILON) * 100) / 100;
 }
 async function getDashboard(payload = {}) {
@@ -5464,7 +5579,7 @@ async function getDashboard(payload = {}) {
   const totalDispatched = num2(
     await d.prepare(`SELECT COALESCE(SUM(qty_cm),0) AS q FROM dispatches${plWhere}`).get()
   );
-  const pendingSupplierPayment = money5(
+  const pendingSupplierPayment = money6(
     await d.prepare(`SELECT COALESCE(SUM(COALESCE(amount,0) - paid_amount),0) AS q FROM purchases WHERE payment_status <> 'paid'${plAnd}`).get()
   );
   const pendingDeliveries = (await d.prepare(`SELECT COUNT(*) AS q FROM dispatches WHERE delivery_status='pending'${plAnd}`).get()).q;
@@ -5484,31 +5599,31 @@ async function getDashboard(payload = {}) {
     ).get()
   );
   const openRacks = (await d.prepare(`SELECT COUNT(*) AS q FROM racks WHERE status <> 'closed'`).get()).q;
-  const rackSalesAmount = money5(
+  const rackSalesAmount = money6(
     await d.prepare(`SELECT COALESCE(SUM(amount),0) AS q FROM rack_sales`).get()
   );
-  const rackTransportCost = money5(
+  const rackTransportCost = money6(
     await d.prepare(
       `SELECT (SELECT COALESCE(SUM(amount),0) FROM rack_loadings)
             + (SELECT COALESCE(SUM(amount),0) FROM rack_unloadings) AS q`
     ).get()
   );
-  const totalRackExpenses = money5(
+  const totalRackExpenses = money6(
     await d.prepare(`SELECT COALESCE(SUM(amount),0) AS q FROM rack_expenses`).get()
   );
-  const rackProfit = money5({ q: rackSalesAmount - rackTransportCost - totalRackExpenses });
+  const rackProfit = money6({ q: rackSalesAmount - rackTransportCost - totalRackExpenses });
   const custSalesExpr = pid ? `COALESCE((SELECT SUM(amount) FROM dispatches WHERE customer_id=c.id AND plant_id=${pid} AND amount IS NOT NULL),0)` : `COALESCE((SELECT SUM(amount) FROM rack_sales WHERE customer_id=c.id AND amount IS NOT NULL),0) +
        COALESCE((SELECT SUM(amount) FROM dispatches WHERE customer_id=c.id AND amount IS NOT NULL),0)`;
   const topCustomers = (await d.prepare(
     `SELECT c.name AS name, ${custSalesExpr} AS amount
          FROM customers c ORDER BY amount DESC LIMIT 5`
-  ).all()).filter((r) => r.amount > 0).map((r) => ({ name: r.name, amount: money5({ q: r.amount }) }));
+  ).all()).filter((r) => r.amount > 0).map((r) => ({ name: r.name, amount: money6({ q: r.amount }) }));
   const monthlySrc = pid ? `SELECT substr(date,1,7) AS month, COALESCE(amount,0) AS amount FROM dispatches WHERE amount IS NOT NULL AND plant_id=${pid}` : `SELECT substr(date,1,7) AS month, COALESCE(amount,0) AS amount FROM rack_sales WHERE amount IS NOT NULL
        UNION ALL
        SELECT substr(date,1,7) AS month, COALESCE(amount,0) AS amount FROM dispatches WHERE amount IS NOT NULL`;
   const monthlySales = (await d.prepare(
     `SELECT month, SUM(amount) AS amount FROM (${monthlySrc}) AS t GROUP BY month ORDER BY month DESC LIMIT 6`
-  ).all()).map((r) => ({ month: r.month, amount: money5({ q: r.amount }) })).reverse();
+  ).all()).map((r) => ({ month: r.month, amount: money6({ q: r.amount }) })).reverse();
   const custRow = await (pid ? d.prepare(
     `SELECT COALESCE(SUM(COALESCE(amount,0)
              + CASE WHEN transport_billed=1 THEN transport_charge ELSE 0 END
@@ -5524,7 +5639,7 @@ async function getDashboard(payload = {}) {
             (SELECT COALESCE(SUM(amount),0) FROM payments WHERE party_type='customer' AND direction='out') -
             (SELECT COALESCE(SUM(amount),0) FROM payments WHERE party_type='customer' AND direction='in') AS q`
   )).get();
-  const customerReceivable = money5(custRow);
+  const customerReceivable = money6(custRow);
   const transRow = await (pid ? d.prepare(
     `SELECT COALESCE(SUM(COALESCE(amount,0) - COALESCE(diesel_amount,0)),0) AS q FROM rack_loadings WHERE plant_id = ${pid}`
   ) : d.prepare(
@@ -5534,7 +5649,7 @@ async function getDashboard(payload = {}) {
             (SELECT COALESCE(SUM(amount),0) FROM payments WHERE party_type='transporter' AND direction='out') +
             (SELECT COALESCE(SUM(amount),0) FROM payments WHERE party_type='transporter' AND direction='in') AS q`
   )).get();
-  const transporterPayable = money5(transRow);
+  const transporterPayable = money6(transRow);
   const counts = {
     plants: (await d.prepare(`SELECT COUNT(*) AS q FROM plants`).get()).q,
     suppliers: (await d.prepare(`SELECT COUNT(*) AS q FROM suppliers`).get()).q,
@@ -5634,6 +5749,7 @@ var handlers = {
   "dispatches.update": updateDispatch,
   "dispatches.setRate": setRate,
   "dispatches.setDelivery": setDelivery,
+  "dispatches.setDispatch": setDispatch,
   "dispatches.setPayment": setPayment,
   "dispatches.delete": deleteDispatch,
   "movements.list": listMovements,
@@ -5694,6 +5810,8 @@ var handlers = {
   "plantExpenses.create": createPlantExpense,
   "plantExpenses.update": updatePlantExpense,
   "plantExpenses.delete": deletePlantExpense,
+  "budget.get": getBudget,
+  "budget.save": saveBudget,
   "diesel.stock": dieselStock,
   "diesel.purchases": listDieselPurchases,
   "diesel.createPurchase": createDieselPurchase,
