@@ -559,6 +559,9 @@ export interface Dispatch {
   other_billed: number
   vehicle_no: string
   vehicle_type: VehicleType
+  /** Optional transporter who carried the goods; links the transporter ledger. */
+  transporter_id: number | null
+  transporter_name?: string
   driver: string
   challan_no: string
   outsourced: number

@@ -46,6 +46,7 @@ export function Dispatch(): React.JSX.Element {
     queryFn: () => api.customers.list(plantId)
   })
   const { data: outsourceVendors = [] } = useQuery({ queryKey: ['outsource'], queryFn: () => api.outsource.list() })
+  const { data: transporters = [] } = useQuery({ queryKey: ['transporters', plantId], queryFn: () => api.transporters.list(plantId) })
   const [filter, setFilter] = React.useState<{
     customer_id?: number
     delivery_status?: string
@@ -91,6 +92,7 @@ export function Dispatch(): React.JSX.Element {
       other_billed: false,
       vehicle_no: '',
       vehicle_type: 'own' as VehicleType,
+      transporter_id: null,
       driver: '',
       challan_no: '',
       outsourced: false,
@@ -245,7 +247,9 @@ export function Dispatch(): React.JSX.Element {
                   <TD className="text-right font-semibold">{fmtMoney(d.billed_total)}</TD>
                   <TD className="text-muted-foreground">
                     {d.vehicle_no || '-'}
-                    <span className="block text-[11px]">{vehicleLabel[d.vehicle_type]}</span>
+                    <span className="block text-[11px]">
+                      {vehicleLabel[d.vehicle_type]}{d.transporter_name ? ` · ${d.transporter_name}` : ''}
+                    </span>
                   </TD>
                   <TD className="font-mono text-xs">{d.challan_no || '-'}</TD>
                   <TD><Badge variant={d.delivery_status === 'delivered' ? 'success' : 'muted'}>{d.delivery_status}</Badge></TD>
@@ -375,6 +379,15 @@ export function Dispatch(): React.JSX.Element {
                     <option value="own">Own Vehicle</option>
                     <option value="rented">Rented</option>
                     <option value="party">From Party</option>
+                  </Select>
+                </Field>
+                <Field label="Transporter" hint="Transport charge posts to this transporter's ledger">
+                  <Select
+                    value={form.transporter_id ?? ''}
+                    onChange={(e) => setForm({ ...form, transporter_id: e.target.value ? Number(e.target.value) : null })}
+                  >
+                    <option value="">— None —</option>
+                    {transporters.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </Select>
                 </Field>
                 <Field label="Vehicle No.">

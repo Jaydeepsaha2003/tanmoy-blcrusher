@@ -848,6 +848,28 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
           credit: 0
         })
     }
+    // Transport charges from direct sales carried by this transporter (payable).
+    const sales = (await d
+      .prepare(
+        `SELECT dispatch_no, date, created_at, product_name, COALESCE(transport_charge,0) AS charge
+         FROM dispatches WHERE transporter_id = ? AND COALESCE(transport_charge,0) > 0`
+      )
+      .all(partyId)) as {
+      dispatch_no: string
+      date: string
+      created_at: string
+      product_name: string
+      charge: number
+    }[]
+    for (const x of sales)
+      entries.push({
+        date: x.date,
+        created_at: x.created_at,
+        particulars: `Transport — direct sale ${x.product_name}`,
+        ref: x.dispatch_no,
+        debit: 0,
+        credit: x.charge
+      })
   }
 
   const payments = (await getDb()

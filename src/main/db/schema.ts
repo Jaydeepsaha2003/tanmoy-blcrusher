@@ -187,6 +187,7 @@ CREATE TABLE IF NOT EXISTS dispatches (
   qty_cm          REAL NOT NULL DEFAULT 0,
   sale_quantity   REAL,
   outsource_id    INTEGER,
+  transporter_id  INTEGER,
   rate            REAL,
   amount          REAL,
   transport_charge REAL NOT NULL DEFAULT 0,

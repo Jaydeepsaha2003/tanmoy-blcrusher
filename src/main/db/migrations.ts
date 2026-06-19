@@ -208,6 +208,7 @@ CREATE TABLE IF NOT EXISTS dispatches (
   qty_cm           DOUBLE NOT NULL DEFAULT 0,
   sale_quantity    DOUBLE,
   outsource_id     INT,
+  transporter_id   INT,
   rate             DOUBLE,
   amount           DOUBLE,
   transport_charge DOUBLE NOT NULL DEFAULT 0,
@@ -582,6 +583,11 @@ CREATE TABLE IF NOT EXISTS budgets (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_budget_plant ON budgets(plant_id)`
+  },
+  {
+    // Select a transporter on a direct sale (auto-links the transporter ledger).
+    id: '011_dispatch_transporter',
+    sql: `ALTER TABLE dispatches ADD COLUMN transporter_id INT`
   }
 ]
 
@@ -612,6 +618,7 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   await adapter.execRaw(`UPDATE dispatches SET qty_cm = quantity WHERE qty_cm = 0 AND quantity <> 0`)
   await addColumn('dispatches', 'outsourced', 'INTEGER NOT NULL DEFAULT 0')
   await addColumn('dispatches', 'dispatch_status', `TEXT NOT NULL DEFAULT 'pending'`)
+  await addColumn('dispatches', 'transporter_id', 'INTEGER')
   await addColumn('rack_loadings', 'outsourced', 'INTEGER NOT NULL DEFAULT 0')
   await addColumn('rack_sales', 'truck_no', `TEXT NOT NULL DEFAULT ''`)
   await addColumn('rack_unloadings', 'transporter_id', 'INTEGER')

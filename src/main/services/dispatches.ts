@@ -64,12 +64,13 @@ export async function listDispatches(filter: DispatchFilter = {}): Promise<Dispa
   return (await d
     .prepare(
       `SELECT di.*, c.name AS customer_name, p.name AS plant_name,
-        o.name AS outsource_name, o.head AS outsource_head,
+        o.name AS outsource_name, o.head AS outsource_head, t.name AS transporter_name,
         ${BILLED_TOTAL_SQL} AS billed_total
        FROM dispatches di
        JOIN customers c ON c.id = di.customer_id
        JOIN plants p ON p.id = di.plant_id
        LEFT JOIN outsource o ON o.id = di.outsource_id
+       LEFT JOIN transporters t ON t.id = di.transporter_id
        ${clause}
        ORDER BY di.date DESC, di.id DESC`
     )
@@ -100,6 +101,7 @@ export interface DispatchInput {
   other_billed?: boolean | number
   vehicle_no: string
   vehicle_type: VehicleType
+  transporter_id?: number | null
   driver: string
   challan_no: string
   outsourced?: boolean | number
@@ -155,6 +157,7 @@ function normalize(p: DispatchInput, factors?: UomFactors): {
       other_billed: p.other_billed ? 1 : 0,
       vehicle_no: p.vehicle_no ?? '',
       vehicle_type: p.vehicle_type || 'own',
+      transporter_id: p.transporter_id ?? null,
       driver: properCase(p.driver),
       challan_no: (p.challan_no ?? '').trim(),
       outsourced: outsourced ? 1 : 0,
@@ -185,10 +188,10 @@ export async function createDispatch(p: DispatchInput): Promise<Dispatch> {
         `INSERT INTO dispatches
           (dispatch_no, customer_id, plant_id, product_name, uom, quantity, qty_cm, sale_quantity, rate, amount,
            transport_charge, transport_billed, other_charge, other_billed,
-           vehicle_no, vehicle_type, driver, challan_no, outsourced, outsource_id, delivery_status, dispatch_status, payment_status, paid_amount, date, remarks)
+           vehicle_no, vehicle_type, transporter_id, driver, challan_no, outsourced, outsource_id, delivery_status, dispatch_status, payment_status, paid_amount, date, remarks)
          VALUES (@dispatch_no,@customer_id,@plant_id,@product_name,@uom,@quantity,@qty_cm,@sale_quantity,@rate,@amount,
            @transport_charge,@transport_billed,@other_charge,@other_billed,
-           @vehicle_no,@vehicle_type,@driver,@challan_no,@outsourced,@outsource_id,@delivery_status,@dispatch_status,@payment_status,@paid_amount,@date,@remarks)`
+           @vehicle_no,@vehicle_type,@transporter_id,@driver,@challan_no,@outsourced,@outsource_id,@delivery_status,@dispatch_status,@payment_status,@paid_amount,@date,@remarks)`
       )
       .run({ dispatch_no: no, dispatch_status: 'pending', ...fields })
     if (!outsourced) {
@@ -221,7 +224,7 @@ export async function updateDispatch(p: DispatchInput): Promise<Dispatch> {
         uom=@uom, quantity=@quantity, qty_cm=@qty_cm, sale_quantity=@sale_quantity, rate=@rate, amount=@amount,
         transport_charge=@transport_charge, transport_billed=@transport_billed,
         other_charge=@other_charge, other_billed=@other_billed,
-        vehicle_no=@vehicle_no, vehicle_type=@vehicle_type, driver=@driver, challan_no=@challan_no,
+        vehicle_no=@vehicle_no, vehicle_type=@vehicle_type, transporter_id=@transporter_id, driver=@driver, challan_no=@challan_no,
         outsourced=@outsourced, outsource_id=@outsource_id, delivery_status=@delivery_status, payment_status=@payment_status, paid_amount=@paid_amount,
         date=@date, remarks=@remarks WHERE id=@id`
     ).run({ id: p.id, ...fields })
