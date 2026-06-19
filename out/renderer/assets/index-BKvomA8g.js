@@ -60509,6 +60509,7 @@ function Dispatch() {
     queryFn: () => api.customers.list(plantId)
   });
   const { data: outsourceVendors = [] } = useQuery({ queryKey: ["outsource"], queryFn: () => api.outsource.list() });
+  const { data: transporters = [] } = useQuery({ queryKey: ["transporters", plantId], queryFn: () => api.transporters.list(plantId) });
   const [filter, setFilter] = reactExports.useState({});
   const { data = [] } = useQuery({
     queryKey: ["dispatches", filter, plantId],
@@ -60547,6 +60548,7 @@ function Dispatch() {
       other_billed: false,
       vehicle_no: "",
       vehicle_type: "own",
+      transporter_id: null,
       driver: "",
       challan_no: "",
       outsourced: false,
@@ -60718,7 +60720,10 @@ function Dispatch() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right font-semibold", children: fmtMoney(d2.billed_total) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-muted-foreground", children: [
             d2.vehicle_no || "-",
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "block text-[11px]", children: vehicleLabel[d2.vehicle_type] })
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "block text-[11px]", children: [
+              vehicleLabel[d2.vehicle_type],
+              d2.transporter_name ? ` · ${d2.transporter_name}` : ""
+            ] })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-mono text-xs", children: d2.challan_no || "-" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: d2.delivery_status === "delivered" ? "success" : "muted", children: d2.delivery_status }) }),
@@ -60811,6 +60816,17 @@ function Dispatch() {
             /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "rented", children: "Rented" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "party", children: "From Party" })
           ] }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Transporter", hint: "Transport charge posts to this transporter's ledger", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            Select,
+            {
+              value: form.transporter_id ?? "",
+              onChange: (e3) => setForm({ ...form, transporter_id: e3.target.value ? Number(e3.target.value) : null }),
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "— None —" }),
+                transporters.map((t2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: t2.id, children: t2.name }, t2.id))
+              ]
+            }
+          ) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Vehicle No.", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.vehicle_no, onChange: (e3) => setForm({ ...form, vehicle_no: e3.target.value }), placeholder: "e.g. JH-01-AB-1234" }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Driver", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.driver, onChange: (e3) => setForm({ ...form, driver: e3.target.value }) }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Challan No.", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.challan_no, onChange: (e3) => setForm({ ...form, challan_no: e3.target.value }) }) }),

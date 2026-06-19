@@ -346,6 +346,7 @@ CREATE TABLE IF NOT EXISTS dispatches (
   qty_cm          REAL NOT NULL DEFAULT 0,
   sale_quantity   REAL,
   outsource_id    INTEGER,
+  transporter_id  INTEGER,
   rate            REAL,
   amount          REAL,
   transport_charge REAL NOT NULL DEFAULT 0,
@@ -883,6 +884,7 @@ CREATE TABLE IF NOT EXISTS dispatches (
   qty_cm           DOUBLE NOT NULL DEFAULT 0,
   sale_quantity    DOUBLE,
   outsource_id     INT,
+  transporter_id   INT,
   rate             DOUBLE,
   amount           DOUBLE,
   transport_charge DOUBLE NOT NULL DEFAULT 0,
@@ -1251,6 +1253,11 @@ CREATE TABLE IF NOT EXISTS budgets (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_budget_plant ON budgets(plant_id)`
+  },
+  {
+    // Select a transporter on a direct sale (auto-links the transporter ledger).
+    id: "011_dispatch_transporter",
+    sql: `ALTER TABLE dispatches ADD COLUMN transporter_id INT`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -1277,6 +1284,7 @@ async function sqliteLegacyMigrate(adapter2) {
   await adapter2.execRaw(`UPDATE dispatches SET qty_cm = quantity WHERE qty_cm = 0 AND quantity <> 0`);
   await addColumn("dispatches", "outsourced", "INTEGER NOT NULL DEFAULT 0");
   await addColumn("dispatches", "dispatch_status", `TEXT NOT NULL DEFAULT 'pending'`);
+  await addColumn("dispatches", "transporter_id", "INTEGER");
   await addColumn("rack_loadings", "outsourced", "INTEGER NOT NULL DEFAULT 0");
   await addColumn("rack_sales", "truck_no", `TEXT NOT NULL DEFAULT ''`);
   await addColumn("rack_unloadings", "transporter_id", "INTEGER");
@@ -2938,12 +2946,13 @@ async function listDispatches(filter = {}) {
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
   return await d.prepare(
     `SELECT di.*, c.name AS customer_name, p.name AS plant_name,
-        o.name AS outsource_name, o.head AS outsource_head,
+        o.name AS outsource_name, o.head AS outsource_head, t.name AS transporter_name,
         ${BILLED_TOTAL_SQL} AS billed_total
        FROM dispatches di
        JOIN customers c ON c.id = di.customer_id
        JOIN plants p ON p.id = di.plant_id
        LEFT JOIN outsource o ON o.id = di.outsource_id
+       LEFT JOIN transporters t ON t.id = di.transporter_id
        ${clause}
        ORDER BY di.date DESC, di.id DESC`
   ).all(params);
@@ -2991,6 +3000,7 @@ function normalize(p, factors) {
       other_billed: p.other_billed ? 1 : 0,
       vehicle_no: p.vehicle_no ?? "",
       vehicle_type: p.vehicle_type || "own",
+      transporter_id: p.transporter_id ?? null,
       driver: properCase(p.driver),
       challan_no: (p.challan_no ?? "").trim(),
       outsourced: outsourced ? 1 : 0,
@@ -3019,10 +3029,10 @@ async function createDispatch(p) {
       `INSERT INTO dispatches
           (dispatch_no, customer_id, plant_id, product_name, uom, quantity, qty_cm, sale_quantity, rate, amount,
            transport_charge, transport_billed, other_charge, other_billed,
-           vehicle_no, vehicle_type, driver, challan_no, outsourced, outsource_id, delivery_status, dispatch_status, payment_status, paid_amount, date, remarks)
+           vehicle_no, vehicle_type, transporter_id, driver, challan_no, outsourced, outsource_id, delivery_status, dispatch_status, payment_status, paid_amount, date, remarks)
          VALUES (@dispatch_no,@customer_id,@plant_id,@product_name,@uom,@quantity,@qty_cm,@sale_quantity,@rate,@amount,
            @transport_charge,@transport_billed,@other_charge,@other_billed,
-           @vehicle_no,@vehicle_type,@driver,@challan_no,@outsourced,@outsource_id,@delivery_status,@dispatch_status,@payment_status,@paid_amount,@date,@remarks)`
+           @vehicle_no,@vehicle_type,@transporter_id,@driver,@challan_no,@outsourced,@outsource_id,@delivery_status,@dispatch_status,@payment_status,@paid_amount,@date,@remarks)`
     ).run({ dispatch_no: no, dispatch_status: "pending", ...fields });
     if (!outsourced) {
       await addMovement(d, {
@@ -3053,7 +3063,7 @@ async function updateDispatch(p) {
         uom=@uom, quantity=@quantity, qty_cm=@qty_cm, sale_quantity=@sale_quantity, rate=@rate, amount=@amount,
         transport_charge=@transport_charge, transport_billed=@transport_billed,
         other_charge=@other_charge, other_billed=@other_billed,
-        vehicle_no=@vehicle_no, vehicle_type=@vehicle_type, driver=@driver, challan_no=@challan_no,
+        vehicle_no=@vehicle_no, vehicle_type=@vehicle_type, transporter_id=@transporter_id, driver=@driver, challan_no=@challan_no,
         outsourced=@outsourced, outsource_id=@outsource_id, delivery_status=@delivery_status, payment_status=@payment_status, paid_amount=@paid_amount,
         date=@date, remarks=@remarks WHERE id=@id`
     ).run({ id: p.id, ...fields });
@@ -4413,6 +4423,19 @@ async function buildEntries(partyType, partyId) {
           credit: 0
         });
     }
+    const sales = await d.prepare(
+      `SELECT dispatch_no, date, created_at, product_name, COALESCE(transport_charge,0) AS charge
+         FROM dispatches WHERE transporter_id = ? AND COALESCE(transport_charge,0) > 0`
+    ).all(partyId);
+    for (const x of sales)
+      entries.push({
+        date: x.date,
+        created_at: x.created_at,
+        particulars: `Transport \u2014 direct sale ${x.product_name}`,
+        ref: x.dispatch_no,
+        debit: 0,
+        credit: x.charge
+      });
   }
   const payments = await getDb().prepare(`SELECT * FROM payments WHERE party_type = ? AND party_id = ?`).all(partyType, partyId);
   for (const p of payments) {
