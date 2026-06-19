@@ -17,6 +17,8 @@ import { Products } from './pages/Products'
 import { RateChart } from './pages/RateChart'
 import { Customers } from './pages/Customers'
 import { Dispatch } from './pages/Dispatch'
+import { DispatchQueue } from './pages/DispatchQueue'
+import { Budget } from './pages/Budget'
 import { Transporters } from './pages/Transporters'
 import { Companies } from './pages/Companies'
 import { Businesses } from './pages/Businesses'
@@ -79,6 +81,8 @@ function AppRoutes(): React.JSX.Element {
       <Route path="/racks/:id" element={<Guard module="racks"><RackDetail /></Guard>} />
       <Route path="/ledgers" element={<Guard module="ledgers"><Ledgers /></Guard>} />
       <Route path="/dispatch" element={<Guard module="dispatch"><Dispatch /></Guard>} />
+      <Route path="/dispatch-queue" element={<Guard module="dispatch"><DispatchQueue /></Guard>} />
+      <Route path="/budget" element={<Guard module="plantExpenses"><Budget /></Guard>} />
       <Route path="/payments" element={<Guard module="payments"><Payments /></Guard>} />
       <Route path="/deliveries" element={<Guard module="dispatch"><Deliveries /></Guard>} />
       <Route path="/movements" element={<Guard module="movements"><Movements /></Guard>} />

@@ -220,6 +220,7 @@ CREATE TABLE IF NOT EXISTS dispatches (
   challan_no       VARCHAR(64) NOT NULL DEFAULT '',
   outsourced       INT NOT NULL DEFAULT 0,
   delivery_status  VARCHAR(32) NOT NULL DEFAULT 'pending',
+  dispatch_status  VARCHAR(32) NOT NULL DEFAULT 'pending',
   payment_status   VARCHAR(32) NOT NULL DEFAULT 'unpaid',
   paid_amount      DOUBLE NOT NULL DEFAULT 0,
   date             VARCHAR(32) NOT NULL,
@@ -422,6 +423,15 @@ CREATE TABLE IF NOT EXISTS opening_balances (
   remarks     TEXT,
   created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS budgets (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  plant_id   INT NOT NULL,
+  head       VARCHAR(32) NOT NULL,
+  from_date  VARCHAR(32) NOT NULL,
+  to_date    VARCHAR(32) NOT NULL,
+  amount     DOUBLE NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS payments (
   id         INT AUTO_INCREMENT PRIMARY KEY,
   party_type VARCHAR(32) NOT NULL,
@@ -557,6 +567,21 @@ CREATE TABLE IF NOT EXISTS transport_charges (
 );
 CREATE INDEX idx_ratechart_loc ON rate_chart(stock_location_id);
 CREATE INDEX idx_transport_loc ON transport_charges(stock_location_id)`
+  },
+  {
+    // Dispatch stage on direct sales + plant-wise budgets.
+    id: '010_dispatch_status_and_budgets',
+    sql: `ALTER TABLE dispatches ADD COLUMN dispatch_status VARCHAR(32) NOT NULL DEFAULT 'pending';
+CREATE TABLE IF NOT EXISTS budgets (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  plant_id   INT NOT NULL,
+  head       VARCHAR(32) NOT NULL,
+  from_date  VARCHAR(32) NOT NULL,
+  to_date    VARCHAR(32) NOT NULL,
+  amount     DOUBLE NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_budget_plant ON budgets(plant_id)`
   }
 ]
 
@@ -586,6 +611,7 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   await addColumn('dispatches', 'paid_amount', 'REAL NOT NULL DEFAULT 0')
   await adapter.execRaw(`UPDATE dispatches SET qty_cm = quantity WHERE qty_cm = 0 AND quantity <> 0`)
   await addColumn('dispatches', 'outsourced', 'INTEGER NOT NULL DEFAULT 0')
+  await addColumn('dispatches', 'dispatch_status', `TEXT NOT NULL DEFAULT 'pending'`)
   await addColumn('rack_loadings', 'outsourced', 'INTEGER NOT NULL DEFAULT 0')
   await addColumn('rack_sales', 'truck_no', `TEXT NOT NULL DEFAULT ''`)
   await addColumn('rack_unloadings', 'transporter_id', 'INTEGER')

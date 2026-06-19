@@ -14,6 +14,7 @@ import type {
   Dispatch,
   StockMovement,
   DashboardData,
+  BudgetReport,
   PaymentStatus,
   DeliveryStatus,
   Transporter,
@@ -185,6 +186,8 @@ export const api = {
     setRate: (id: number, rate: number) => call<Dispatch>('dispatches.setRate', { id, rate }),
     setDelivery: (id: number, delivery_status: DeliveryStatus) =>
       call<Dispatch>('dispatches.setDelivery', { id, delivery_status }),
+    setDispatch: (id: number, dispatch_status: 'pending' | 'dispatched') =>
+      call<Dispatch>('dispatches.setDispatch', { id, dispatch_status }),
     setPayment: (id: number, paid_amount: number, payment_status: PaymentStatus) =>
       call<Dispatch>('dispatches.setPayment', { id, paid_amount, payment_status }),
     delete: (id: number) => call<{ ok: boolean; error?: string }>('dispatches.delete', { id })
@@ -326,6 +329,12 @@ export const api = {
     getWorkdays: () => call<WorkdaySettings>('system.getWorkdays'),
     setWorkdays: (weekly_offs: number[]) =>
       call<{ ok: boolean }>('system.setWorkdays', { weekly_offs })
+  },
+  budget: {
+    get: (plant_id: number, from: string, to: string) =>
+      call<BudgetReport>('budget.get', { plant_id, from, to }),
+    save: (plant_id: number, from: string, to: string, items: { head: string; amount: number }[]) =>
+      call<{ ok: boolean; error?: string }>('budget.save', { plant_id, from, to, items })
   },
   dashboard: {
     get: (plant_id?: number) => call<DashboardData>('dashboard.get', { plant_id })

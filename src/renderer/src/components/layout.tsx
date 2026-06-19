@@ -41,6 +41,8 @@ import {
   ScrollText,
   Package,
   IndianRupee,
+  PackageCheck,
+  PiggyBank,
   Menu
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -85,6 +87,7 @@ export const NAV: NavGroup[] = [
     heading: 'Direct Sales',
     items: [
       { to: '/dispatch', label: 'Direct Sale', icon: Send, module: 'dispatch' },
+      { to: '/dispatch-queue', label: 'Dispatch', icon: PackageCheck, module: 'dispatch' },
       { to: '/deliveries', label: 'Delivery Status', icon: ClipboardCheck, module: 'dispatch' },
       { to: '/rate-chart', label: 'Rate Chart', icon: IndianRupee, module: 'masters' }
     ]
@@ -93,6 +96,7 @@ export const NAV: NavGroup[] = [
     heading: 'Accounts',
     items: [
       { to: '/plant-expenses', label: 'Plant Expenses', icon: Receipt, module: 'plantExpenses' },
+      { to: '/budget', label: 'Budget', icon: PiggyBank, module: 'plantExpenses' },
       { to: '/diesel', label: 'Diesel', icon: Fuel, module: 'diesel' },
       { to: '/payroll', label: 'Payroll', icon: HardHat, module: 'payroll' },
       { to: '/ledgers', label: 'Ledgers', icon: BookOpen, module: 'ledgers' },

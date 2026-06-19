@@ -198,6 +198,7 @@ CREATE TABLE IF NOT EXISTS dispatches (
   driver          TEXT NOT NULL DEFAULT '',
   challan_no      TEXT NOT NULL DEFAULT '',
   delivery_status TEXT NOT NULL DEFAULT 'pending',
+  dispatch_status TEXT NOT NULL DEFAULT 'pending',
   payment_status  TEXT NOT NULL DEFAULT 'unpaid',
   paid_amount     REAL NOT NULL DEFAULT 0,
   date            TEXT NOT NULL,
@@ -445,6 +446,16 @@ CREATE TABLE IF NOT EXISTS opening_balances (
   created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
+CREATE TABLE IF NOT EXISTS budgets (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  plant_id   INTEGER NOT NULL REFERENCES plants(id),
+  head       TEXT NOT NULL,
+  from_date  TEXT NOT NULL,
+  to_date    TEXT NOT NULL,
+  amount     REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS payments (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   party_type TEXT NOT NULL,
@@ -487,4 +498,5 @@ CREATE INDEX IF NOT EXISTS idx_customers_token ON customers(share_token);
 CREATE INDEX IF NOT EXISTS idx_opening_party ON opening_balances(party_type, party_id);
 CREATE INDEX IF NOT EXISTS idx_ratechart_loc ON rate_chart(stock_location_id);
 CREATE INDEX IF NOT EXISTS idx_transport_loc ON transport_charges(stock_location_id);
+CREATE INDEX IF NOT EXISTS idx_budget_plant ON budgets(plant_id);
 `

@@ -57,6 +57,7 @@ const PREFIX_MODULE: Record<string, ModuleKey> = {
   ledgers: 'ledgers',
   payments: 'payments',
   plantExpenses: 'plantExpenses',
+  budget: 'plantExpenses',
   diesel: 'diesel',
   employees: 'payroll',
   wages: 'payroll',

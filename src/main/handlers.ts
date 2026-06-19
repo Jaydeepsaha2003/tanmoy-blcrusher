@@ -18,6 +18,7 @@ import * as racks from './services/racks'
 import * as ledgers from './services/ledgers'
 import * as assets from './services/assets'
 import * as plantExpenses from './services/plantExpenses'
+import * as budget from './services/budget'
 import * as diesel from './services/diesel'
 import * as businesses from './services/businesses'
 import * as outsource from './services/outsource'
@@ -106,6 +107,7 @@ export const handlers: Record<string, (payload: any) => unknown> = {
   'dispatches.update': dispatches.updateDispatch,
   'dispatches.setRate': dispatches.setRate,
   'dispatches.setDelivery': dispatches.setDelivery,
+  'dispatches.setDispatch': dispatches.setDispatch,
   'dispatches.setPayment': dispatches.setPayment,
   'dispatches.delete': dispatches.deleteDispatch,
 
@@ -175,6 +177,9 @@ export const handlers: Record<string, (payload: any) => unknown> = {
   'plantExpenses.create': plantExpenses.createPlantExpense,
   'plantExpenses.update': plantExpenses.updatePlantExpense,
   'plantExpenses.delete': plantExpenses.deletePlantExpense,
+
+  'budget.get': budget.getBudget,
+  'budget.save': budget.saveBudget,
 
   'diesel.stock': diesel.dieselStock,
   'diesel.purchases': diesel.listDieselPurchases,

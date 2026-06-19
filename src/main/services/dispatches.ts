@@ -1,5 +1,5 @@
 import { getDb, nextNumber } from '../db'
-import type { Dispatch, DeliveryStatus, PaymentStatus, VehicleType, Uom, UomFactors } from '@shared/types'
+import type { Dispatch, DeliveryStatus, DispatchStatus, PaymentStatus, VehicleType, Uom, UomFactors } from '@shared/types'
 import { properCase, toCm, derivePaymentStatus } from '@shared/types'
 import { addMovement, finishedBalance } from './movements'
 import { plantUomFactors } from './plants'
@@ -9,6 +9,7 @@ export interface DispatchFilter {
   plant_id?: number
   product_name?: string
   delivery_status?: DeliveryStatus
+  dispatch_status?: DispatchStatus
   payment_status?: PaymentStatus
   rate_pending?: boolean
   from?: string
@@ -39,6 +40,10 @@ export async function listDispatches(filter: DispatchFilter = {}): Promise<Dispa
   if (filter.delivery_status) {
     where.push('di.delivery_status = @delivery_status')
     params.delivery_status = filter.delivery_status
+  }
+  if (filter.dispatch_status) {
+    where.push('di.dispatch_status = @dispatch_status')
+    params.dispatch_status = filter.dispatch_status
   }
   if (filter.payment_status) {
     where.push('di.payment_status = @payment_status')
@@ -180,12 +185,12 @@ export async function createDispatch(p: DispatchInput): Promise<Dispatch> {
         `INSERT INTO dispatches
           (dispatch_no, customer_id, plant_id, product_name, uom, quantity, qty_cm, sale_quantity, rate, amount,
            transport_charge, transport_billed, other_charge, other_billed,
-           vehicle_no, vehicle_type, driver, challan_no, outsourced, outsource_id, delivery_status, payment_status, paid_amount, date, remarks)
+           vehicle_no, vehicle_type, driver, challan_no, outsourced, outsource_id, delivery_status, dispatch_status, payment_status, paid_amount, date, remarks)
          VALUES (@dispatch_no,@customer_id,@plant_id,@product_name,@uom,@quantity,@qty_cm,@sale_quantity,@rate,@amount,
            @transport_charge,@transport_billed,@other_charge,@other_billed,
-           @vehicle_no,@vehicle_type,@driver,@challan_no,@outsourced,@outsource_id,@delivery_status,@payment_status,@paid_amount,@date,@remarks)`
+           @vehicle_no,@vehicle_type,@driver,@challan_no,@outsourced,@outsource_id,@delivery_status,@dispatch_status,@payment_status,@paid_amount,@date,@remarks)`
       )
-      .run({ dispatch_no: no, ...fields })
+      .run({ dispatch_no: no, dispatch_status: 'pending', ...fields })
     if (!outsourced) {
       await addMovement(d, {
         type: 'dispatch',
@@ -261,6 +266,16 @@ export async function setDelivery(payload: {
     payload.delivery_status,
     payload.id
   )
+  return (await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id)) as Dispatch
+}
+
+export async function setDispatch(payload: {
+  id: number
+  dispatch_status: DispatchStatus
+}): Promise<Dispatch> {
+  const d = getDb()
+  const status = payload.dispatch_status === 'dispatched' ? 'dispatched' : 'pending'
+  await d.prepare(`UPDATE dispatches SET dispatch_status=? WHERE id=?`).run(status, payload.id)
   return (await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id)) as Dispatch
 }
 

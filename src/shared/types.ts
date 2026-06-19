@@ -3,6 +3,7 @@
 export type Status = 'active' | 'inactive'
 export type PaymentStatus = 'paid' | 'unpaid' | 'partial'
 export type DeliveryStatus = 'pending' | 'delivered'
+export type DispatchStatus = 'pending' | 'dispatched'
 export type VehicleType = 'party' | 'own' | 'rented'
 export type MaterialType = 'raw' | 'finished'
 export type MovementType =
@@ -566,6 +567,8 @@ export interface Dispatch {
   outsource_name?: string
   outsource_head?: string
   delivery_status: DeliveryStatus
+  /** Dispatch workflow stage, independent of delivery. */
+  dispatch_status: DispatchStatus
   payment_status: PaymentStatus
   paid_amount: number
   date: string
@@ -664,6 +667,24 @@ export interface PlantExpense {
 export interface ExpenseCategoryTotal {
   category: ExpenseCategory
   amount: number
+}
+
+/** One head's planned-vs-actual line in a plant budget. */
+export interface BudgetItem {
+  head: string
+  label: string
+  budget: number
+  actual: number
+  variance: number
+}
+
+export interface BudgetReport {
+  plant_id: number
+  from: string
+  to: string
+  items: BudgetItem[]
+  total_budget: number
+  total_actual: number
 }
 
 export interface DieselPurchase {
