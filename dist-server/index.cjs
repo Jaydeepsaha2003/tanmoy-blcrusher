@@ -288,6 +288,7 @@ CREATE TABLE IF NOT EXISTS purchases (
   plant_id          INTEGER NOT NULL REFERENCES plants(id),
   stock_location_id INTEGER NOT NULL REFERENCES stock_locations(id),
   material_type     TEXT NOT NULL DEFAULT 'raw',
+  purchase_mode     TEXT NOT NULL DEFAULT 'purchase',
   product_name      TEXT NOT NULL DEFAULT '',
   outsource_id      INTEGER,
   uom               TEXT NOT NULL DEFAULT 'CM',
@@ -300,6 +301,27 @@ CREATE TABLE IF NOT EXISTS purchases (
   date              TEXT NOT NULL,
   remarks           TEXT NOT NULL DEFAULT '',
   created_at        TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS purchase_transporters (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  purchase_id    INTEGER NOT NULL REFERENCES purchases(id),
+  transporter_id INTEGER NOT NULL REFERENCES transporters(id),
+  vehicle_no     TEXT NOT NULL DEFAULT '',
+  charge         REAL NOT NULL DEFAULT 0,
+  created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS purchase_machines (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  purchase_id  INTEGER NOT NULL REFERENCES purchases(id),
+  asset_id     INTEGER NOT NULL REFERENCES assets(id),
+  basis        TEXT NOT NULL DEFAULT 'hour',
+  qty          REAL NOT NULL DEFAULT 0,
+  rate         REAL NOT NULL DEFAULT 0,
+  amount       REAL NOT NULL DEFAULT 0,
+  outsource_id INTEGER,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS production_settings (
@@ -659,6 +681,9 @@ CREATE INDEX IF NOT EXISTS idx_opening_party ON opening_balances(party_type, par
 CREATE INDEX IF NOT EXISTS idx_ratechart_loc ON rate_chart(stock_location_id);
 CREATE INDEX IF NOT EXISTS idx_transport_loc ON transport_charges(stock_location_id);
 CREATE INDEX IF NOT EXISTS idx_budget_plant ON budgets(plant_id);
+CREATE INDEX IF NOT EXISTS idx_ptrans_purchase ON purchase_transporters(purchase_id);
+CREATE INDEX IF NOT EXISTS idx_ptrans_transporter ON purchase_transporters(transporter_id);
+CREATE INDEX IF NOT EXISTS idx_pmach_purchase ON purchase_machines(purchase_id);
 `;
 
 // src/main/crypto.ts
@@ -833,6 +858,7 @@ CREATE TABLE IF NOT EXISTS purchases (
   plant_id          INT NOT NULL,
   stock_location_id INT NOT NULL,
   material_type     VARCHAR(16) NOT NULL DEFAULT 'raw',
+  purchase_mode     VARCHAR(16) NOT NULL DEFAULT 'purchase',
   product_name      VARCHAR(255) NOT NULL DEFAULT '',
   outsource_id      INT,
   quantity          DOUBLE NOT NULL,
@@ -843,6 +869,25 @@ CREATE TABLE IF NOT EXISTS purchases (
   date              VARCHAR(32) NOT NULL,
   remarks           TEXT,
   created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS purchase_transporters (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  purchase_id    INT NOT NULL,
+  transporter_id INT NOT NULL,
+  vehicle_no     VARCHAR(64) NOT NULL DEFAULT '',
+  charge         DOUBLE NOT NULL DEFAULT 0,
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS purchase_machines (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  purchase_id  INT NOT NULL,
+  asset_id     INT NOT NULL,
+  basis        VARCHAR(8) NOT NULL DEFAULT 'hour',
+  qty          DOUBLE NOT NULL DEFAULT 0,
+  rate         DOUBLE NOT NULL DEFAULT 0,
+  amount       DOUBLE NOT NULL DEFAULT 0,
+  outsource_id INT,
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS production_settings (
   id                INT AUTO_INCREMENT PRIMARY KEY,
@@ -1258,6 +1303,33 @@ CREATE INDEX idx_budget_plant ON budgets(plant_id)`
     // Select a transporter on a direct sale (auto-links the transporter ledger).
     id: "011_dispatch_transporter",
     sql: `ALTER TABLE dispatches ADD COLUMN transporter_id INT`
+  },
+  {
+    // Mining mode + multi-transporter / multi-machine lines on a purchase.
+    id: "012_purchase_mining_lines",
+    sql: `ALTER TABLE purchases ADD COLUMN purchase_mode VARCHAR(16) NOT NULL DEFAULT 'purchase';
+CREATE TABLE IF NOT EXISTS purchase_transporters (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  purchase_id    INT NOT NULL,
+  transporter_id INT NOT NULL,
+  vehicle_no     VARCHAR(64) NOT NULL DEFAULT '',
+  charge         DOUBLE NOT NULL DEFAULT 0,
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS purchase_machines (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  purchase_id  INT NOT NULL,
+  asset_id     INT NOT NULL,
+  basis        VARCHAR(8) NOT NULL DEFAULT 'hour',
+  qty          DOUBLE NOT NULL DEFAULT 0,
+  rate         DOUBLE NOT NULL DEFAULT 0,
+  amount       DOUBLE NOT NULL DEFAULT 0,
+  outsource_id INT,
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_ptrans_purchase ON purchase_transporters(purchase_id);
+CREATE INDEX idx_ptrans_transporter ON purchase_transporters(transporter_id);
+CREATE INDEX idx_pmach_purchase ON purchase_machines(purchase_id)`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -1314,6 +1386,7 @@ async function sqliteLegacyMigrate(adapter2) {
   await addColumn("dispatches", "sale_quantity", "REAL");
   await addColumn("dispatches", "outsource_id", "INTEGER");
   await addColumn("purchases", "outsource_id", "INTEGER");
+  await addColumn("purchases", "purchase_mode", `TEXT NOT NULL DEFAULT 'purchase'`);
 }
 async function importProductsFromSettings(adapter2) {
   const all = (await adapter2.exec(`SELECT id, name FROM products ORDER BY id`, void 0, null)).rows;
@@ -2502,6 +2575,45 @@ async function deleteTransportCharge(payload) {
 }
 
 // src/main/services/purchases.ts
+function round22(n) {
+  return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+}
+async function writeChildLines(d, purchaseId, transporters, machines) {
+  await d.prepare(`DELETE FROM purchase_transporters WHERE purchase_id = ?`).run(purchaseId);
+  await d.prepare(`DELETE FROM purchase_machines WHERE purchase_id = ?`).run(purchaseId);
+  const tStmt = d.prepare(
+    `INSERT INTO purchase_transporters (purchase_id, transporter_id, vehicle_no, charge) VALUES (?, ?, ?, ?)`
+  );
+  for (const t of transporters ?? []) {
+    if (!t.transporter_id) continue;
+    await tStmt.run(purchaseId, t.transporter_id, properCase(t.vehicle_no || ""), round22(Number(t.charge) || 0));
+  }
+  const mStmt = d.prepare(
+    `INSERT INTO purchase_machines (purchase_id, asset_id, basis, qty, rate, amount, outsource_id) VALUES (?, ?, ?, ?, ?, ?, ?)`
+  );
+  for (const m of machines ?? []) {
+    if (!m.asset_id) continue;
+    const basis = m.basis === "cm" ? "cm" : "hour";
+    const qty = Number(m.qty) || 0;
+    const rate = Number(m.rate) || 0;
+    await mStmt.run(purchaseId, m.asset_id, basis, qty, rate, round22(qty * rate), m.outsource_id ?? null);
+  }
+}
+async function getPurchaseDetail(payload) {
+  const d = getDb();
+  const pu = await d.prepare(`SELECT * FROM purchases WHERE id = ?`).get(payload.id);
+  if (!pu) return null;
+  pu.transporters = await d.prepare(
+    `SELECT pt.*, t.name AS transporter_name FROM purchase_transporters pt
+       JOIN transporters t ON t.id = pt.transporter_id WHERE pt.purchase_id = ? ORDER BY pt.id`
+  ).all(payload.id);
+  pu.machines = await d.prepare(
+    `SELECT pm.*, a.name AS asset_name, o.name AS outsource_name FROM purchase_machines pm
+       JOIN assets a ON a.id = pm.asset_id
+       LEFT JOIN outsource o ON o.id = pm.outsource_id WHERE pm.purchase_id = ? ORDER BY pm.id`
+  ).all(payload.id);
+  return pu;
+}
 async function listPurchases(filter = {}) {
   const d = getDb();
   const where = [];
@@ -2529,7 +2641,9 @@ async function listPurchases(filter = {}) {
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
   return await d.prepare(
     `SELECT pu.*, s.name AS supplier_name, p.name AS plant_name, l.name AS stock_location_name,
-        o.name AS outsource_name, o.head AS outsource_head
+        o.name AS outsource_name, o.head AS outsource_head,
+        (SELECT COALESCE(SUM(charge),0) FROM purchase_transporters pt WHERE pt.purchase_id = pu.id) AS transport_total,
+        (SELECT COALESCE(SUM(amount),0) FROM purchase_machines pm WHERE pm.purchase_id = pu.id) AS machine_total
        FROM purchases pu
        JOIN suppliers s ON s.id = pu.supplier_id
        JOIN plants p ON p.id = pu.plant_id
@@ -2549,7 +2663,8 @@ function roundQty(n) {
 async function createPurchase(p) {
   const d = getDb();
   if (!(p.quantity > 0)) throw new Error("Quantity must be greater than 0.");
-  const kind = p.material_type === "finished" ? "finished" : "raw";
+  const mode = p.purchase_mode === "mining" ? "mining" : "purchase";
+  const kind = mode === "purchase" && p.material_type === "finished" ? "finished" : "raw";
   const product = kind === "finished" ? properCase(p.product_name || "") : "";
   if (kind === "finished" && !product) throw new Error("Select a product to purchase.");
   const locId = p.stock_location_id || await ensureDefaultLocation(p.plant_id);
@@ -2560,14 +2675,15 @@ async function createPurchase(p) {
     const no = await nextNumber("PUR", "purchase");
     const info = await d.prepare(
       `INSERT INTO purchases
-          (purchase_no, supplier_id, plant_id, stock_location_id, material_type, product_name, outsource_id, uom, quantity, qty_cm, rate, amount, paid_amount, payment_status, date, remarks)
-         VALUES (@purchase_no,@supplier_id,@plant_id,@stock_location_id,@material_type,@product_name,@outsource_id,@uom,@quantity,@qty_cm,@rate,@amount,@paid_amount,@payment_status,@date,@remarks)`
+          (purchase_no, supplier_id, plant_id, stock_location_id, material_type, purchase_mode, product_name, outsource_id, uom, quantity, qty_cm, rate, amount, paid_amount, payment_status, date, remarks)
+         VALUES (@purchase_no,@supplier_id,@plant_id,@stock_location_id,@material_type,@purchase_mode,@product_name,@outsource_id,@uom,@quantity,@qty_cm,@rate,@amount,@paid_amount,@payment_status,@date,@remarks)`
     ).run({
       purchase_no: no,
       supplier_id: p.supplier_id,
       plant_id: p.plant_id,
       stock_location_id: locId,
       material_type: kind,
+      purchase_mode: mode,
       product_name: product,
       outsource_id: p.outsource_id ?? null,
       uom,
@@ -2580,6 +2696,7 @@ async function createPurchase(p) {
       date: p.date,
       remarks: p.remarks ?? ""
     });
+    await writeChildLines(d, Number(info.lastInsertRowid), p.transporters, p.machines);
     if (kind === "finished") {
       await addMovement(d, {
         type: "purchase",
@@ -2613,7 +2730,8 @@ async function updatePurchase(p) {
   if (!(p.quantity > 0)) throw new Error("Quantity must be greater than 0.");
   const old = await d.prepare(`SELECT * FROM purchases WHERE id = ?`).get(p.id);
   if (!old) throw new Error("Purchase not found.");
-  const kind = p.material_type === "finished" ? "finished" : "raw";
+  const mode = p.purchase_mode === "mining" ? "mining" : "purchase";
+  const kind = mode === "purchase" && p.material_type === "finished" ? "finished" : "raw";
   const product = kind === "finished" ? properCase(p.product_name || "") : "";
   if (kind === "finished" && !product) throw new Error("Select a product to purchase.");
   const locId = p.stock_location_id || old.stock_location_id || await ensureDefaultLocation(p.plant_id);
@@ -2623,7 +2741,7 @@ async function updatePurchase(p) {
   await d.transaction(async () => {
     await d.prepare(
       `UPDATE purchases SET supplier_id=@supplier_id, plant_id=@plant_id, stock_location_id=@stock_location_id,
-         material_type=@material_type, product_name=@product_name, outsource_id=@outsource_id,
+         material_type=@material_type, purchase_mode=@purchase_mode, product_name=@product_name, outsource_id=@outsource_id,
          uom=@uom, quantity=@quantity, qty_cm=@qty_cm, rate=@rate, amount=@amount, paid_amount=@paid_amount,
          payment_status=@payment_status, date=@date, remarks=@remarks WHERE id=@id`
     ).run({
@@ -2632,6 +2750,7 @@ async function updatePurchase(p) {
       plant_id: p.plant_id,
       stock_location_id: locId,
       material_type: kind,
+      purchase_mode: mode,
       product_name: product,
       outsource_id: p.outsource_id ?? null,
       uom,
@@ -2644,6 +2763,7 @@ async function updatePurchase(p) {
       date: p.date,
       remarks: p.remarks ?? ""
     });
+    await writeChildLines(d, p.id, p.transporters, p.machines);
     await d.prepare(`DELETE FROM stock_movements WHERE ref_no=? AND type='purchase'`).run(old.purchase_no);
     if (kind === "finished") {
       await addMovement(d, {
@@ -2694,6 +2814,8 @@ async function deletePurchase(payload) {
       } else if (await rawLocationBalance(d, old.stock_location_id) < 0) {
         throw new Error("Cannot delete: this material has already been consumed in production.");
       }
+      await d.prepare(`DELETE FROM purchase_transporters WHERE purchase_id = ?`).run(payload.id);
+      await d.prepare(`DELETE FROM purchase_machines WHERE purchase_id = ?`).run(payload.id);
       await d.prepare(`DELETE FROM purchases WHERE id = ?`).run(payload.id);
     });
     return { ok: true };
@@ -3263,6 +3385,22 @@ function round7(n) {
 }
 
 // src/main/services/companies.ts
+var ROLE_DELETE = {
+  suppliers: deleteSupplier,
+  customers: deleteCustomer,
+  transporters: deleteTransporter
+};
+async function syncRole(d, companyId, table, flag, name, contact, address) {
+  if (flag === void 0) return;
+  const existing = await d.prepare(`SELECT id FROM ${table} WHERE company_id = ?`).all(companyId);
+  if (flag) {
+    if (existing.length === 0) {
+      await d.prepare(`INSERT INTO ${table} (name, contact, address, remarks, company_id) VALUES (?, ?, ?, '', ?)`).run(name, contact, address, companyId);
+    }
+  } else {
+    for (const e of existing) await ROLE_DELETE[table]({ id: e.id });
+  }
+}
 async function listCompanies() {
   const d = getDb();
   const rows = await d.prepare(`SELECT * FROM companies ORDER BY name`).all();
@@ -3299,13 +3437,19 @@ async function createCompany(p) {
 async function updateCompany(p) {
   const d = getDb();
   if (!p.name?.trim()) throw new Error("Company name is required.");
+  const name = properCase(p.name);
+  const contact = p.contact ?? "";
+  const address = p.address ?? "";
   await d.prepare(`UPDATE companies SET name=?, contact=?, address=?, remarks=? WHERE id=?`).run(
-    properCase(p.name),
-    p.contact ?? "",
-    p.address ?? "",
+    name,
+    contact,
+    address,
     p.remarks ?? "",
     p.id
   );
+  await syncRole(d, p.id, "suppliers", p.as_supplier, name, contact, address);
+  await syncRole(d, p.id, "customers", p.as_customer, name, contact, address);
+  await syncRole(d, p.id, "transporters", p.as_transporter, name, contact, address);
   return await d.prepare(`SELECT * FROM companies WHERE id = ?`).get(p.id);
 }
 async function deleteCompany(payload) {
@@ -4198,6 +4342,36 @@ async function buildEntries(partyType, partyId) {
         debit: x.amount,
         credit: 0
       });
+    const ptrans = await d.prepare(
+      `SELECT pu.purchase_no, pu.date, pu.created_at, COALESCE(pt.charge,0) AS charge, t.name AS tname
+         FROM purchase_transporters pt JOIN purchases pu ON pu.id = pt.purchase_id
+         JOIN transporters t ON t.id = pt.transporter_id WHERE pu.plant_id = ?`
+    ).all(partyId);
+    for (const x of ptrans)
+      if (x.charge > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Purchase transport \u2014 ${x.tname}`,
+          ref: x.purchase_no,
+          debit: x.charge,
+          credit: 0
+        });
+    const pmach = await d.prepare(
+      `SELECT pu.purchase_no, pu.date, pu.created_at, COALESCE(pm.amount,0) AS amount, a.name AS aname
+         FROM purchase_machines pm JOIN purchases pu ON pu.id = pm.purchase_id
+         JOIN assets a ON a.id = pm.asset_id WHERE pu.plant_id = ?`
+    ).all(partyId);
+    for (const x of pmach)
+      if (x.amount > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Machine \u2014 ${x.aname}`,
+          ref: x.purchase_no,
+          debit: x.amount,
+          credit: 0
+        });
     const dieselCost = await d.prepare(
       `SELECT purchase_no, date, created_at, COALESCE(amount,0) AS amount, litres
          FROM diesel_purchases WHERE plant_id = ?`
@@ -4329,6 +4503,21 @@ async function buildEntries(partyType, partyId) {
           credit: 0
         });
     }
+    const mach = await d.prepare(
+      `SELECT pu.purchase_no, pu.date, pu.created_at, COALESCE(pm.amount,0) AS amount, a.name AS aname
+         FROM purchase_machines pm JOIN purchases pu ON pu.id = pm.purchase_id
+         JOIN assets a ON a.id = pm.asset_id WHERE pm.outsource_id = ?`
+    ).all(partyId);
+    for (const x of mach)
+      if (x.amount > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Machine hire \u2014 ${x.aname}`,
+          ref: x.purchase_no,
+          debit: 0,
+          credit: x.amount
+        });
   }
   if (partyType === "customer") {
     const dispatches = await d.prepare(
@@ -4491,6 +4680,21 @@ async function buildEntries(partyType, partyId) {
         debit: 0,
         credit: x.charge
       });
+    const pin = await d.prepare(
+      `SELECT pu.purchase_no, pu.date, pu.created_at, COALESCE(pt.charge,0) AS charge, COALESCE(pt.vehicle_no,'') AS vno
+         FROM purchase_transporters pt JOIN purchases pu ON pu.id = pt.purchase_id
+         WHERE pt.transporter_id = ?`
+    ).all(partyId);
+    for (const x of pin)
+      if (x.charge > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Transport \u2014 purchase inward${x.vno ? ` (${x.vno})` : ""}`,
+          ref: x.purchase_no,
+          debit: 0,
+          credit: x.charge
+        });
   }
   const payments = await getDb().prepare(`SELECT * FROM payments WHERE party_type = ? AND party_id = ?`).all(partyType, partyId);
   for (const p of payments) {
@@ -5091,9 +5295,15 @@ async function getBudget(payload) {
     `SELECT COALESCE(SUM(amount),0) AS amt FROM wage_entries
        WHERE plant_id = ? AND date >= ? AND date <= ?`
   ).get(plant_id, from, to);
+  const machine = await d.prepare(
+    `SELECT COALESCE(SUM(pm.amount),0) AS amt FROM purchase_machines pm
+       JOIN purchases pu ON pu.id = pm.purchase_id
+       WHERE pu.plant_id = ? AND pu.date >= ? AND pu.date <= ?`
+  ).get(plant_id, from, to);
   const items = HEADS.map((h) => {
     const budget = budgetByHead.get(h.head) ?? 0;
-    const actual = h.source === "diesel" ? money4(diesel.amt) : h.source === "payroll" ? money4(payroll.amt) : expByCat.get(h.head) ?? 0;
+    let actual = h.source === "diesel" ? money4(diesel.amt) : h.source === "payroll" ? money4(payroll.amt) : expByCat.get(h.head) ?? 0;
+    if (h.head === "equipment_rent") actual = money4(actual + money4(machine.amt));
     return { head: h.head, label: h.label, budget, actual, variance: money4(budget - actual) };
   });
   return {
@@ -5809,6 +6019,7 @@ var handlers = {
   "transportCharges.update": updateTransportCharge,
   "transportCharges.delete": deleteTransportCharge,
   "purchases.list": listPurchases,
+  "purchases.detail": getPurchaseDetail,
   "purchases.create": createPurchase,
   "purchases.update": updatePurchase,
   "purchases.delete": deletePurchase,
