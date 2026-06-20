@@ -121,8 +121,8 @@ export function SearchSelect({
   const sel = options.find((o) => String(o.value) === String(value ?? ''))
   const ql = q.trim().toLowerCase()
   const filtered = ql ? options.filter((o) => o.label.toLowerCase().includes(ql)) : options
-  // Short lists don't need a search box — keep them as a clean dropdown (unless forced).
-  const showSearch = alwaysSearch || options.length > 7
+  // Every dropdown with a real choice is searchable; only a single-option list skips it.
+  const showSearch = alwaysSearch || options.length > 1
   return (
     <div ref={ref} className={cn('relative', className)}>
       <button
