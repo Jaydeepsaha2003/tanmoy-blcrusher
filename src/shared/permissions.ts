@@ -47,6 +47,7 @@ const PREFIX_MODULE: Record<string, ModuleKey> = {
   businesses: 'masters',
   outsource: 'masters',
   assets: 'masters',
+  machinery: 'masters',
   purchases: 'purchases',
   productionSettings: 'production',
   productions: 'production',

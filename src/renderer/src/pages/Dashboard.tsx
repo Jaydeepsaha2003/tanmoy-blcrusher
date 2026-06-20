@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import type { LucideIcon } from 'lucide-react'
 import {
@@ -98,7 +99,9 @@ function SectionLabel({ children }: { children: React.ReactNode }): React.JSX.El
 
 export function Dashboard(): React.JSX.Element {
   const { plantId } = usePlant()
+  const nav = useNavigate()
   const { data: plants = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
+  const { data: reminders = [] } = useQuery({ queryKey: ['reminders'], queryFn: () => api.machinery.reminders() })
   const { data } = useQuery({
     queryKey: ['dashboard', plantId],
     queryFn: () => api.dashboard.get(plantId),
@@ -130,6 +133,19 @@ export function Dashboard(): React.JSX.Element {
         }
       />
       <Page>
+        {reminders.length > 0 && (
+          <button
+            onClick={() => nav('/reminders')}
+            className="mb-4 flex w-full items-center gap-3 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-left text-sm transition-colors hover:bg-warning/15"
+          >
+            <AlertTriangle size={18} className="shrink-0 text-warning" />
+            <span>
+              <b>{reminders.filter((r) => r.reminder_status === 'expired').length}</b> document(s) expired and{' '}
+              <b>{reminders.filter((r) => r.reminder_status === 'due').length}</b> expiring soon on your machines.
+            </span>
+            <span className="ml-auto font-medium text-primary">View reminders →</span>
+          </button>
+        )}
         {/* Inventory & sales — plant-specific */}
         <SectionLabel>Inventory &amp; Sales{plantId ? ` — ${activePlant}` : ''}</SectionLabel>
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">

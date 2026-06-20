@@ -1,6 +1,7 @@
 import * as React from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, FileSpreadsheet, BarChart3 } from 'lucide-react'
+import { Plus, Pencil, Trash2, FileSpreadsheet, Gauge } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { Asset } from '@shared/types'
 import { PageHeader, Page } from '@/components/layout'
@@ -30,18 +31,13 @@ const CATEGORIES = ['Crusher', 'Tipper', 'Excavator', 'JCB', 'JCB Loader', 'Load
 export function Assets(): React.JSX.Element {
   const qc = useQueryClient()
   const toast = useToast()
+  const nav = useNavigate()
   const { plantId } = usePlant()
   const { data = [] } = useQuery({ queryKey: ['assets', plantId], queryFn: () => api.assets.list(plantId) })
   const { data: plants = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
   const { data: businesses = [] } = useQuery({ queryKey: ['businesses'], queryFn: api.businesses.list })
   const [open, setOpen] = React.useState(false)
   const [form, setForm] = React.useState<Partial<Asset>>({})
-  const [reportFor, setReportFor] = React.useState<Asset | null>(null)
-  const { data: report } = useQuery({
-    queryKey: ['assetReport', reportFor?.id],
-    queryFn: () => api.assets.report(reportFor!.id),
-    enabled: !!reportFor
-  })
 
   const save = useMutation({
     mutationFn: (p: Partial<Asset>) => (p.id ? api.assets.update(p) : api.assets.create(p)),
@@ -116,8 +112,8 @@ export function Assets(): React.JSX.Element {
                   <TD className="text-muted-foreground">{a.business_name || '-'}</TD>
                   <TD className="capitalize text-muted-foreground">{a.status}</TD>
                   <TD className="text-right">
-                    <Button variant="ghost" size="icon" title="Machine report" onClick={() => setReportFor(a)}>
-                      <BarChart3 size={15} />
+                    <Button variant="ghost" size="icon" title="Logbook, balance sheet & documents" onClick={() => nav(`/machinery/${a.id}`)}>
+                      <Gauge size={15} />
                     </Button>
                     <Button variant="ghost" size="icon" onClick={() => { setForm(a); setOpen(true) }}>
                       <Pencil size={15} />
@@ -156,6 +152,12 @@ export function Assets(): React.JSX.Element {
           <Field label="Owning Business / Firm" hint="Costs & rent of this machine roll up here">
             <SearchSelect value={form.business_id ?? ''} onChange={(v) => setForm({ ...form, business_id: v ? Number(v) : null })} options={[{ value: '', label: '— None —' }, ...businesses.map((b) => ({ value: b.id, label: b.name }))]} />
           </Field>
+          <Field label="Meter" hint="Machines run on hours; vehicles on km">
+            <SearchSelect value={form.meter_type || (form.asset_type === 'vehicle' ? 'km' : 'hour')} onChange={(v) => setForm({ ...form, meter_type: v as Asset['meter_type'] })} options={[{ value: 'hour', label: 'Hours' }, { value: 'km', label: 'Kilometres' }]} />
+          </Field>
+          <Field label="Standard fuel" hint={`Litres per ${(form.meter_type || (form.asset_type === 'vehicle' ? 'km' : 'hour')) === 'km' ? 'km' : 'hour'} (for the over-use check)`}>
+            <Input type="number" step="0.01" value={form.standard_consumption ?? ''} onChange={(e) => setForm({ ...form, standard_consumption: e.target.value === '' ? null : Number(e.target.value) })} placeholder="Optional" />
+          </Field>
           <Field label="Status">
             <SearchSelect value={form.status || 'active'} onChange={(v) => setForm({ ...form, status: v as Asset['status'] })} options={[{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }]} />
           </Field>
@@ -170,47 +172,6 @@ export function Assets(): React.JSX.Element {
           <Button onClick={() => save.mutate(form)} disabled={!form.name?.trim()}>Save</Button>
         </div>
       </Modal>
-
-      {reportFor && (
-        <Modal open onClose={() => setReportFor(null)} title={`Report — ${reportFor.name}`} width="max-w-lg">
-          {!report ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : (
-            <div className="space-y-4">
-              <div className="text-xs text-muted-foreground">
-                {report.business_name ? <>Business: <b className="text-foreground">{report.business_name}</b></> : 'Not linked to a business'}
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <RptCard label="Diesel Consumed" value={`${fmtQty(report.diesel_litres)} L`} />
-                <RptCard label="Diesel Cost (avg)" value={fmtMoney(report.diesel_cost)} tone="destructive" />
-                <RptCard label="Maintenance" value={fmtMoney(report.maintenance)} tone="destructive" />
-                <RptCard label="Operator Wages" value={fmtMoney(report.wages)} tone="destructive" />
-                <RptCard label="Other Expenses" value={fmtMoney(report.other_expense)} tone="destructive" />
-                <RptCard label="Rent Earned" value={fmtMoney(report.rent_income)} tone="success" />
-              </div>
-              <div className="flex items-center justify-between rounded-lg border bg-muted/40 px-4 py-3">
-                <span className="text-sm font-semibold">Net to Business (rent − costs)</span>
-                <span className={`tnum text-lg font-bold ${report.net < 0 ? 'text-destructive' : 'text-success'}`}>{fmtMoney(report.net)}</span>
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Diesel is valued at the average purchase rate. Operator wages count when a wage entry is tagged to this machine.
-              </p>
-            </div>
-          )}
-          <div className="mt-5 flex justify-end">
-            <Button variant="outline" onClick={() => setReportFor(null)}>Close</Button>
-          </div>
-        </Modal>
-      )}
     </>
-  )
-}
-
-function RptCard({ label, value, tone }: { label: string; value: string; tone?: 'success' | 'destructive' }): React.JSX.Element {
-  return (
-    <div className="rounded-lg border p-3">
-      <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className={`tnum mt-0.5 text-base font-bold ${tone === 'success' ? 'text-success' : tone === 'destructive' ? 'text-destructive' : ''}`}>{value}</div>
-    </div>
   )
 }

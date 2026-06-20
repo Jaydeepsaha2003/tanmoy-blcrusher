@@ -33,6 +33,9 @@ import type {
   OpeningBalance,
   LedgerType,
   Asset,
+  MachineLog,
+  AssetDocument,
+  MachineBalanceSheet,
   PlantExpense,
   ExpenseCategoryTotal,
   DieselPurchase,
@@ -276,6 +279,22 @@ export const api = {
     update: (p: Partial<Asset>) => call<Asset>('assets.update', p),
     delete: (id: number) => call<{ ok: boolean; error?: string }>('assets.delete', { id }),
     report: (id: number) => call<AssetReport>('assets.report', { id })
+  },
+  machinery: {
+    logs: (asset_id: number, from?: string, to?: string) =>
+      call<MachineLog[]>('machinery.logs', { asset_id, from, to }),
+    addLog: (p: unknown) => call<MachineLog>('machinery.addLog', p),
+    updateLog: (p: unknown) => call<MachineLog>('machinery.updateLog', p),
+    deleteLog: (id: number) => call<{ ok: boolean }>('machinery.deleteLog', { id }),
+    balanceSheet: (asset_id: number, from?: string, to?: string) =>
+      call<MachineBalanceSheet>('machinery.balanceSheet', { asset_id, from, to }),
+    documents: (asset_id: number) => call<AssetDocument[]>('machinery.documents', { asset_id }),
+    addDocument: (p: unknown) => call<{ ok: boolean; error?: string }>('machinery.addDocument', p),
+    updateDocument: (p: unknown) => call<{ ok: boolean; error?: string }>('machinery.updateDocument', p),
+    deleteDocument: (id: number) => call<{ ok: boolean }>('machinery.deleteDocument', { id }),
+    reminders: (days?: number) => call<AssetDocument[]>('machinery.reminders', { days }),
+    reminderSettings: () => call<{ days: number }>('machinery.reminderSettings'),
+    setReminderDays: (days: number) => call<{ ok: boolean }>('machinery.setReminderDays', { days })
   },
   businesses: {
     list: () => call<Business[]>('businesses.list'),

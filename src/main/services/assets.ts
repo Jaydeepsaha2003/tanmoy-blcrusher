@@ -18,22 +18,37 @@ export async function listAssets(payload: { plant_id?: number } = {}): Promise<A
     .all(payload)) as Asset[]
 }
 
-export async function createAsset(p: {
+interface AssetInput {
   name: string
   asset_type: string
   category: string
   identifier: string
   plant_id?: number | null
   business_id?: number | null
+  meter_type?: string
+  standard_consumption?: number | null
   status: string
   remarks: string
-}): Promise<Asset> {
+}
+
+function meterTypeOf(p: AssetInput): string {
+  if (p.meter_type === 'hour' || p.meter_type === 'km') return p.meter_type
+  // Sensible default: vehicles read km, machines read hours.
+  return p.asset_type === 'vehicle' ? 'km' : 'hour'
+}
+function stdConsumption(p: AssetInput): number | null {
+  return p.standard_consumption == null || (p.standard_consumption as unknown) === ''
+    ? null
+    : Number(p.standard_consumption)
+}
+
+export async function createAsset(p: AssetInput): Promise<Asset> {
   const d = getDb()
   if (!p.name?.trim()) throw new Error('Name is required.')
   const info = await d
     .prepare(
-      `INSERT INTO assets (name, asset_type, category, identifier, plant_id, business_id, status, remarks)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO assets (name, asset_type, category, identifier, plant_id, business_id, meter_type, standard_consumption, status, remarks)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       properCase(p.name),
@@ -42,26 +57,18 @@ export async function createAsset(p: {
       (p.identifier ?? '').trim().toUpperCase(),
       p.plant_id ?? null,
       p.business_id ?? null,
+      meterTypeOf(p),
+      stdConsumption(p),
       p.status || 'active',
       p.remarks ?? ''
     )
   return (await d.prepare(`SELECT * FROM assets WHERE id = ?`).get(info.lastInsertRowid)) as Asset
 }
 
-export async function updateAsset(p: {
-  id: number
-  name: string
-  asset_type: string
-  category: string
-  identifier: string
-  plant_id?: number | null
-  business_id?: number | null
-  status: string
-  remarks: string
-}): Promise<Asset> {
+export async function updateAsset(p: AssetInput & { id: number }): Promise<Asset> {
   const d = getDb()
   await d.prepare(
-    `UPDATE assets SET name=?, asset_type=?, category=?, identifier=?, plant_id=?, business_id=?, status=?, remarks=? WHERE id=?`
+    `UPDATE assets SET name=?, asset_type=?, category=?, identifier=?, plant_id=?, business_id=?, meter_type=?, standard_consumption=?, status=?, remarks=? WHERE id=?`
   ).run(
     properCase(p.name),
     p.asset_type || 'machine',
@@ -69,6 +76,8 @@ export async function updateAsset(p: {
     (p.identifier ?? '').trim().toUpperCase(),
     p.plant_id ?? null,
     p.business_id ?? null,
+    meterTypeOf(p),
+    stdConsumption(p),
     p.status || 'active',
     p.remarks ?? '',
     p.id
@@ -130,6 +139,10 @@ export async function deleteAsset(payload: { id: number }): Promise<{ ok: boolea
   if (used.c > 0) {
     return { ok: false, error: 'Cannot delete: this asset has expense records.' }
   }
-  await d.prepare(`DELETE FROM assets WHERE id = ?`).run(payload.id)
+  await d.transaction(async () => {
+    await d.prepare(`DELETE FROM machine_logs WHERE asset_id = ?`).run(payload.id)
+    await d.prepare(`DELETE FROM asset_documents WHERE asset_id = ?`).run(payload.id)
+    await d.prepare(`DELETE FROM assets WHERE id = ?`).run(payload.id)
+  })
   return { ok: true }
 }

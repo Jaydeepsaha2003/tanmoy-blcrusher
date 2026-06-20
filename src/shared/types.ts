@@ -732,6 +732,9 @@ export interface Outsource {
   created_at: string
 }
 
+/** Machines are metered in running hours; vehicles by odometer km. */
+export type MeterType = 'hour' | 'km'
+
 export interface Asset {
   id: number
   name: string
@@ -742,9 +745,75 @@ export interface Asset {
   plant_name?: string
   business_id: number | null
   business_name?: string
+  /** How this asset's meter reads: 'hour' (machines) or 'km' (vehicles). */
+  meter_type: MeterType
+  /** Expected fuel per hour/km (litres) — used for the standard-vs-actual check. */
+  standard_consumption: number | null
   status: Status
   remarks: string
   created_at: string
+}
+
+/** A logbook entry: meter readings + work done (and optional fuel) for a machine on a date. */
+export interface MachineLog {
+  id: number
+  asset_id: number
+  asset_name?: string
+  date: string
+  work_type: string
+  opening_meter: number
+  closing_meter: number
+  /** closing - opening (hours or km). */
+  usage_qty: number
+  /** Fuel for this entry; null → fall back to diesel issued in the period. */
+  fuel_litres: number | null
+  remarks: string
+  created_at: string
+}
+
+export type AssetDocType = 'insurance' | 'permit' | 'fitness' | 'puc' | 'rc' | 'tax' | 'other'
+
+/** A document on a machine/vehicle (insurance, permit, fitness…) with optional expiry + file. */
+export interface AssetDocument {
+  id: number
+  asset_id: number
+  asset_name?: string
+  doc_type: AssetDocType
+  number: string
+  issue_date: string | null
+  expiry_date: string | null
+  /** Optional scan/photo as a data URL. */
+  file_data?: string | null
+  remarks: string
+  created_at: string
+  // computed for reminders
+  days_left?: number | null
+  reminder_status?: 'expired' | 'due' | 'ok'
+}
+
+/** Per-machine balance sheet over a date range: usage, fuel, costs and net. */
+export interface MachineBalanceSheet {
+  asset_id: number
+  asset_name: string
+  meter_type: MeterType
+  business_name: string | null
+  from: string
+  to: string
+  usage_qty: number
+  fuel_litres: number
+  fuel_source: 'logbook' | 'diesel' | 'none'
+  actual_consumption: number | null
+  standard_consumption: number | null
+  opening_meter: number | null
+  closing_meter: number | null
+  diesel_cost: number
+  maintenance: number
+  other_expense: number
+  wages: number
+  rent_income: number
+  total_cost: number
+  net: number
+  cost_per_unit: number | null
 }
 
 export interface AssetReport {

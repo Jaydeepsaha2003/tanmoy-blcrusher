@@ -401,7 +401,32 @@ CREATE TABLE IF NOT EXISTS assets (
   identifier  VARCHAR(64) NOT NULL DEFAULT '',
   plant_id    INT,
   business_id INT,
+  meter_type  VARCHAR(8) NOT NULL DEFAULT 'hour',
+  standard_consumption DOUBLE,
   status      VARCHAR(32) NOT NULL DEFAULT 'active',
+  remarks     TEXT,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS machine_logs (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  asset_id      INT NOT NULL,
+  date          VARCHAR(32) NOT NULL,
+  work_type     VARCHAR(64) NOT NULL DEFAULT '',
+  opening_meter DOUBLE NOT NULL DEFAULT 0,
+  closing_meter DOUBLE NOT NULL DEFAULT 0,
+  usage_qty     DOUBLE NOT NULL DEFAULT 0,
+  fuel_litres   DOUBLE,
+  remarks       TEXT,
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS asset_documents (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  asset_id    INT NOT NULL,
+  doc_type    VARCHAR(32) NOT NULL DEFAULT 'other',
+  number      VARCHAR(128) NOT NULL DEFAULT '',
+  issue_date  VARCHAR(32),
+  expiry_date VARCHAR(32),
+  file_data   MEDIUMTEXT,
   remarks     TEXT,
   created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -764,6 +789,38 @@ CREATE INDEX idx_rsmach_sale ON rack_sale_machines(rack_sale_id)`
     // Logo is stored as a data URL in settings — widen the value column to hold it.
     id: '016_settings_value_mediumtext',
     sql: 'ALTER TABLE settings MODIFY value MEDIUMTEXT'
+  },
+  {
+    // Machine logbook, balance-sheet inputs and document/insurance tracking.
+    id: '017_machinery_logs_documents',
+    sql: `ALTER TABLE assets ADD COLUMN meter_type VARCHAR(8) NOT NULL DEFAULT 'hour';
+ALTER TABLE assets ADD COLUMN standard_consumption DOUBLE;
+CREATE TABLE IF NOT EXISTS machine_logs (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  asset_id      INT NOT NULL,
+  date          VARCHAR(32) NOT NULL,
+  work_type     VARCHAR(64) NOT NULL DEFAULT '',
+  opening_meter DOUBLE NOT NULL DEFAULT 0,
+  closing_meter DOUBLE NOT NULL DEFAULT 0,
+  usage_qty     DOUBLE NOT NULL DEFAULT 0,
+  fuel_litres   DOUBLE,
+  remarks       TEXT,
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS asset_documents (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  asset_id    INT NOT NULL,
+  doc_type    VARCHAR(32) NOT NULL DEFAULT 'other',
+  number      VARCHAR(128) NOT NULL DEFAULT '',
+  issue_date  VARCHAR(32),
+  expiry_date VARCHAR(32),
+  file_data   MEDIUMTEXT,
+  remarks     TEXT,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_mlog_asset ON machine_logs(asset_id);
+CREATE INDEX idx_adoc_asset ON asset_documents(asset_id);
+CREATE INDEX idx_adoc_expiry ON asset_documents(expiry_date)`
   }
 ]
 
@@ -843,6 +900,9 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   await addColumn('purchases', 'linked_dispatch_id', 'INTEGER')
   await addColumn('suppliers', 'plant_ref_id', 'INTEGER')
   await addColumn('customers', 'plant_ref_id', 'INTEGER')
+  // Machine logbook / balance-sheet inputs (machine_logs & asset_documents come from SCHEMA on SQLite).
+  await addColumn('assets', 'meter_type', `TEXT NOT NULL DEFAULT 'hour'`)
+  await addColumn('assets', 'standard_consumption', 'REAL')
 }
 
 /**

@@ -428,6 +428,31 @@ CREATE TABLE IF NOT EXISTS assets (
   created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
+CREATE TABLE IF NOT EXISTS machine_logs (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  asset_id      INTEGER NOT NULL REFERENCES assets(id),
+  date          TEXT NOT NULL,
+  work_type     TEXT NOT NULL DEFAULT '',
+  opening_meter REAL NOT NULL DEFAULT 0,
+  closing_meter REAL NOT NULL DEFAULT 0,
+  usage_qty     REAL NOT NULL DEFAULT 0,
+  fuel_litres   REAL,
+  remarks       TEXT NOT NULL DEFAULT '',
+  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS asset_documents (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  asset_id    INTEGER NOT NULL REFERENCES assets(id),
+  doc_type    TEXT NOT NULL DEFAULT 'other',
+  number      TEXT NOT NULL DEFAULT '',
+  issue_date  TEXT,
+  expiry_date TEXT,
+  file_data   TEXT,
+  remarks     TEXT NOT NULL DEFAULT '',
+  created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS plant_expenses (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   expense_no     TEXT NOT NULL UNIQUE,
@@ -586,4 +611,7 @@ CREATE INDEX IF NOT EXISTS idx_dmach_dispatch ON dispatch_machines(dispatch_id);
 CREATE INDEX IF NOT EXISTS idx_rstrans_sale ON rack_sale_transporters(rack_sale_id);
 CREATE INDEX IF NOT EXISTS idx_rstrans_transporter ON rack_sale_transporters(transporter_id);
 CREATE INDEX IF NOT EXISTS idx_rsmach_sale ON rack_sale_machines(rack_sale_id);
+CREATE INDEX IF NOT EXISTS idx_mlog_asset ON machine_logs(asset_id);
+CREATE INDEX IF NOT EXISTS idx_adoc_asset ON asset_documents(asset_id);
+CREATE INDEX IF NOT EXISTS idx_adoc_expiry ON asset_documents(expiry_date);
 `
