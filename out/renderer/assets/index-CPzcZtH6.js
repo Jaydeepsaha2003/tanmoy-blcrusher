@@ -61270,15 +61270,6 @@ function Dispatch() {
               options: [{ value: "own", label: "Own Vehicle" }, { value: "rented", label: "Rented" }, { value: "party", label: "From Party" }]
             }
           ) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Transporter (invoice)", hint: "Billable transport posts to this transporter's ledger", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-            SearchSelect,
-            {
-              value: form.transporter_id ?? "",
-              onChange: (v2) => setForm({ ...form, transporter_id: v2 ? Number(v2) : null }),
-              options: [{ value: "", label: "— None —" }, ...transporters.map((t2) => ({ value: t2.id, label: t2.name }))],
-              placeholder: "— None —"
-            }
-          ) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Vehicle No.", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.vehicle_no, onChange: (e3) => setForm({ ...form, vehicle_no: e3.target.value }), placeholder: "e.g. JH-01-AB-1234" }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Driver", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.driver, onChange: (e3) => setForm({ ...form, driver: e3.target.value }) }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Challan No.", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.challan_no, onChange: (e3) => setForm({ ...form, challan_no: e3.target.value }) }) }),
@@ -61354,7 +61345,7 @@ function Dispatch() {
             /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 14 }),
             " Add Transporter"
           ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-[11px] text-muted-foreground", children: transporters.length ? "Your transport cost — posts to the transporter ledger (separate from the invoice transport above)." : "Add transporters under Transporters first." })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-[11px] text-muted-foreground", children: transporters.length ? "Your transport cost — posts to the transporter's ledger and the plant. (To charge the customer for delivery, use Transport Charges below.)" : "Add transporters under Transporters first." })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs(Section, { title: "Machines (optional) — posts to Equipment Rent", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
