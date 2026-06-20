@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, FileSpreadsheet, X } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { Dispatch as DispatchT, PaymentStatus, Uom, VehicleType, MachineBasis } from '@shared/types'
-import { toCm, UOMS, derivePaymentStatus } from '@shared/types'
+import { toCm, fromCm, UOMS, derivePaymentStatus } from '@shared/types'
 import { PageHeader, Page } from '@/components/layout'
 import {
   Button,
@@ -35,6 +35,7 @@ const vehicleLabel: Record<VehicleType, string> = {
   own: 'Own Vehicle',
   rented: 'Rented'
 }
+const uomLabel = (u: Uom): string => (u === 'CM' ? 'm³' : u === 'TON' ? 'Ton' : 'CFT')
 
 export function Dispatch(): React.JSX.Element {
   const qc = useQueryClient()
@@ -424,9 +425,16 @@ export function Dispatch(): React.JSX.Element {
                   <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
                 </Field>
               </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+                <Field label="Unit (UOM)" required hint="Pick the selling unit first">
+                  <SearchSelect
+                    value={form.uom}
+                    onChange={(v) => setForm({ ...form, uom: v as Uom })}
+                    options={UOMS.map((u) => ({ value: u, label: uomLabel(u) }))}
+                  />
+                </Field>
                 <div className="sm:col-span-2">
-                  <Field label="Product" required hint={!form.outsourced && selProduct ? `Available: ${fmtQty(selProduct.balance_qty)} m³` : undefined}>
+                  <Field label="Product" required hint={!form.outsourced && selProduct ? `Available: ${fmtQty(fromCm(selProduct.balance_qty, form.uom, formPlant))} ${uomLabel(form.uom)}` : undefined}>
                     {form.outsourced ? (
                       <Input value={form.product_name} onChange={(e) => setForm({ ...form, product_name: e.target.value })} placeholder="Outsourced product name" />
                     ) : (
@@ -434,7 +442,7 @@ export function Dispatch(): React.JSX.Element {
                         value={form.product_name}
                         onChange={(v) => setForm({ ...form, product_name: v })}
                         options={[
-                          ...avail.map((a) => ({ value: a.product_name, label: `${a.product_name} (${fmtQty(a.balance_qty)} m³)` })),
+                          ...avail.map((a) => ({ value: a.product_name, label: `${a.product_name} (${fmtQty(fromCm(a.balance_qty, form.uom, formPlant))} ${uomLabel(form.uom)})` })),
                           ...(form.id && form.product_name && !avail.some((a) => a.product_name === form.product_name)
                             ? [{ value: form.product_name, label: form.product_name }]
                             : [])
@@ -480,14 +488,7 @@ export function Dispatch(): React.JSX.Element {
 
             {/* Quantity & rate */}
             <Section title="Quantity & Rate">
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <Field label="Unit (UOM)" required hint="1 m³ = 1.6 ton = 35.31 cft">
-                  <SearchSelect
-                    value={form.uom}
-                    onChange={(v) => setForm({ ...form, uom: v as Uom })}
-                    options={UOMS.map((u) => ({ value: u, label: u === 'CM' ? 'm³' : u === 'TON' ? 'Ton' : 'CFT' }))}
-                  />
-                </Field>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
                 <Field label={`Actual Qty (${form.uom})`} required hint={qtyCm > 0 ? `${fmtQty(qtyCm)} m³ off stock` : 'Dispatched from plant'}>
                   <Input type="number" step="0.001" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
                 </Field>

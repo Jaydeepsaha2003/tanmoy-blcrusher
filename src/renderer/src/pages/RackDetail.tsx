@@ -942,6 +942,17 @@ export function RackDetail(): React.JSX.Element {
                 options={customers.map((c) => ({ value: c.id, label: c.name }))}
               />
             </Field>
+            <Field label="Unit of Measure" hint="Pick the selling unit first — stock shows in this unit">
+              <SearchSelect
+                value={saleForm.uom}
+                onChange={(v) =>
+                  setSaleForm({ ...saleForm, uom: v as Uom })}
+                options={UOMS.map((u) => ({
+                  value: u,
+                  label: u === 'CM' ? 'Cubic Meter (m³)' : u === 'TON' ? 'Ton' : 'Cubic Feet (CFT)'
+                }))}
+              />
+            </Field>
             <Field label="Product">
               <SearchSelect
                 value={saleForm.product_name}
@@ -951,19 +962,8 @@ export function RackDetail(): React.JSX.Element {
                   .filter((p) => p.balance_cm > 0 || p.product_name === saleForm.product_name)
                   .map((p) => ({
                     value: p.product_name,
-                    label: `${p.product_name} (${fmtQty(p.balance_cm)} m³ in rack)`
+                    label: `${p.product_name} (${fmtQty(fromCm(p.balance_cm, saleForm.uom, rackFactors))} ${saleForm.uom === 'CM' ? 'm³' : saleForm.uom === 'TON' ? 'ton' : 'cft'} in rack)`
                   }))}
-              />
-            </Field>
-            <Field label="Unit of Measure" hint="1 m³ = 1.6 ton = 35.31 cft">
-              <SearchSelect
-                value={saleForm.uom}
-                onChange={(v) =>
-                  setSaleForm({ ...saleForm, uom: v as Uom })}
-                options={UOMS.map((u) => ({
-                  value: u,
-                  label: u === 'CM' ? 'Cubic Meter (m³)' : u === 'TON' ? 'Ton' : 'Cubic Feet (CFT)'
-                }))}
               />
             </Field>
             <Field label={`Quantity (${saleForm.uom})`}
