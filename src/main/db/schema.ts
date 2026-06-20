@@ -149,6 +149,9 @@ CREATE TABLE IF NOT EXISTS purchase_transporters (
   purchase_id    INTEGER NOT NULL REFERENCES purchases(id),
   transporter_id INTEGER NOT NULL REFERENCES transporters(id),
   vehicle_no     TEXT NOT NULL DEFAULT '',
+  basis          TEXT NOT NULL DEFAULT 'flat',
+  qty            REAL NOT NULL DEFAULT 0,
+  rate           REAL NOT NULL DEFAULT 0,
   charge         REAL NOT NULL DEFAULT 0,
   created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );

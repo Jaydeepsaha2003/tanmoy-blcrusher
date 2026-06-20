@@ -174,6 +174,9 @@ CREATE TABLE IF NOT EXISTS purchase_transporters (
   purchase_id    INT NOT NULL,
   transporter_id INT NOT NULL,
   vehicle_no     VARCHAR(64) NOT NULL DEFAULT '',
+  basis          VARCHAR(8) NOT NULL DEFAULT 'flat',
+  qty            DOUBLE NOT NULL DEFAULT 0,
+  rate           DOUBLE NOT NULL DEFAULT 0,
   charge         DOUBLE NOT NULL DEFAULT 0,
   created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -635,6 +638,13 @@ CREATE TABLE IF NOT EXISTS purchase_machines (
 CREATE INDEX idx_ptrans_purchase ON purchase_transporters(purchase_id);
 CREATE INDEX idx_ptrans_transporter ON purchase_transporters(transporter_id);
 CREATE INDEX idx_pmach_purchase ON purchase_machines(purchase_id)`
+  },
+  {
+    // Purchase transport lines can be priced flat, per trip, or per UOM unit.
+    id: '013_purchase_transport_basis',
+    sql: `ALTER TABLE purchase_transporters ADD COLUMN basis VARCHAR(8) NOT NULL DEFAULT 'flat';
+ALTER TABLE purchase_transporters ADD COLUMN qty DOUBLE NOT NULL DEFAULT 0;
+ALTER TABLE purchase_transporters ADD COLUMN rate DOUBLE NOT NULL DEFAULT 0`
   }
 ]
 
@@ -702,6 +712,10 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   await addColumn('purchases', 'outsource_id', 'INTEGER')
   // Mining mode on purchases (child tables come from SCHEMA on the SQLite path).
   await addColumn('purchases', 'purchase_mode', `TEXT NOT NULL DEFAULT 'purchase'`)
+  // Purchase transport lines: flat / per-trip / per-UOM pricing.
+  await addColumn('purchase_transporters', 'basis', `TEXT NOT NULL DEFAULT 'flat'`)
+  await addColumn('purchase_transporters', 'qty', 'REAL NOT NULL DEFAULT 0')
+  await addColumn('purchase_transporters', 'rate', 'REAL NOT NULL DEFAULT 0')
 }
 
 /**

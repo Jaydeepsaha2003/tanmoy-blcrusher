@@ -264,6 +264,8 @@ export interface Customer {
 
 export type PurchaseMode = 'purchase' | 'mining'
 export type MachineBasis = 'hour' | 'cm'
+/** How a purchase transport line is priced: a flat charge, per trip, or per UOM unit. */
+export type PurchaseTransportBasis = 'flat' | 'trip' | 'uom'
 
 /** A transporter line on a purchase (transport for bringing the material in). */
 export interface PurchaseTransporter {
@@ -272,6 +274,13 @@ export interface PurchaseTransporter {
   transporter_id: number
   transporter_name?: string
   vehicle_no: string
+  /** Pricing basis: 'flat' uses charge directly; 'trip'/'uom' compute charge = qty × rate. */
+  basis: PurchaseTransportBasis
+  /** Number of trips, or quantity in the purchase UOM, when basis is 'trip'/'uom'. */
+  qty: number
+  /** Rate per trip or per UOM unit when basis is 'trip'/'uom'. */
+  rate: number
+  /** Total transport charge (computed for trip/uom; entered for flat). Posts to the ledger. */
   charge: number
 }
 

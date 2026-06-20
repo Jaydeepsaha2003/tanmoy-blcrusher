@@ -6,6 +6,7 @@ import type {
   MaterialType,
   PurchaseMode,
   MachineBasis,
+  PurchaseTransportBasis,
   PurchaseTransporter,
   PurchaseMachine
 } from '@shared/types'
@@ -18,21 +19,37 @@ function round2(n: number): number {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100
 }
 
+/** A transporter line as accepted from the UI. */
+interface TransporterInput {
+  transporter_id: number
+  vehicle_no?: string
+  basis?: PurchaseTransportBasis
+  qty?: number
+  rate?: number
+  /** Used when basis is 'flat' (or omitted). */
+  charge?: number
+}
+
 /** Replace the transporter + machine lines for a purchase. */
 async function writeChildLines(
   d: Db,
   purchaseId: number,
-  transporters?: { transporter_id: number; vehicle_no?: string; charge?: number }[],
+  transporters?: TransporterInput[],
   machines?: { asset_id: number; basis?: MachineBasis; qty?: number; rate?: number; outsource_id?: number | null }[]
 ): Promise<void> {
   await d.prepare(`DELETE FROM purchase_transporters WHERE purchase_id = ?`).run(purchaseId)
   await d.prepare(`DELETE FROM purchase_machines WHERE purchase_id = ?`).run(purchaseId)
   const tStmt = d.prepare(
-    `INSERT INTO purchase_transporters (purchase_id, transporter_id, vehicle_no, charge) VALUES (?, ?, ?, ?)`
+    `INSERT INTO purchase_transporters (purchase_id, transporter_id, vehicle_no, basis, qty, rate, charge) VALUES (?, ?, ?, ?, ?, ?, ?)`
   )
   for (const t of transporters ?? []) {
     if (!t.transporter_id) continue
-    await tStmt.run(purchaseId, t.transporter_id, properCase(t.vehicle_no || ''), round2(Number(t.charge) || 0))
+    // 'trip'/'uom' compute charge = qty × rate; 'flat' uses the entered charge directly.
+    const basis: PurchaseTransportBasis = t.basis === 'trip' || t.basis === 'uom' ? t.basis : 'flat'
+    const qty = basis === 'flat' ? 0 : Number(t.qty) || 0
+    const rate = basis === 'flat' ? 0 : Number(t.rate) || 0
+    const charge = basis === 'flat' ? round2(Number(t.charge) || 0) : round2(qty * rate)
+    await tStmt.run(purchaseId, t.transporter_id, properCase(t.vehicle_no || ''), basis, qty, rate, charge)
   }
   const mStmt = d.prepare(
     `INSERT INTO purchase_machines (purchase_id, asset_id, basis, qty, rate, amount, outsource_id) VALUES (?, ?, ?, ?, ?, ?, ?)`
@@ -140,7 +157,7 @@ export interface PurchaseInput {
   /** 'purchase' (default) buys from supplier; 'mining' extracts from supplier's land (royalty rate). */
   purchase_mode?: PurchaseMode
   /** Transporter lines (transport for bringing the material in). */
-  transporters?: { transporter_id: number; vehicle_no?: string; charge?: number }[]
+  transporters?: TransporterInput[]
   /** Machine-usage lines (cost posts as a plant equipment-rent cost; optional vendor payable). */
   machines?: { asset_id: number; basis?: MachineBasis; qty?: number; rate?: number; outsource_id?: number | null }[]
   uom: Uom

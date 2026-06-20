@@ -109,7 +109,7 @@ export function Purchases(): React.JSX.Element {
     setForm({
       ...src,
       rate: src.rate ?? '',
-      transporters: (src.transporters ?? []).map((t) => ({ transporter_id: t.transporter_id, vehicle_no: t.vehicle_no, charge: t.charge })),
+      transporters: (src.transporters ?? []).map((t) => ({ transporter_id: t.transporter_id, vehicle_no: t.vehicle_no, basis: t.basis || 'flat', qty: t.qty || '', rate: t.rate || '', charge: t.charge })),
       machines: (src.machines ?? []).map((m) => ({ asset_id: m.asset_id, basis: m.basis, qty: m.qty, rate: m.rate, outsource_id: m.outsource_id }))
     })
     setOpen(true)
@@ -132,7 +132,7 @@ export function Purchases(): React.JSX.Element {
 
   // Transporter line helpers
   const lines = form?.transporters ?? []
-  function addTransporter(): void { setForm({ ...form, transporters: [...lines, { transporter_id: 0, vehicle_no: '', charge: '' }] }) }
+  function addTransporter(): void { setForm({ ...form, transporters: [...lines, { transporter_id: 0, vehicle_no: '', basis: 'flat', qty: '', rate: '', charge: '' }] }) }
   function setTransporter(i: number, patch: any): void { setForm({ ...form, transporters: lines.map((t: any, idx: number) => (idx === i ? { ...t, ...patch } : t)) }) }
   function delTransporter(i: number): void { setForm({ ...form, transporters: lines.filter((_: any, idx: number) => idx !== i) }) }
 
@@ -150,7 +150,14 @@ export function Purchases(): React.JSX.Element {
       paid_amount: Number(form.paid_amount) || 0,
       transporters: (form.transporters ?? [])
         .filter((t: any) => t.transporter_id)
-        .map((t: any) => ({ transporter_id: Number(t.transporter_id), vehicle_no: t.vehicle_no || '', charge: Number(t.charge) || 0 })),
+        .map((t: any) => ({
+          transporter_id: Number(t.transporter_id),
+          vehicle_no: t.vehicle_no || '',
+          basis: t.basis || 'flat',
+          qty: Number(t.qty) || 0,
+          rate: Number(t.rate) || 0,
+          charge: Number(t.charge) || 0
+        })),
       machines: (form.machines ?? [])
         .filter((m: any) => m.asset_id)
         .map((m: any) => ({ asset_id: Number(m.asset_id), basis: m.basis || 'hour', qty: Number(m.qty) || 0, rate: Number(m.rate) || 0, outsource_id: m.outsource_id ? Number(m.outsource_id) : null }))
@@ -171,7 +178,9 @@ export function Purchases(): React.JSX.Element {
   }
 
   const goods = (Number(form?.quantity) || 0) * (Number(form?.rate) || 0)
-  const transportTotal = (form?.transporters ?? []).reduce((s: number, t: any) => s + (Number(t.charge) || 0), 0)
+  const lineCharge = (t: any): number =>
+    t.basis === 'trip' || t.basis === 'uom' ? (Number(t.qty) || 0) * (Number(t.rate) || 0) : Number(t.charge) || 0
+  const transportTotal = (form?.transporters ?? []).reduce((s: number, t: any) => s + lineCharge(t), 0)
   const machineTotal = (form?.machines ?? []).reduce((s: number, m: any) => s + (Number(m.qty) || 0) * (Number(m.rate) || 0), 0)
 
   return (
@@ -365,28 +374,48 @@ export function Purchases(): React.JSX.Element {
                 <Section title="Transport (optional)">
                   <div className="space-y-2">
                     {lines.length > 0 && (
-                      <div className="grid grid-cols-[1fr_120px_110px_32px] gap-2 px-1 text-[11px] font-semibold uppercase text-muted-foreground">
-                        <div>Transporter</div><div>Vehicle No.</div><div>Charge ₹</div><div></div>
+                      <div className="grid grid-cols-[1fr_92px_96px_64px_76px_90px_32px] gap-2 px-1 text-[11px] font-semibold uppercase text-muted-foreground">
+                        <div>Transporter</div><div>Vehicle</div><div>Basis</div><div>Qty</div><div>Rate ₹</div><div>Charge ₹</div><div></div>
                       </div>
                     )}
-                    {lines.map((t: any, i: number) => (
-                      <div key={i} className="grid grid-cols-[1fr_120px_110px_32px] gap-2">
-                        <SearchSelect
-                          value={t.transporter_id || ''}
-                          onChange={(v) => setTransporter(i, { transporter_id: Number(v) })}
-                          options={transporters.map((tr) => ({ value: tr.id, label: tr.name }))}
-                          placeholder="Transporter…"
-                        />
-                        <Input value={t.vehicle_no} onChange={(e) => setTransporter(i, { vehicle_no: e.target.value })} placeholder="JH01AB1234" />
-                        <Input type="number" step="0.01" value={t.charge} onChange={(e) => setTransporter(i, { charge: e.target.value })} />
-                        <Button variant="ghost" size="icon" onClick={() => delTransporter(i)}><X size={15} className="text-destructive" /></Button>
-                      </div>
-                    ))}
+                    {lines.map((t: any, i: number) => {
+                      const computed = t.basis === 'trip' || t.basis === 'uom'
+                      return (
+                        <div key={i} className="grid grid-cols-[1fr_92px_96px_64px_76px_90px_32px] items-center gap-2">
+                          <SearchSelect
+                            value={t.transporter_id || ''}
+                            onChange={(v) => setTransporter(i, { transporter_id: Number(v) })}
+                            options={transporters.map((tr) => ({ value: tr.id, label: tr.name }))}
+                            placeholder="Transporter…"
+                          />
+                          <Input value={t.vehicle_no} onChange={(e) => setTransporter(i, { vehicle_no: e.target.value })} placeholder="JH01AB1234" />
+                          <Select value={t.basis || 'flat'} onChange={(e) => setTransporter(i, { basis: e.target.value })}>
+                            <option value="flat">Flat</option>
+                            <option value="trip">Per Trip</option>
+                            <option value="uom">Per {form.uom || 'UOM'}</option>
+                          </Select>
+                          <Input type="number" step="0.01" value={computed ? t.qty : ''} disabled={!computed}
+                            placeholder={computed ? '' : '—'} onChange={(e) => setTransporter(i, { qty: e.target.value })} />
+                          <Input type="number" step="0.01" value={computed ? t.rate : ''} disabled={!computed}
+                            placeholder={computed ? '' : '—'} onChange={(e) => setTransporter(i, { rate: e.target.value })} />
+                          {computed ? (
+                            <Input type="text" value={fmtMoney(lineCharge(t))} disabled className="text-right font-medium" />
+                          ) : (
+                            <Input type="number" step="0.01" value={t.charge} onChange={(e) => setTransporter(i, { charge: e.target.value })} />
+                          )}
+                          <Button variant="ghost" size="icon" onClick={() => delTransporter(i)}><X size={15} className="text-destructive" /></Button>
+                        </div>
+                      )
+                    })}
                   </div>
                   <Button variant="outline" size="sm" className="mt-2" disabled={!transporters.length} onClick={addTransporter}>
                     <Plus size={14} /> Add Transporter
                   </Button>
-                  {!transporters.length && <p className="mt-1 text-[11px] text-muted-foreground">Add transporters under Transporters first.</p>}
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {transporters.length
+                      ? 'Charge by flat amount, per trip (qty × rate), or per UOM unit. Posts to the transporter ledger.'
+                      : 'Add transporters under Transporters first.'}
+                  </p>
                 </Section>
 
                 {/* Machines */}
