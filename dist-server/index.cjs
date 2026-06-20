@@ -6180,6 +6180,40 @@ async function mileageReport(payload) {
   }
   return rows;
 }
+async function machineryOverview() {
+  const d = getDb();
+  const assets = await d.prepare(`SELECT id, meter_type, standard_consumption FROM assets`).all();
+  const diesel = await d.prepare(`SELECT asset_id, COALESCE(SUM(litres),0) AS litres FROM diesel_issues WHERE asset_id IS NOT NULL GROUP BY asset_id`).all();
+  const logs = await d.prepare(
+    `SELECT asset_id, COALESCE(SUM(usage_qty),0) AS usage_qty,
+              COALESCE(SUM(CASE WHEN fuel_litres IS NOT NULL THEN fuel_litres ELSE 0 END),0) AS log_fuel,
+              SUM(CASE WHEN fuel_litres IS NOT NULL THEN 1 ELSE 0 END) AS fuel_rows
+       FROM machine_logs GROUP BY asset_id`
+  ).all();
+  const maint = await d.prepare(`SELECT asset_id, COALESCE(SUM(amount),0) AS amt FROM plant_expenses WHERE asset_id IS NOT NULL AND category='maintenance' GROUP BY asset_id`).all();
+  const dieselBy = new Map(diesel.map((r) => [r.asset_id, r.litres]));
+  const logBy = new Map(logs.map((r) => [r.asset_id, r]));
+  const maintBy = new Map(maint.map((r) => [r.asset_id, r.amt]));
+  return assets.map((a) => {
+    const lg = logBy.get(a.id);
+    const usage = round32(lg?.usage_qty ?? 0);
+    const dieselLitres = round32(dieselBy.get(a.id) ?? 0);
+    const fuel = lg && lg.fuel_rows > 0 ? round32(lg.log_fuel) : dieselLitres;
+    const actual = usage > 0 && fuel > 0 ? round32(fuel / usage) : null;
+    const std = a.standard_consumption ?? null;
+    return {
+      asset_id: a.id,
+      meter_type: a.meter_type === "km" ? "km" : "hour",
+      usage_qty: usage,
+      diesel_litres: dieselLitres,
+      fuel_litres: fuel,
+      actual_consumption: actual,
+      standard_consumption: std,
+      maintenance: money3(maintBy.get(a.id) ?? 0),
+      over: actual != null && std != null && actual > std
+    };
+  });
+}
 async function listAllLogs(payload = {}) {
   const d = getDb();
   const where = [];
@@ -7269,6 +7303,7 @@ var handlers = {
   "machinery.logs": listMachineLogs,
   "machinery.allLogs": listAllLogs,
   "machinery.mileage": mileageReport,
+  "machinery.overview": machineryOverview,
   "machinery.addLog": addMachineLog,
   "machinery.updateLog": updateMachineLog,
   "machinery.deleteLog": deleteMachineLog,

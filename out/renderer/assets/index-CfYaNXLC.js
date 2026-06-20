@@ -11408,6 +11408,7 @@ const api = {
     logs: (asset_id, from, to) => call("machinery.logs", { asset_id, from, to }),
     allLogs: (filter) => call("machinery.allLogs", filter),
     mileage: (filter) => call("machinery.mileage", filter),
+    overview: () => call("machinery.overview"),
     addLog: (p2) => call("machinery.addLog", p2),
     updateLog: (p2) => call("machinery.updateLog", p2),
     deleteLog: (id2) => call("machinery.deleteLog", { id: id2 }),
@@ -62330,6 +62331,8 @@ function Assets() {
   const { data = [] } = useQuery({ queryKey: ["assets", plantId], queryFn: () => api.assets.list(plantId) });
   const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
   const { data: businesses = [] } = useQuery({ queryKey: ["businesses"], queryFn: api.businesses.list });
+  const { data: overview = [] } = useQuery({ queryKey: ["machineOverview"], queryFn: () => api.machinery.overview() });
+  const ov = reactExports.useMemo(() => new Map(overview.map((o) => [o.asset_id, o])), [overview]);
   const [open, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState({});
   const [moveForm, setMoveForm] = reactExports.useState(null);
@@ -62412,30 +62415,50 @@ function Assets() {
       ) }),
       rows.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No machinery or vehicles yet." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table, { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Name" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Type" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Category" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Identifier / Reg." }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Machine / Vehicle" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plants" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Business" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Run" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Diesel (L)" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Maintenance" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Status" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
         ] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: rows.map((a2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: a2.name }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: a2.asset_type === "vehicle" ? "default" : "muted", children: a2.asset_type }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: a2.category || "-" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-mono text-xs", children: a2.identifier || "-" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: (a2.plant_names ?? []).length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "muted", children: "All plants" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[13px]", children: (a2.plant_names ?? []).join(", ") }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: a2.business_name || "-" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "capitalize text-muted-foreground", children: a2.status }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Logbook, ledger & documents", onClick: () => nav(`/machinery/${a2.id}`), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Gauge, { size: 15 }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Move to another plant", onClick: () => setMoveForm({ id: a2.id, name: a2.name, plant_ids: a2.plant_ids ?? [], date: today(), remarks: "" }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowLeftRight, { size: 15 }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => openEdit(a2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => remove(a2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
-          ] })
-        ] }, a2.id)) })
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: rows.map((a2) => {
+          const o = ov.get(a2.id);
+          const unit2 = (o?.meter_type ?? a2.meter_type ?? "hour") === "km" ? "km" : "hr";
+          return /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { className: "cursor-pointer", onClick: () => nav(`/machinery/${a2.id}`), children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-medium", children: a2.name }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: a2.asset_type === "vehicle" ? "default" : "muted", children: a2.asset_type }),
+                o?.over && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { title: `Using ${fmtQty(o.actual_consumption)} vs standard ${fmtQty(o.standard_consumption)} L/${unit2}`, className: "inline-flex items-center gap-0.5 rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-semibold text-destructive", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(TriangleAlert, { size: 11 }),
+                  " Over fuel"
+                ] })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-[11px] text-muted-foreground", children: [
+                a2.category || "Uncategorised",
+                a2.identifier ? ` · ${a2.identifier}` : "",
+                a2.business_name ? ` · ${a2.business_name}` : ""
+              ] })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: (a2.plant_names ?? []).length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "muted", children: "All plants" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[13px]", children: (a2.plant_names ?? []).join(", ") }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: o && o.usage_qty > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+              fmtQty(o.usage_qty),
+              " ",
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-muted-foreground", children: unit2 })
+            ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-muted-foreground", children: "—" }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: o && o.diesel_litres > 0 ? fmtQty(o.diesel_litres) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-muted-foreground", children: "—" }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: o && o.maintenance > 0 ? fmtMoney(o.maintenance) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-muted-foreground", children: "—" }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "capitalize text-muted-foreground", children: a2.status }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", onClick: (e3) => e3.stopPropagation(), children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Logbook, ledger & documents", onClick: () => nav(`/machinery/${a2.id}`), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Gauge, { size: 15 }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Move to another plant", onClick: () => setMoveForm({ id: a2.id, name: a2.name, plant_ids: a2.plant_ids ?? [], date: today(), remarks: "" }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowLeftRight, { size: 15 }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => openEdit(a2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => remove(a2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+            ] })
+          ] }, a2.id);
+        }) })
       ] })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { open, onClose: () => setOpen(false), title: form.id ? "Edit Machine / Vehicle" : "New Machine / Vehicle", width: "max-w-2xl", children: [
