@@ -311,7 +311,8 @@ export const api = {
   parts: {
     list: (filter?: { plant_id?: number; part_type?: string }) =>
       call<SparePart[]>('parts.list', filter ?? {}),
-    create: (p: Partial<SparePart> & { opening_qty?: number }) => call<SparePart>('parts.create', p),
+    create: (p: Partial<SparePart> & { opening_qty?: number; opening_date?: string; opening_note?: string }) =>
+      call<SparePart>('parts.create', p),
     update: (p: Partial<SparePart> & { id: number }) => call<SparePart>('parts.update', p),
     stockIn: (p: { part_id: number; quantity: number; date: string; note?: string }) =>
       call<{ ok: boolean }>('parts.stockIn', p),

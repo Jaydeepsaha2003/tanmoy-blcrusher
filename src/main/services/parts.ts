@@ -84,6 +84,8 @@ export async function createPart(p: {
   unit?: string
   plant_id?: number | null
   opening_qty?: number
+  opening_date?: string
+  opening_note?: string
   min_qty?: number
   remarks?: string
 }): Promise<SparePart> {
@@ -121,8 +123,8 @@ export async function createPart(p: {
         asset_id: null,
         movement_type: 'opening',
         quantity: opening,
-        date: new Date().toISOString().slice(0, 10),
-        note: 'Opening stock'
+        date: p.opening_date || new Date().toISOString().slice(0, 10),
+        note: p.opening_note || 'Opening stock'
       })
     }
     return partId
