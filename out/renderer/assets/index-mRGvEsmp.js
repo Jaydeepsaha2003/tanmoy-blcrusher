@@ -11461,6 +11461,15 @@ const api = {
     reminderSettings: () => call("machinery.reminderSettings"),
     setReminderDays: (days2) => call("machinery.setReminderDays", { days: days2 })
   },
+  parts: {
+    list: (filter) => call("parts.list", filter ?? {}),
+    create: (p2) => call("parts.create", p2),
+    update: (p2) => call("parts.update", p2),
+    stockIn: (p2) => call("parts.stockIn", p2),
+    stockOut: (p2) => call("parts.stockOut", p2),
+    movements: (filter) => call("parts.movements", filter ?? {}),
+    delete: (id2) => call("parts.delete", { id: id2 })
+  },
   businesses: {
     list: () => call("businesses.list"),
     create: (p2) => call("businesses.create", p2),
@@ -11781,6 +11790,17 @@ const createLucideIcon = (iconName, iconNode) => {
   Component.displayName = `${iconName}`;
   return Component;
 };
+/**
+ * @license lucide-react v0.468.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const ArrowDownToLine = createLucideIcon("ArrowDownToLine", [
+  ["path", { d: "M12 17V3", key: "1cwfxf" }],
+  ["path", { d: "m6 11 6 6 6-6", key: "12ii2o" }],
+  ["path", { d: "M19 21H5", key: "150jfl" }]
+]);
 /**
  * @license lucide-react v0.468.0 - ISC
  *
@@ -35954,6 +35974,7 @@ const NAV = [
     items: [
       { to: "/assets", label: "Machines & Vehicles", icon: Wrench, module: "masters" },
       { to: "/machine-logs", label: "Logbook & Mileage", icon: Gauge, module: "masters" },
+      { to: "/spare-parts", label: "Spare Parts Stock", icon: PackageOpen, module: "masters" },
       { to: "/maintenance", label: "Maintenance & Costs", icon: HardHat, module: "plantExpenses" },
       { to: "/diesel", label: "Diesel", icon: Fuel, module: "diesel" },
       { to: "/reminders", label: "Reminders", icon: BellRing, module: "masters" }
@@ -58800,7 +58821,7 @@ function Stat$1({
   icon: Icon2,
   label,
   value,
-  tone = "default",
+  tone: tone2 = "default",
   suffix,
   hint
 }) {
@@ -58811,7 +58832,7 @@ function Stat$1({
     destructive: "bg-destructive/10 text-destructive"
   };
   return /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { className: "transition-shadow hover:shadow-md", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "flex items-center gap-3.5 p-4", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${tones[tone]}`, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Icon2, { size: 21 }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${tones[tone2]}`, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Icon2, { size: 21 }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "truncate text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: label }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "tnum text-xl font-bold leading-tight", children: [
@@ -62925,17 +62946,17 @@ function MachineDetail() {
     ] })
   ] });
 }
-function Metric({ label, value, sub, tone }) {
+function Metric({ label, value, sub, tone: tone2 }) {
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border bg-card p-3.5", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: label }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `tnum mt-0.5 text-xl font-bold ${tone === "success" ? "text-success" : tone === "destructive" ? "text-destructive" : ""}`, children: value }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `tnum mt-0.5 text-xl font-bold ${tone2 === "success" ? "text-success" : tone2 === "destructive" ? "text-destructive" : ""}`, children: value }),
     sub && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] text-muted-foreground", children: sub })
   ] });
 }
-function SheetRow({ label, value, tone, bold }) {
+function SheetRow({ label, value, tone: tone2, bold }) {
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: bold ? "font-semibold" : "", children: label }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: `tnum text-right ${bold ? "font-semibold" : ""} ${tone === "success" ? "text-success" : tone === "destructive" ? "text-destructive" : ""}`, children: value })
+    /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: `tnum text-right ${bold ? "font-semibold" : ""} ${tone2 === "success" ? "text-success" : tone2 === "destructive" ? "text-destructive" : ""}`, children: value })
   ] });
 }
 function ExpiryBadge({ dc: dc2 }) {
@@ -63130,6 +63151,208 @@ function MachineLogs() {
             children: "Save"
           }
         )
+      ] })
+    ] })
+  ] });
+}
+const TYPES = [
+  { value: "new", label: "New Part" },
+  { value: "repairable", label: "Repairable Part" },
+  { value: "scrap", label: "Scrap Part" }
+];
+const tone = {
+  new: "success",
+  repairable: "warning",
+  scrap: "muted"
+};
+function SpareParts() {
+  const { plantId } = usePlant();
+  const qc2 = useQueryClient();
+  const toast = useToast();
+  const [type, setType] = reactExports.useState("");
+  const [form, setForm] = reactExports.useState(null);
+  const [stockMove, setStockMove] = reactExports.useState(null);
+  const [selected, setSelected] = reactExports.useState();
+  const { data: parts = [] } = useQuery({
+    queryKey: ["spareParts", plantId, type],
+    queryFn: () => api.parts.list({ plant_id: plantId, part_type: type || void 0 })
+  });
+  const { data: movements = [] } = useQuery({
+    queryKey: ["partMovements", selected],
+    queryFn: () => api.parts.movements({ part_id: selected }),
+    enabled: !!selected
+  });
+  const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
+  const { data: assets = [] } = useQuery({ queryKey: ["assets", plantId], queryFn: () => api.assets.list(plantId) });
+  const refresh = () => {
+    qc2.invalidateQueries({ queryKey: ["spareParts"] });
+    qc2.invalidateQueries({ queryKey: ["partMovements"] });
+  };
+  const save = useMutation({
+    mutationFn: (p2) => p2.id ? api.parts.update(p2) : api.parts.create(p2),
+    onSuccess: () => {
+      refresh();
+      setForm(null);
+      toast.success("Spare part saved.");
+    },
+    onError: (e3) => toast.error(e3.message)
+  });
+  const moveStock = useMutation({
+    mutationFn: (p2) => p2.mode === "out" ? api.parts.stockOut({
+      part_id: p2.part_id,
+      asset_id: Number(p2.asset_id),
+      quantity: Number(p2.quantity),
+      date: p2.date,
+      note: p2.note
+    }) : api.parts.stockIn({
+      part_id: p2.part_id,
+      quantity: Number(p2.quantity),
+      date: p2.date,
+      note: p2.note
+    }),
+    onSuccess: (_res, p2) => {
+      refresh();
+      setStockMove(null);
+      toast.success(p2.mode === "out" ? "Part issued to machine / vehicle." : "Part stock added.");
+    },
+    onError: (e3) => toast.error(e3.message)
+  });
+  async function remove(p2) {
+    if (!await confirmDialog({ title: "Delete spare part", message: `Delete "${p2.name}" (${p2.part_type})?` })) return;
+    const res = await api.parts.delete(p2.id);
+    if (res.ok) {
+      refresh();
+      toast.success("Deleted.");
+    } else toast.error(res.error || "Could not delete.");
+  }
+  function exportExcel() {
+    downloadExcel(
+      "spare-parts-stock",
+      "Spare Parts",
+      ["Part", "Type", "Unit", "Plant", "Balance", "Minimum", "Status", "Remarks"],
+      parts.map((p2) => [
+        p2.name,
+        p2.part_type,
+        p2.unit,
+        p2.plant_name ?? "All plants",
+        p2.balance_qty,
+        p2.min_qty,
+        p2.balance_qty <= p2.min_qty ? "LOW" : "OK",
+        p2.remarks
+      ])
+    );
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      PageHeader,
+      {
+        title: "Spare Parts Stock",
+        description: "Stock in parts and issue them to a specific machine or vehicle",
+        actions: /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", onClick: exportExcel, disabled: !parts.length, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(FileSpreadsheet, { size: 16 }),
+            " Excel"
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { onClick: () => setForm({ part_type: "new", unit: "PCS", plant_id: plantId ?? null, opening_qty: "", min_qty: 0, remarks: "" }), children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 16 }),
+            " New Part"
+          ] })
+        ] })
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(Page, { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-4 flex flex-wrap gap-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        SearchSelect,
+        {
+          className: "w-full sm:w-52",
+          value: type,
+          onChange: (v2) => setType(v2),
+          options: [{ value: "", label: "All stock types" }, ...TYPES]
+        }
+      ) }),
+      parts.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No spare parts recorded." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Part Name" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Type" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plant" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Balance" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Status" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: parts.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { className: "cursor-pointer", onClick: () => setSelected(p2.id), children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "font-medium", children: p2.name }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] text-muted-foreground", children: p2.remarks || p2.unit })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: tone[p2.part_type], children: TYPES.find((x2) => x2.value === p2.part_type)?.label }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: p2.plant_name || "All plants" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "tnum text-right text-base font-bold", children: [
+            fmtQty(p2.balance_qty),
+            " ",
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs font-normal text-muted-foreground", children: p2.unit })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: p2.balance_qty <= p2.min_qty ? /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "destructive", children: "Low stock" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "success", children: "In stock" }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", onClick: (e3) => e3.stopPropagation(), children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Stock In", onClick: () => setStockMove({ mode: "in", part_id: p2.id, name: p2.name, quantity: "", date: today(), note: "" }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowDownToLine, { size: 15, className: "text-success" }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Stock Out to machine / vehicle", onClick: () => setStockMove({ mode: "out", part_id: p2.id, name: p2.name, quantity: "", date: today(), asset_id: "", note: "" }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowUpFromLine, { size: 15, className: "text-warning" }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => setForm({ ...p2 }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => remove(p2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+          ] })
+        ] }, p2.id)) })
+      ] }),
+      selected && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-7", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-2 flex items-center gap-2 text-sm font-semibold", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(PackagePlus, { size: 16 }),
+          " Stock History"
+        ] }),
+        movements.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No stock activity for this part." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Date" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Activity" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Used For" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Quantity" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Note" })
+          ] }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: movements.map((m2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: fmtDate(m2.date) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "capitalize", children: m2.movement_type.replace("_", " ") }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: m2.asset_name || "-" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: `tnum text-right font-semibold ${m2.quantity < 0 ? "text-destructive" : "text-success"}`, children: [
+              m2.quantity > 0 ? "+" : "",
+              fmtQty(m2.quantity),
+              " ",
+              m2.unit
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: m2.note || "-" })
+          ] }, m2.id)) })
+        ] })
+      ] })
+    ] }),
+    form && /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { open: true, onClose: () => setForm(null), title: form.id ? "Edit Spare Part" : "New Spare Part", width: "max-w-xl", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Part Name", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.name || "", onChange: (e3) => setForm({ ...form, name: e3.target.value }), placeholder: "Bearing 22220, fan belt..." }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Stock Type", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.part_type, onChange: (v2) => setForm({ ...form, part_type: v2 }), options: TYPES }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Unit", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.unit || "PCS", onChange: (e3) => setForm({ ...form, unit: e3.target.value }), placeholder: "PCS, SET, LTR..." }) }),
+        !form.id && /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Opening Stock", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.opening_qty, onChange: (e3) => setForm({ ...form, opening_qty: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Low-stock Level", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.min_qty, onChange: (e3) => setForm({ ...form, min_qty: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.plant_id ?? "", onChange: (v2) => setForm({ ...form, plant_id: v2 ? Number(v2) : null }), options: [{ value: "", label: "All plants" }, ...plants.map((p2) => ({ value: p2.id, label: p2.name }))] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sm:col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.remarks || "", onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) }) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 flex justify-end gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setForm(null), children: "Cancel" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: () => save.mutate(form), disabled: !form.name?.trim(), children: "Save" })
+      ] })
+    ] }),
+    stockMove && /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { open: true, onClose: () => setStockMove(null), title: `${stockMove.mode === "out" ? "Stock Out" : "Stock In"} — ${stockMove.name}`, width: "max-w-md", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Quantity", hint: stockMove.mode === "out" ? "Quantity issued for use" : "Quantity received into stock", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { autoFocus: true, type: "number", min: "0", step: "0.001", value: stockMove.quantity, onChange: (e3) => setStockMove({ ...stockMove, quantity: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: stockMove.date, onChange: (e3) => setStockMove({ ...stockMove, date: e3.target.value }) }) }),
+        stockMove.mode === "out" && /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Used For Machine / Vehicle", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: stockMove.asset_id ?? "", onChange: (v2) => setStockMove({ ...stockMove, asset_id: Number(v2) }), options: assets.map((a2) => ({ value: a2.id, label: a2.name })), placeholder: "Select machine / vehicle…" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Reason / Note", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: stockMove.note, onChange: (e3) => setStockMove({ ...stockMove, note: e3.target.value }), placeholder: stockMove.mode === "out" ? "Repair, replacement, maintenance…" : "Supplier, invoice, opening stock…" }) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 flex justify-end gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setStockMove(null), children: "Cancel" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: () => moveStock.mutate(stockMove), disabled: !(Number(stockMove.quantity) > 0) || !stockMove.date || stockMove.mode === "out" && !stockMove.asset_id, children: stockMove.mode === "out" ? "Issue Part" : "Add Stock" })
       ] })
     ] })
   ] });
@@ -64218,9 +64441,9 @@ function StockCard({
   icon,
   label,
   value,
-  tone
+  tone: tone2
 }) {
-  const t2 = tone === "success" ? "bg-success/10 text-success" : tone === "warning" ? "bg-warning/15 text-warning" : "bg-primary/10 text-primary";
+  const t2 = tone2 === "success" ? "bg-success/10 text-success" : tone2 === "warning" ? "bg-warning/15 text-warning" : "bg-primary/10 text-primary";
   return /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "flex items-center gap-3.5 p-4", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `flex h-11 w-11 items-center justify-center rounded-xl ${t2}`, children: icon }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
@@ -65813,9 +66036,9 @@ function RackDetail() {
 function Stat({
   label,
   value,
-  tone
+  tone: tone2
 }) {
-  const toneClass = tone === "success" ? "text-success" : tone === "destructive" ? "text-destructive" : tone === "warning" ? "text-warning" : "";
+  const toneClass = tone2 === "success" ? "text-success" : tone2 === "destructive" ? "text-destructive" : tone2 === "warning" ? "text-warning" : "";
   return /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "p-4", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: label }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `mt-1 text-lg font-bold tnum ${toneClass}`, children: value })
@@ -67743,6 +67966,7 @@ function AppRoutes() {
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/assets", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "masters", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Assets, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/machinery/:id", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "masters", children: /* @__PURE__ */ jsxRuntimeExports.jsx(MachineDetail, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/machine-logs", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "masters", children: /* @__PURE__ */ jsxRuntimeExports.jsx(MachineLogs, {}) }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/spare-parts", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "masters", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SpareParts, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/maintenance", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "plantExpenses", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Maintenance, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/reminders", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "masters", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Reminders, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/plant-expenses", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "plantExpenses", children: /* @__PURE__ */ jsxRuntimeExports.jsx(PlantExpenses, {}) }) }),

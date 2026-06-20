@@ -403,6 +403,29 @@ CREATE TABLE IF NOT EXISTS production_outputs (
   quantity      REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS spare_parts (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  name       TEXT NOT NULL,
+  part_type  TEXT NOT NULL DEFAULT 'new',
+  unit       TEXT NOT NULL DEFAULT 'PCS',
+  plant_id   INTEGER REFERENCES plants(id),
+  min_qty    REAL NOT NULL DEFAULT 0,
+  remarks    TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS spare_part_movements (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  part_id       INTEGER NOT NULL REFERENCES spare_parts(id),
+  asset_id      INTEGER REFERENCES assets(id),
+  movement_type TEXT NOT NULL,
+  ref_no        TEXT NOT NULL DEFAULT '',
+  quantity      REAL NOT NULL,
+  date          TEXT NOT NULL,
+  note          TEXT NOT NULL DEFAULT '',
+  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS finished_goods_opening (
   plant_id     INTEGER NOT NULL REFERENCES plants(id),
   product_name TEXT NOT NULL,
@@ -794,6 +817,9 @@ CREATE INDEX IF NOT EXISTS idx_adoc_expiry ON asset_documents(expiry_date);
 CREATE INDEX IF NOT EXISTS idx_aplants_asset ON asset_plants(asset_id);
 CREATE INDEX IF NOT EXISTS idx_aplants_plant ON asset_plants(plant_id);
 CREATE INDEX IF NOT EXISTS idx_amoves_asset ON asset_plant_moves(asset_id);
+CREATE INDEX IF NOT EXISTS idx_spare_parts_plant ON spare_parts(plant_id);
+CREATE INDEX IF NOT EXISTS idx_part_moves_part ON spare_part_movements(part_id);
+CREATE INDEX IF NOT EXISTS idx_part_moves_asset ON spare_part_movements(asset_id);
 `;
 
 // src/main/crypto.ts
@@ -1665,6 +1691,34 @@ CREATE TABLE IF NOT EXISTS asset_documents (
 CREATE INDEX idx_mlog_asset ON machine_logs(asset_id);
 CREATE INDEX idx_adoc_asset ON asset_documents(asset_id);
 CREATE INDEX idx_adoc_expiry ON asset_documents(expiry_date)`
+  },
+  {
+    // Standalone spare-parts inventory under Machines & Vehicles.
+    id: "019_spare_parts_stock",
+    sql: `CREATE TABLE IF NOT EXISTS spare_parts (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  name       VARCHAR(255) NOT NULL,
+  part_type  VARCHAR(32) NOT NULL DEFAULT 'new',
+  unit       VARCHAR(32) NOT NULL DEFAULT 'PCS',
+  plant_id   INT,
+  min_qty    DOUBLE NOT NULL DEFAULT 0,
+  remarks    TEXT,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS spare_part_movements (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  part_id       INT NOT NULL,
+  asset_id      INT,
+  movement_type VARCHAR(32) NOT NULL,
+  ref_no        VARCHAR(191) NOT NULL DEFAULT '',
+  quantity      DOUBLE NOT NULL,
+  date          VARCHAR(32) NOT NULL,
+  note          TEXT,
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_spare_parts_plant ON spare_parts(plant_id);
+CREATE INDEX idx_part_moves_part ON spare_part_movements(part_id);
+CREATE INDEX idx_part_moves_asset ON spare_part_movements(asset_id)`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -2032,6 +2086,7 @@ var PREFIX_MODULE = {
   outsource: "masters",
   assets: "masters",
   machinery: "masters",
+  parts: "masters",
   purchases: "purchases",
   productionSettings: "production",
   productions: "production",
@@ -2075,6 +2130,7 @@ var WRITE_VERBS = [
   "set",
   "add",
   "transfer",
+  "stock",
   "wipe",
   "remove",
   "request",
@@ -6332,6 +6388,185 @@ async function setReminderDays(payload) {
   return { ok: true };
 }
 
+// src/main/services/parts.ts
+var TYPES = ["new", "repairable", "scrap"];
+function round33(n) {
+  return Math.round((Number(n) + Number.EPSILON) * 1e3) / 1e3;
+}
+function normalizeType(value) {
+  return TYPES.includes(value) ? value : "new";
+}
+async function partBalance(d, partId) {
+  const row = await d.prepare(`SELECT COALESCE(SUM(quantity),0) AS qty FROM spare_part_movements WHERE part_id = ?`).get(partId);
+  return round33(Number(row.qty) || 0);
+}
+async function addPartMovement(d, input) {
+  const qty = round33(input.quantity);
+  if (!qty) return;
+  await d.prepare(
+    `INSERT INTO spare_part_movements
+       (part_id, asset_id, movement_type, ref_no, quantity, date, note)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    input.part_id,
+    input.asset_id ?? null,
+    input.movement_type,
+    input.ref_no ?? "",
+    qty,
+    input.date,
+    input.note ?? ""
+  );
+}
+async function listParts(payload = {}) {
+  const d = getDb();
+  const where = [];
+  const params = {};
+  if (payload.plant_id) {
+    where.push("(sp.plant_id IS NULL OR sp.plant_id = @plant_id)");
+    params.plant_id = payload.plant_id;
+  }
+  if (payload.part_type) {
+    where.push("sp.part_type = @part_type");
+    params.part_type = payload.part_type;
+  }
+  const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  return await d.prepare(
+    `SELECT sp.*, p.name AS plant_name,
+              COALESCE((SELECT SUM(m.quantity) FROM spare_part_movements m WHERE m.part_id = sp.id),0) AS balance_qty
+       FROM spare_parts sp
+       LEFT JOIN plants p ON p.id = sp.plant_id
+       ${clause}
+       ORDER BY sp.name, sp.part_type, sp.id`
+  ).all(params);
+}
+async function createPart(p) {
+  const d = getDb();
+  const name = properCase(p.name);
+  if (!name) throw new Error("Part name is required.");
+  const partType = normalizeType(p.part_type);
+  const unit = properCase(p.unit || "PCS") || "PCS";
+  const duplicate = await d.prepare(
+    `SELECT id FROM spare_parts
+       WHERE name=? AND part_type=? AND COALESCE(plant_id,0)=COALESCE(?,0)`
+  ).get(name, partType, p.plant_id ?? null);
+  if (duplicate) throw new Error("This part and stock type already exists for the selected plant.");
+  const id = await d.transaction(async () => {
+    const info = await d.prepare(
+      `INSERT INTO spare_parts (name, part_type, unit, plant_id, min_qty, remarks)
+         VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(
+      name,
+      partType,
+      unit,
+      p.plant_id ?? null,
+      Math.max(0, Number(p.min_qty) || 0),
+      p.remarks ?? ""
+    );
+    const partId = Number(info.lastInsertRowid);
+    const opening = Math.max(0, Number(p.opening_qty) || 0);
+    if (opening > 0) {
+      await addPartMovement(d, {
+        part_id: partId,
+        asset_id: null,
+        movement_type: "opening",
+        quantity: opening,
+        date: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10),
+        note: "Opening stock"
+      });
+    }
+    return partId;
+  });
+  return (await listParts()).find((x) => x.id === id);
+}
+async function updatePart(p) {
+  if (!p.id) throw new Error("Missing part id.");
+  const name = properCase(p.name);
+  if (!name) throw new Error("Part name is required.");
+  await getDb().prepare(
+    `UPDATE spare_parts SET name=?, part_type=?, unit=?, plant_id=?, min_qty=?, remarks=? WHERE id=?`
+  ).run(
+    name,
+    normalizeType(p.part_type),
+    properCase(p.unit || "PCS") || "PCS",
+    p.plant_id ?? null,
+    Math.max(0, Number(p.min_qty) || 0),
+    p.remarks ?? "",
+    p.id
+  );
+  return (await listParts()).find((x) => x.id === p.id);
+}
+async function stockIn(payload) {
+  const d = getDb();
+  const qty = round33(Math.abs(Number(payload.quantity)));
+  if (!(qty > 0)) throw new Error("Stock-in quantity must be greater than 0.");
+  await addPartMovement(d, {
+    part_id: payload.part_id,
+    asset_id: null,
+    movement_type: "stock_in",
+    quantity: qty,
+    date: payload.date,
+    note: payload.note || "Stock received"
+  });
+  return { ok: true };
+}
+async function stockOut(payload) {
+  const d = getDb();
+  const qty = round33(Math.abs(Number(payload.quantity)));
+  if (!payload.asset_id) throw new Error("Select the machine or vehicle using this part.");
+  if (!(qty > 0)) throw new Error("Stock-out quantity must be greater than 0.");
+  await d.transaction(async () => {
+    await addPartMovement(d, {
+      part_id: payload.part_id,
+      asset_id: payload.asset_id,
+      movement_type: "stock_out",
+      quantity: -qty,
+      date: payload.date,
+      note: payload.note || "Issued to machine / vehicle"
+    });
+    if (await partBalance(d, payload.part_id) < 0) throw new Error("Not enough stock for this part.");
+  });
+  return { ok: true };
+}
+async function listPartMovements(payload = {}) {
+  const where = [];
+  const params = {};
+  if (payload.part_id) {
+    where.push("m.part_id=@part_id");
+    params.part_id = payload.part_id;
+  }
+  if (payload.asset_id) {
+    where.push("m.asset_id=@asset_id");
+    params.asset_id = payload.asset_id;
+  }
+  if (payload.from) {
+    where.push("m.date>=@from");
+    params.from = payload.from;
+  }
+  if (payload.to) {
+    where.push("m.date<=@to");
+    params.to = payload.to;
+  }
+  const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  return await getDb().prepare(
+    `SELECT m.*, sp.name AS part_name, sp.part_type, sp.unit, a.name AS asset_name
+       FROM spare_part_movements m
+       JOIN spare_parts sp ON sp.id=m.part_id
+       LEFT JOIN assets a ON a.id=m.asset_id
+       ${clause}
+       ORDER BY m.date DESC, m.id DESC`
+  ).all(params);
+}
+async function deletePart(payload) {
+  const d = getDb();
+  const used = await d.prepare(`SELECT COUNT(*) AS n FROM spare_part_movements WHERE part_id=? AND movement_type<>'opening'`).get(payload.id);
+  if (Number(used.n) > 0) return { ok: false, error: "This part has stock activity and cannot be deleted." };
+  await d.transaction(async () => {
+    await d.prepare(`DELETE FROM spare_part_movements WHERE part_id=?`).run(payload.id);
+    await d.prepare(`DELETE FROM spare_parts WHERE id=?`).run(payload.id);
+  });
+  return { ok: true };
+}
+
 // src/main/services/plantExpenses.ts
 function money4(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
@@ -6626,6 +6861,7 @@ async function delSetting(key) {
   await getDb().prepare("DELETE FROM settings WHERE `key` = ?").run(key);
 }
 var DATA_TABLES = [
+  "spare_part_movements",
   "production_outputs",
   "productions",
   "rack_sales",
@@ -6643,6 +6879,7 @@ var DATA_TABLES = [
   "diesel_issues",
   "diesel_purchases",
   "plant_expenses",
+  "spare_parts",
   "assets",
   "stock_locations",
   "racks",
@@ -7327,6 +7564,13 @@ var handlers = {
   "machinery.reminders": getDocumentReminders,
   "machinery.reminderSettings": getReminderSettings,
   "machinery.setReminderDays": setReminderDays,
+  "parts.list": listParts,
+  "parts.create": createPart,
+  "parts.update": updatePart,
+  "parts.stockIn": stockIn,
+  "parts.stockOut": stockOut,
+  "parts.movements": listPartMovements,
+  "parts.delete": deletePart,
   "businesses.list": listBusinesses,
   "businesses.create": createBusiness,
   "businesses.update": updateBusiness,
