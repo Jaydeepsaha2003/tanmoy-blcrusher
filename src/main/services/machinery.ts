@@ -26,6 +26,7 @@ export interface MachineLogInput {
   opening_meter?: number
   closing_meter?: number
   fuel_litres?: number | null
+  rate?: number | null
   remarks?: string
 }
 
@@ -61,18 +62,25 @@ function normalizeLog(p: MachineLogInput): {
   closing: number
   usage: number
   fuel: number | null
+  rate: number | null
+  amount: number | null
 } {
   const opening = Number(p.opening_meter) || 0
   const closing = Number(p.closing_meter) || 0
   if (closing < opening) throw new Error('Closing meter cannot be less than the opening meter.')
   const fuel = p.fuel_litres == null || (p.fuel_litres as unknown) === '' ? null : Number(p.fuel_litres)
   if (fuel != null && fuel < 0) throw new Error('Fuel cannot be negative.')
+  const rate = p.rate == null || (p.rate as unknown) === '' ? null : Number(p.rate)
+  if (rate != null && rate < 0) throw new Error('Rate cannot be negative.')
+  const usage = round3(closing - opening)
   return {
     work_type: properCase(p.work_type || ''),
     opening: round3(opening),
     closing: round3(closing),
-    usage: round3(closing - opening),
-    fuel: fuel == null ? null : round3(fuel)
+    usage,
+    fuel: fuel == null ? null : round3(fuel),
+    rate: rate == null ? null : round3(rate),
+    amount: rate == null ? null : money(usage * rate)
   }
 }
 
@@ -83,10 +91,10 @@ export async function addMachineLog(p: MachineLogInput): Promise<MachineLog> {
   const n = normalizeLog(p)
   const info = await d
     .prepare(
-      `INSERT INTO machine_logs (asset_id, date, work_type, opening_meter, closing_meter, usage_qty, fuel_litres, remarks)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO machine_logs (asset_id, date, work_type, opening_meter, closing_meter, usage_qty, fuel_litres, rate, amount, remarks)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(p.asset_id, p.date, n.work_type, n.opening, n.closing, n.usage, n.fuel, p.remarks ?? '')
+    .run(p.asset_id, p.date, n.work_type, n.opening, n.closing, n.usage, n.fuel, n.rate, n.amount, p.remarks ?? '')
   return (await d.prepare(`SELECT * FROM machine_logs WHERE id = ?`).get(info.lastInsertRowid)) as MachineLog
 }
 
@@ -97,9 +105,9 @@ export async function updateMachineLog(p: MachineLogInput): Promise<MachineLog> 
   const n = normalizeLog(p)
   await d
     .prepare(
-      `UPDATE machine_logs SET date=?, work_type=?, opening_meter=?, closing_meter=?, usage_qty=?, fuel_litres=?, remarks=? WHERE id=?`
+      `UPDATE machine_logs SET date=?, work_type=?, opening_meter=?, closing_meter=?, usage_qty=?, fuel_litres=?, rate=?, amount=?, remarks=? WHERE id=?`
     )
-    .run(p.date, n.work_type, n.opening, n.closing, n.usage, n.fuel, p.remarks ?? '', p.id)
+    .run(p.date, n.work_type, n.opening, n.closing, n.usage, n.fuel, n.rate, n.amount, p.remarks ?? '', p.id)
   return (await d.prepare(`SELECT * FROM machine_logs WHERE id = ?`).get(p.id)) as MachineLog
 }
 
@@ -148,6 +156,7 @@ export async function machineBalanceSheet(payload: {
       `SELECT COALESCE(SUM(usage_qty),0) AS usage_qty,
               COALESCE(SUM(CASE WHEN fuel_litres IS NOT NULL THEN fuel_litres ELSE 0 END),0) AS log_fuel,
               SUM(CASE WHEN fuel_litres IS NOT NULL THEN 1 ELSE 0 END) AS fuel_rows,
+              COALESCE(SUM(CASE WHEN amount IS NOT NULL THEN amount ELSE 0 END),0) AS run_income,
               MIN(opening_meter) AS min_open, MAX(closing_meter) AS max_close
        FROM machine_logs ml WHERE ml.asset_id = @asset_id${dl.sql}`
     )
@@ -155,6 +164,7 @@ export async function machineBalanceSheet(payload: {
     usage_qty: number
     log_fuel: number
     fuel_rows: number
+    run_income: number
     min_open: number | null
     max_close: number | null
   }
@@ -182,7 +192,9 @@ export async function machineBalanceSheet(payload: {
 
   const usage = round3(logAgg.usage_qty)
   const rate = await avgDieselRate()
-  const dieselCost = money(fuel * rate)
+  // Fuel COST is the diesel actually issued to this machine (× avg rate) — this matches the
+  // machine ledger. The logbook `fuel`/`fuelSource` above drives only the consumption check.
+  const dieselCost = money(dieselLitres * rate)
 
   // Costs from plant expenses + wages (date-filtered).
   const pe = dateClause('pe')
@@ -207,6 +219,8 @@ export async function machineBalanceSheet(payload: {
   ).q
 
   const totalCost = money(dieselCost + exp.maintenance + exp.other + wages)
+  const runIncome = money(logAgg.run_income)
+  const totalIncome = money(exp.rent + runIncome)
   return {
     asset_id: payload.asset_id,
     asset_name: a.name,
@@ -226,10 +240,92 @@ export async function machineBalanceSheet(payload: {
     other_expense: money(exp.other),
     wages: money(wages),
     rent_income: money(exp.rent),
+    run_income: runIncome,
+    total_income: totalIncome,
     total_cost: totalCost,
-    net: money(exp.rent - totalCost),
+    net: money(totalIncome - totalCost),
     cost_per_unit: usage > 0 ? money(totalCost / usage) : null
   }
+}
+
+/** Cross-machine mileage / consumption report: standard vs actual per asset. */
+export interface MileageRow {
+  asset_id: number
+  asset_name: string
+  asset_type: string
+  meter_type: MeterType
+  usage_qty: number
+  fuel_litres: number
+  actual_consumption: number | null
+  standard_consumption: number | null
+  over: boolean
+}
+export async function mileageReport(payload: {
+  from?: string
+  to?: string
+  asset_type?: string
+}): Promise<MileageRow[]> {
+  const d = getDb()
+  const typeClause = payload.asset_type === 'machine' || payload.asset_type === 'vehicle' ? ' AND a.asset_type = @atype' : ''
+  const assets = (await d
+    .prepare(
+      `SELECT a.id, a.name, a.asset_type, a.meter_type, a.standard_consumption
+       FROM assets a WHERE a.status = 'active'${typeClause} ORDER BY a.asset_type, a.name`
+    )
+    .all(payload.asset_type ? { atype: payload.asset_type } : {})) as {
+    id: number
+    name: string
+    asset_type: string
+    meter_type: MeterType
+    standard_consumption: number | null
+  }[]
+  const rows: MileageRow[] = []
+  for (const a of assets) {
+    const bs = await machineBalanceSheet({ asset_id: a.id, from: payload.from, to: payload.to })
+    if (bs.usage_qty <= 0 && bs.fuel_litres <= 0) continue
+    rows.push({
+      asset_id: a.id,
+      asset_name: a.name,
+      asset_type: a.asset_type,
+      meter_type: a.meter_type === 'km' ? 'km' : 'hour',
+      usage_qty: bs.usage_qty,
+      fuel_litres: bs.fuel_litres,
+      actual_consumption: bs.actual_consumption,
+      standard_consumption: bs.standard_consumption,
+      over:
+        bs.actual_consumption != null &&
+        bs.standard_consumption != null &&
+        bs.actual_consumption > bs.standard_consumption
+    })
+  }
+  return rows
+}
+
+/** All logbook entries across machines (for the cross-machine logbook page). */
+export async function listAllLogs(payload: { from?: string; to?: string; asset_id?: number } = {}): Promise<MachineLog[]> {
+  const d = getDb()
+  const where: string[] = []
+  const params: Record<string, unknown> = {}
+  if (payload.asset_id) {
+    where.push('ml.asset_id = @asset_id')
+    params.asset_id = payload.asset_id
+  }
+  if (payload.from) {
+    where.push('ml.date >= @from')
+    params.from = payload.from
+  }
+  if (payload.to) {
+    where.push('ml.date <= @to')
+    params.to = payload.to
+  }
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  return (await d
+    .prepare(
+      `SELECT ml.*, a.name AS asset_name FROM machine_logs ml
+       JOIN assets a ON a.id = ml.asset_id ${clause}
+       ORDER BY ml.date DESC, ml.id DESC`
+    )
+    .all(params)) as MachineLog[]
 }
 
 /* ---------------- Documents + insurance/expiry reminders ---------------- */

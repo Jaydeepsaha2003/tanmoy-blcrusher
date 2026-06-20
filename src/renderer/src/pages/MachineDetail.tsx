@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Plus, Pencil, Trash2, Gauge, FileText, BarChart3, Paperclip, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Plus, Pencil, Trash2, Gauge, FileText, BarChart3, Paperclip, AlertTriangle, BookOpen } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { MachineLog, AssetDocument, AssetDocType } from '@shared/types'
 import { PageHeader, Page } from '@/components/layout'
@@ -44,7 +44,7 @@ export function MachineDetail(): React.JSX.Element {
   const toast = useToast()
   const nav = useNavigate()
 
-  const [tab, setTab] = React.useState<'sheet' | 'logbook' | 'documents'>('sheet')
+  const [tab, setTab] = React.useState<'sheet' | 'ledger' | 'logbook' | 'documents'>('sheet')
   const [from, setFrom] = React.useState('')
   const [to, setTo] = React.useState('')
 
@@ -63,6 +63,11 @@ export function MachineDetail(): React.JSX.Element {
   const { data: docs = [] } = useQuery({
     queryKey: ['machineDocs', assetId],
     queryFn: () => api.machinery.documents(assetId)
+  })
+  const { data: ledger } = useQuery({
+    queryKey: ['machineLedger', assetId, from, to],
+    queryFn: () => api.ledgers.get('machine', assetId, from || undefined, to || undefined),
+    enabled: tab === 'ledger'
   })
 
   const refresh = (): void => {
@@ -120,7 +125,7 @@ export function MachineDetail(): React.JSX.Element {
       <Page>
         {/* Tabs */}
         <div className="mb-4 flex flex-wrap gap-2">
-          {([['sheet', 'Balance Sheet', BarChart3], ['logbook', 'Logbook', Gauge], ['documents', 'Documents', FileText]] as const).map(([key, label, Icon]) => (
+          {([['sheet', 'Balance Sheet', BarChart3], ['ledger', 'Ledger', BookOpen], ['logbook', 'Logbook', Gauge], ['documents', 'Documents', FileText]] as const).map(([key, label, Icon]) => (
             <button
               key={key}
               onClick={() => setTab(key)}
@@ -181,7 +186,9 @@ export function MachineDetail(): React.JSX.Element {
               <CardContent className="p-0">
                 <Table>
                   <TBody>
+                    <SheetRow label="Run income (logbook usage × rate)" value={fmtMoney(sheet.run_income)} tone="success" />
                     <SheetRow label="Rent earned (income)" value={fmtMoney(sheet.rent_income)} tone="success" />
+                    <SheetRow label="Total income" value={fmtMoney(sheet.total_income)} tone="success" bold />
                     <SheetRow label="Diesel cost (avg rate)" value={fmtMoney(sheet.diesel_cost)} tone="destructive" />
                     <SheetRow label="Maintenance" value={fmtMoney(sheet.maintenance)} tone="destructive" />
                     <SheetRow label="Operator wages" value={fmtMoney(sheet.wages)} tone="destructive" />
@@ -201,11 +208,49 @@ export function MachineDetail(): React.JSX.Element {
           </div>
         )}
 
+        {/* ---- Ledger ---- */}
+        {tab === 'ledger' && (
+          !ledger || ledger.entries.length === 0 ? (
+            <EmptyState message="No ledger entries for this machine in the selected period." />
+          ) : (
+            <Table>
+              <THead>
+                <TR>
+                  <TH>Date</TH>
+                  <TH>Particulars</TH>
+                  <TH>Ref</TH>
+                  <TH className="text-right">Debit (cost)</TH>
+                  <TH className="text-right">Credit (income)</TH>
+                  <TH className="text-right">Balance</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {ledger.entries.map((e, i) => (
+                  <TR key={i}>
+                    <TD className="whitespace-nowrap">{fmtDate(e.date)}</TD>
+                    <TD className="font-medium">{e.particulars}</TD>
+                    <TD className="font-mono text-xs text-muted-foreground">{e.ref || '-'}</TD>
+                    <TD className="tnum text-right">{e.debit ? fmtMoney(e.debit) : '-'}</TD>
+                    <TD className="tnum text-right">{e.credit ? fmtMoney(e.credit) : '-'}</TD>
+                    <TD className={`tnum text-right font-semibold ${e.balance >= 0 ? 'text-success' : 'text-destructive'}`}>{fmtMoney(e.balance)}</TD>
+                  </TR>
+                ))}
+                <TR className="border-t-2 bg-muted/40 font-bold">
+                  <TD colSpan={3}>Net (income − cost)</TD>
+                  <TD className="tnum text-right">{fmtMoney(ledger.total_debit)}</TD>
+                  <TD className="tnum text-right">{fmtMoney(ledger.total_credit)}</TD>
+                  <TD className={`tnum text-right ${ledger.closing >= 0 ? 'text-success' : 'text-destructive'}`}>{fmtMoney(ledger.closing)}</TD>
+                </TR>
+              </TBody>
+            </Table>
+          )
+        )}
+
         {/* ---- Logbook ---- */}
         {tab === 'logbook' && (
           <>
             <div className="mb-3 flex justify-end">
-              <Button size="sm" onClick={() => setLogForm({ asset_id: assetId, date: today(), work_type: '', opening_meter: '', closing_meter: '', fuel_litres: '', remarks: '' })}>
+              <Button size="sm" onClick={() => setLogForm({ asset_id: assetId, date: today(), work_type: '', opening_meter: '', closing_meter: '', rate: '', fuel_litres: '', remarks: '' })}>
                 <Plus size={15} /> Add Entry
               </Button>
             </div>
@@ -220,6 +265,8 @@ export function MachineDetail(): React.JSX.Element {
                     <TH className="text-right">Opening</TH>
                     <TH className="text-right">Closing</TH>
                     <TH className="text-right">Used ({unit})</TH>
+                    <TH className="text-right">Rate</TH>
+                    <TH className="text-right">Income</TH>
                     <TH className="text-right">Fuel (L)</TH>
                     <TH className="text-right"></TH>
                   </TR>
@@ -232,9 +279,11 @@ export function MachineDetail(): React.JSX.Element {
                       <TD className="tnum text-right">{fmtQty(l.opening_meter)}</TD>
                       <TD className="tnum text-right">{fmtQty(l.closing_meter)}</TD>
                       <TD className="tnum text-right font-semibold">{fmtQty(l.usage_qty)}</TD>
+                      <TD className="tnum text-right">{l.rate == null ? '-' : fmtMoney(l.rate)}</TD>
+                      <TD className="tnum text-right text-success">{l.amount == null ? '-' : fmtMoney(l.amount)}</TD>
                       <TD className="tnum text-right">{l.fuel_litres == null ? '—' : fmtQty(l.fuel_litres)}</TD>
                       <TD className="text-right">
-                        <Button variant="ghost" size="icon" onClick={() => setLogForm({ ...l, fuel_litres: l.fuel_litres ?? '' })}><Pencil size={15} /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => setLogForm({ ...l, rate: l.rate ?? '', fuel_litres: l.fuel_litres ?? '' })}><Pencil size={15} /></Button>
                         <Button variant="ghost" size="icon" onClick={() => removeLog(l)}><Trash2 size={15} className="text-destructive" /></Button>
                       </TD>
                     </TR>
@@ -312,6 +361,9 @@ export function MachineDetail(): React.JSX.Element {
             <Field label={`Closing meter (${unit})`} hint={logUsage > 0 ? `Used ${fmtQty(logUsage)} ${unit}` : undefined}>
               <Input type="number" step="0.001" value={logForm.closing_meter} onChange={(e) => setLogForm({ ...logForm, closing_meter: e.target.value })} />
             </Field>
+            <Field label={`Rate per ${unit}`} hint={logUsage > 0 && logForm.rate ? `Income ${fmtMoney(logUsage * Number(logForm.rate))}` : 'Usage × rate = income'}>
+              <Input type="number" step="0.01" value={logForm.rate} onChange={(e) => setLogForm({ ...logForm, rate: e.target.value })} placeholder="Optional" />
+            </Field>
             <Field label="Fuel used (L)" hint="Leave blank to use diesel issued instead">
               <Input type="number" step="0.01" value={logForm.fuel_litres} onChange={(e) => setLogForm({ ...logForm, fuel_litres: e.target.value })} placeholder="Optional" />
             </Field>
@@ -326,6 +378,7 @@ export function MachineDetail(): React.JSX.Element {
                 ...logForm,
                 opening_meter: Number(logForm.opening_meter) || 0,
                 closing_meter: Number(logForm.closing_meter) || 0,
+                rate: logForm.rate === '' || logForm.rate == null ? null : Number(logForm.rate),
                 fuel_litres: logForm.fuel_litres === '' || logForm.fuel_litres == null ? null : Number(logForm.fuel_litres)
               })}
               disabled={!logForm.date}

@@ -33,7 +33,8 @@ const partyLabel: Record<LedgerType, string> = {
   rack: 'Rack',
   company: 'Company',
   plant: 'Plant',
-  business: 'Business'
+  business: 'Business',
+  machine: 'Machine'
 }
 const balanceLabel: Record<LedgerType, string> = {
   customer: 'Receivable',
@@ -43,19 +44,20 @@ const balanceLabel: Record<LedgerType, string> = {
   rack: 'Profit / (Loss)',
   company: 'Net Balance',
   plant: 'Net (Profit / Loss)',
-  business: 'Net (Profit / Loss)'
+  business: 'Net (Profit / Loss)',
+  machine: 'Net (Profit / Loss)'
 }
 
 /** Red/green semantics differ per ledger: dues are red, rack/plant/business profit / net receivable green-ish. */
 function balanceClass(t: LedgerType, v: number): string {
-  if (t === 'rack' || t === 'plant' || t === 'business') return v >= 0 ? 'text-success' : 'text-destructive'
+  if (t === 'rack' || t === 'plant' || t === 'business' || t === 'machine') return v >= 0 ? 'text-success' : 'text-destructive'
   if (t === 'company') return v >= 0 ? 'text-primary' : 'text-destructive'
   return v > 0 ? 'text-destructive' : 'text-success'
 }
 
 /** Tally-style Dr/Cr tag. Customer/company balances are debit-positive; supplier/transporter/outsource credit-positive. */
 function drcr(t: LedgerType, v: number): string {
-  if (t === 'rack' || t === 'plant' || t === 'business' || Math.abs(v) < 0.005) return ''
+  if (t === 'rack' || t === 'plant' || t === 'business' || t === 'machine' || Math.abs(v) < 0.005) return ''
   const debitPositive = t === 'customer' || t === 'company'
   return (debitPositive ? v > 0 : v < 0) ? 'Dr' : 'Cr'
 }
@@ -236,7 +238,7 @@ export function Ledgers(): React.JSX.Element {
                   Opening Balance
                 </Button>
               )}
-              {partyType !== 'rack' && partyType !== 'company' && partyType !== 'plant' && partyType !== 'business' && (
+              {partyType !== 'rack' && partyType !== 'company' && partyType !== 'plant' && partyType !== 'business' && partyType !== 'machine' && (
                 <Button className="no-print" onClick={openPayment}>
                   <Plus size={16} /> Record Payment
                 </Button>
@@ -260,6 +262,7 @@ export function Ledgers(): React.JSX.Element {
               { value: 'company', label: 'Companies' },
               { value: 'business', label: 'Businesses (P&L)' },
               { value: 'plant', label: 'Plants (P&L)' },
+              { value: 'machine', label: 'Machines (P&L)' },
               { value: 'rack', label: 'Racks' }
             ]}
           />

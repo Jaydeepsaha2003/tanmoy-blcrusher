@@ -167,8 +167,12 @@ export const handlers: Record<string, (payload: any) => unknown> = {
   'assets.update': assets.updateAsset,
   'assets.delete': assets.deleteAsset,
   'assets.report': assets.assetReport,
+  'assets.move': assets.moveAsset,
+  'assets.moves': assets.assetMoves,
 
   'machinery.logs': machinery.listMachineLogs,
+  'machinery.allLogs': machinery.listAllLogs,
+  'machinery.mileage': machinery.mileageReport,
   'machinery.addLog': machinery.addMachineLog,
   'machinery.updateLog': machinery.updateMachineLog,
   'machinery.deleteLog': machinery.deleteMachineLog,

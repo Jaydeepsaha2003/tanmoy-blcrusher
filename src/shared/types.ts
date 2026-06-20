@@ -17,7 +17,7 @@ export type MovementType =
 export type RackStatus = 'loading' | 'in_transit' | 'reached' | 'closed'
 export type PartyType = 'customer' | 'supplier' | 'transporter' | 'outsource'
 /** Ledgers exist for parties, per rack (job account), per company (roles), per plant & business (P&L). */
-export type LedgerType = PartyType | 'rack' | 'company' | 'plant' | 'business'
+export type LedgerType = PartyType | 'rack' | 'company' | 'plant' | 'business' | 'machine'
 export type AssetType = 'machine' | 'vehicle'
 export type ExpenseCategory =
   | 'electricity'
@@ -749,6 +749,9 @@ export interface Asset {
   meter_type: MeterType
   /** Expected fuel per hour/km (litres) — used for the standard-vs-actual check. */
   standard_consumption: number | null
+  /** Plants this asset is available at (empty = shared by all plants). */
+  plant_ids?: number[]
+  plant_names?: string[]
   status: Status
   remarks: string
   created_at: string
@@ -767,6 +770,9 @@ export interface MachineLog {
   usage_qty: number
   /** Fuel for this entry; null → fall back to diesel issued in the period. */
   fuel_litres: number | null
+  /** Earning rate per hour/km; usage_qty × rate = amount (machine income). */
+  rate: number | null
+  amount: number | null
   remarks: string
   created_at: string
 }
@@ -810,10 +816,27 @@ export interface MachineBalanceSheet {
   maintenance: number
   other_expense: number
   wages: number
+  /** Externally-billed rent (tipper/equipment-rent expense entries tagged to this machine). */
   rent_income: number
+  /** Logbook run income: Σ(usage × rate) over the period. */
+  run_income: number
+  total_income: number
   total_cost: number
   net: number
   cost_per_unit: number | null
+}
+
+/** One row of the cross-machine mileage / consumption report (standard vs actual). */
+export interface MachineMileageRow {
+  asset_id: number
+  asset_name: string
+  asset_type: string
+  meter_type: MeterType
+  usage_qty: number
+  fuel_litres: number
+  actual_consumption: number | null
+  standard_consumption: number | null
+  over: boolean
 }
 
 export interface AssetReport {

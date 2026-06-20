@@ -36,6 +36,7 @@ import type {
   MachineLog,
   AssetDocument,
   MachineBalanceSheet,
+  MachineMileageRow,
   PlantExpense,
   ExpenseCategoryTotal,
   DieselPurchase,
@@ -278,11 +279,18 @@ export const api = {
     create: (p: Partial<Asset>) => call<Asset>('assets.create', p),
     update: (p: Partial<Asset>) => call<Asset>('assets.update', p),
     delete: (id: number) => call<{ ok: boolean; error?: string }>('assets.delete', { id }),
-    report: (id: number) => call<AssetReport>('assets.report', { id })
+    report: (id: number) => call<AssetReport>('assets.report', { id }),
+    move: (p: { id: number; plant_ids: number[]; date: string; remarks?: string }) => call<Asset>('assets.move', p),
+    moves: (id: number) =>
+      call<{ id: number; from_plant_name: string | null; to_plant_name: string | null; date: string; remarks: string }[]>('assets.moves', { id })
   },
   machinery: {
     logs: (asset_id: number, from?: string, to?: string) =>
       call<MachineLog[]>('machinery.logs', { asset_id, from, to }),
+    allLogs: (filter?: { from?: string; to?: string; asset_id?: number }) =>
+      call<MachineLog[]>('machinery.allLogs', filter),
+    mileage: (filter?: { from?: string; to?: string; asset_type?: string }) =>
+      call<MachineMileageRow[]>('machinery.mileage', filter),
     addLog: (p: unknown) => call<MachineLog>('machinery.addLog', p),
     updateLog: (p: unknown) => call<MachineLog>('machinery.updateLog', p),
     deleteLog: (id: number) => call<{ ok: boolean }>('machinery.deleteLog', { id }),

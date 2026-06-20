@@ -416,6 +416,8 @@ CREATE TABLE IF NOT EXISTS machine_logs (
   closing_meter DOUBLE NOT NULL DEFAULT 0,
   usage_qty     DOUBLE NOT NULL DEFAULT 0,
   fuel_litres   DOUBLE,
+  rate          DOUBLE,
+  amount        DOUBLE,
   remarks       TEXT,
   created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -429,6 +431,20 @@ CREATE TABLE IF NOT EXISTS asset_documents (
   file_data   MEDIUMTEXT,
   remarks     TEXT,
   created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS asset_plants (
+  id        INT AUTO_INCREMENT PRIMARY KEY,
+  asset_id  INT NOT NULL,
+  plant_id  INT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS asset_plant_moves (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  asset_id      INT NOT NULL,
+  from_plant_id INT,
+  to_plant_id   INT,
+  date          VARCHAR(32) NOT NULL,
+  remarks       TEXT,
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS plant_expenses (
   id             INT AUTO_INCREMENT PRIMARY KEY,
@@ -791,6 +807,29 @@ CREATE INDEX idx_rsmach_sale ON rack_sale_machines(rack_sale_id)`
     sql: 'ALTER TABLE settings MODIFY value MEDIUMTEXT'
   },
   {
+    // Multi-plant assets, plant-move log, and logbook rate→income.
+    id: '018_machines_multiplant_lograte',
+    sql: `ALTER TABLE machine_logs ADD COLUMN rate DOUBLE;
+ALTER TABLE machine_logs ADD COLUMN amount DOUBLE;
+CREATE TABLE IF NOT EXISTS asset_plants (
+  id        INT AUTO_INCREMENT PRIMARY KEY,
+  asset_id  INT NOT NULL,
+  plant_id  INT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS asset_plant_moves (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  asset_id      INT NOT NULL,
+  from_plant_id INT,
+  to_plant_id   INT,
+  date          VARCHAR(32) NOT NULL,
+  remarks       TEXT,
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_aplants_asset ON asset_plants(asset_id);
+CREATE INDEX idx_aplants_plant ON asset_plants(plant_id);
+CREATE INDEX idx_amoves_asset ON asset_plant_moves(asset_id)`
+  },
+  {
     // Machine logbook, balance-sheet inputs and document/insurance tracking.
     id: '017_machinery_logs_documents',
     sql: `ALTER TABLE assets ADD COLUMN meter_type VARCHAR(8) NOT NULL DEFAULT 'hour';
@@ -903,6 +942,9 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   // Machine logbook / balance-sheet inputs (machine_logs & asset_documents come from SCHEMA on SQLite).
   await addColumn('assets', 'meter_type', `TEXT NOT NULL DEFAULT 'hour'`)
   await addColumn('assets', 'standard_consumption', 'REAL')
+  // Logbook rate→income (asset_plants & asset_plant_moves come from SCHEMA on SQLite).
+  await addColumn('machine_logs', 'rate', 'REAL')
+  await addColumn('machine_logs', 'amount', 'REAL')
 }
 
 /**
@@ -977,6 +1019,34 @@ async function uppercaseExistingNames(adapter: Adapter, kind: DbKind): Promise<v
   await adapter.exec(ins, [flag], null)
 }
 
+/**
+ * Backfill the asset_plants junction from each asset's legacy single plant_id, so
+ * existing plant-scoped assets keep their scope under the new multi-plant model.
+ * Assets with plant_id NULL stay shared (no rows). Runs once (settings flag).
+ */
+async function backfillAssetPlants(adapter: Adapter, kind: DbKind): Promise<void> {
+  const flag = 'asset_plants_backfill_v1'
+  const done = (await adapter.exec('SELECT value FROM settings WHERE `key` = ?', [flag], null)).rows
+  if (done.length > 0) return
+  try {
+    await adapter.exec(
+      `INSERT INTO asset_plants (asset_id, plant_id)
+       SELECT a.id, a.plant_id FROM assets a
+       WHERE a.plant_id IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM asset_plants ap WHERE ap.asset_id = a.id)`,
+      undefined,
+      null
+    )
+  } catch {
+    /* asset_plants may not exist yet on a very old DB path — skip */
+  }
+  const ins =
+    kind === 'mysql'
+      ? "INSERT INTO settings (`key`, value) VALUES (?, '1') ON DUPLICATE KEY UPDATE value = '1'"
+      : "INSERT INTO settings (`key`, value) VALUES (?, '1') ON CONFLICT(`key`) DO UPDATE SET value = '1'"
+  await adapter.exec(ins, [flag], null)
+}
+
 async function seedDefaults(adapter: Adapter): Promise<void> {
   const pwRow = (
     await adapter.exec("SELECT value FROM settings WHERE `key` = 'admin_password'", undefined, null)
@@ -1037,4 +1107,5 @@ export async function runMigrations(adapter: Adapter, kind: DbKind): Promise<voi
   await seedDefaults(adapter)
   await importProductsFromSettings(adapter)
   await uppercaseExistingNames(adapter, kind)
+  await backfillAssetPlants(adapter, kind)
 }

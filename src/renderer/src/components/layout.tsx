@@ -40,6 +40,7 @@ import {
   ShieldCheck,
   ScrollText,
   BellRing,
+  Gauge,
   Package,
   IndianRupee,
   PackageCheck,
@@ -94,11 +95,19 @@ export const NAV: NavGroup[] = [
     ]
   },
   {
+    heading: 'Machines & Vehicles',
+    items: [
+      { to: '/assets', label: 'Machines & Vehicles', icon: Wrench, module: 'masters' },
+      { to: '/machine-logs', label: 'Logbook & Mileage', icon: Gauge, module: 'masters' },
+      { to: '/diesel', label: 'Diesel', icon: Fuel, module: 'diesel' },
+      { to: '/reminders', label: 'Reminders', icon: BellRing, module: 'masters' }
+    ]
+  },
+  {
     heading: 'Accounts',
     items: [
       { to: '/plant-expenses', label: 'Plant Expenses', icon: Receipt, module: 'plantExpenses' },
       { to: '/budget', label: 'Budget', icon: PiggyBank, module: 'plantExpenses' },
-      { to: '/diesel', label: 'Diesel', icon: Fuel, module: 'diesel' },
       { to: '/payroll', label: 'Payroll', icon: HardHat, module: 'payroll' },
       { to: '/ledgers', label: 'Ledgers', icon: BookOpen, module: 'ledgers' },
       { to: '/payments', label: 'Payment Status', icon: Wallet, module: 'payments' }
@@ -116,8 +125,6 @@ export const NAV: NavGroup[] = [
     items: [
       { to: '/plants', label: 'Plants', icon: Factory, module: 'masters' },
       { to: '/businesses', label: 'Businesses', icon: Briefcase, module: 'masters' },
-      { to: '/assets', label: 'Machinery & Vehicles', icon: Wrench, module: 'masters' },
-      { to: '/reminders', label: 'Reminders', icon: BellRing, module: 'masters' },
       { to: '/employees', label: 'Employees', icon: Users2, module: 'payroll' },
       { to: '/suppliers', label: 'Suppliers', icon: Users, module: 'masters' },
       { to: '/customers', label: 'Customers', icon: UserSquare2, module: 'masters' },

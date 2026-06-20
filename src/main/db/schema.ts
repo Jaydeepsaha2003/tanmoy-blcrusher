@@ -437,6 +437,8 @@ CREATE TABLE IF NOT EXISTS machine_logs (
   closing_meter REAL NOT NULL DEFAULT 0,
   usage_qty     REAL NOT NULL DEFAULT 0,
   fuel_litres   REAL,
+  rate          REAL,
+  amount        REAL,
   remarks       TEXT NOT NULL DEFAULT '',
   created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
@@ -451,6 +453,22 @@ CREATE TABLE IF NOT EXISTS asset_documents (
   file_data   TEXT,
   remarks     TEXT NOT NULL DEFAULT '',
   created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS asset_plants (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  asset_id  INTEGER NOT NULL REFERENCES assets(id),
+  plant_id  INTEGER NOT NULL REFERENCES plants(id)
+);
+
+CREATE TABLE IF NOT EXISTS asset_plant_moves (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  asset_id      INTEGER NOT NULL REFERENCES assets(id),
+  from_plant_id INTEGER,
+  to_plant_id   INTEGER,
+  date          TEXT NOT NULL,
+  remarks       TEXT NOT NULL DEFAULT '',
+  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS plant_expenses (
@@ -614,4 +632,7 @@ CREATE INDEX IF NOT EXISTS idx_rsmach_sale ON rack_sale_machines(rack_sale_id);
 CREATE INDEX IF NOT EXISTS idx_mlog_asset ON machine_logs(asset_id);
 CREATE INDEX IF NOT EXISTS idx_adoc_asset ON asset_documents(asset_id);
 CREATE INDEX IF NOT EXISTS idx_adoc_expiry ON asset_documents(expiry_date);
+CREATE INDEX IF NOT EXISTS idx_aplants_asset ON asset_plants(asset_id);
+CREATE INDEX IF NOT EXISTS idx_aplants_plant ON asset_plants(plant_id);
+CREATE INDEX IF NOT EXISTS idx_amoves_asset ON asset_plant_moves(asset_id);
 `

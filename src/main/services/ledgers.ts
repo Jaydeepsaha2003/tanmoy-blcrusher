@@ -52,6 +52,13 @@ async function partyName(partyType: LedgerType, partyId: number): Promise<string
     if (!row) throw new Error('Business not found.')
     return row.name
   }
+  if (partyType === 'machine') {
+    const row = (await d.prepare(`SELECT name FROM assets WHERE id = ?`).get(partyId)) as
+      | { name: string }
+      | undefined
+    if (!row) throw new Error('Machine not found.')
+    return row.name
+  }
   const table = PARTY_TABLE[partyType as PartyType]
   if (!table) throw new Error('Invalid party type.')
   const row = (await d.prepare(`SELECT name FROM ${table} WHERE id = ?`).get(partyId)) as
@@ -706,6 +713,88 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
     return entries
   }
 
+  if (partyType === 'machine') {
+    // Per-machine P&L: income = logbook run income + rent earned; cost = diesel, maintenance/other
+    // expenses, operator wages. (Parts + scrap income are added with the parts module.)
+    const mcatLabel: Record<string, string> = {
+      electricity: 'Electricity',
+      maintenance: 'Maintenance',
+      fixed: 'Fixed Expense',
+      other: 'Other Expense'
+    }
+    const logs = (await d
+      .prepare(
+        `SELECT date, created_at, work_type, usage_qty, COALESCE(amount,0) AS amount
+         FROM machine_logs WHERE asset_id = ? AND amount IS NOT NULL`
+      )
+      .all(partyId)) as { date: string; created_at: string; work_type: string; usage_qty: number; amount: number }[]
+    for (const x of logs)
+      if (x.amount > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Run income — ${x.work_type || 'usage'} (${x.usage_qty})`,
+          ref: '',
+          debit: 0,
+          credit: x.amount
+        })
+    const pexp = (await d
+      .prepare(
+        `SELECT expense_no, date, created_at, COALESCE(amount,0) AS amount, category
+         FROM plant_expenses WHERE asset_id = ?`
+      )
+      .all(partyId)) as { expense_no: string; date: string; created_at: string; amount: number; category: string }[]
+    for (const x of pexp) {
+      if (!(x.amount > 0)) continue
+      const isRent = x.category === 'tipper_rent' || x.category === 'equipment_rent'
+      entries.push({
+        date: x.date,
+        created_at: x.created_at,
+        particulars: isRent ? 'Rent earned' : (mcatLabel[x.category] ?? 'Expense'),
+        ref: x.expense_no,
+        debit: isRent ? 0 : x.amount,
+        credit: isRent ? x.amount : 0
+      })
+    }
+    const wages = (await d
+      .prepare(
+        `SELECT w.entry_no, w.date, w.created_at, COALESCE(w.amount,0) AS amount, e.name AS emp, w.period
+         FROM wage_entries w JOIN employees e ON e.id = w.employee_id WHERE w.asset_id = ?`
+      )
+      .all(partyId)) as { entry_no: string; date: string; created_at: string; amount: number; emp: string; period: string }[]
+    for (const x of wages)
+      if (x.amount > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Operator wages — ${x.emp} (${x.period})`,
+          ref: x.entry_no,
+          debit: x.amount,
+          credit: 0
+        })
+    const avgRow = (await d
+      .prepare(`SELECT COALESCE(SUM(amount),0) AS a, COALESCE(SUM(litres),0) AS l FROM diesel_purchases WHERE amount IS NOT NULL`)
+      .get()) as { a: number; l: number }
+    const avg = avgRow.l > 0 ? avgRow.a / avgRow.l : 0
+    const diesel = (await d
+      .prepare(`SELECT issue_no, date, created_at, litres FROM diesel_issues WHERE asset_id = ?`)
+      .all(partyId)) as { issue_no: string; date: string; created_at: string; litres: number }[]
+    for (const x of diesel)
+      if (x.litres > 0 && avg > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Diesel ${x.litres} L`,
+          ref: x.issue_no,
+          debit: roundMoney(x.litres * avg),
+          credit: 0
+        })
+    entries.sort((a, b) =>
+      a.date === b.date ? a.created_at.localeCompare(b.created_at) : a.date.localeCompare(b.date)
+    )
+    return entries
+  }
+
   if (partyType === 'outsource') {
     // Expenses attributed to the outsource vendor are payable to them; settlements come via payments.
     const exp = (await d
@@ -1208,6 +1297,15 @@ export async function getPartyBalances(payload: {
       id: number
       name: string
     }[]
+  } else if (payload.party_type === 'machine') {
+    // Machines available at the plant (or shared everywhere when unassigned).
+    const clause = payload.plant_id
+      ? `WHERE EXISTS (SELECT 1 FROM asset_plants ap WHERE ap.asset_id = a.id AND ap.plant_id = @plant_id)
+           OR NOT EXISTS (SELECT 1 FROM asset_plants ap2 WHERE ap2.asset_id = a.id)`
+      : ''
+    parties = (await d
+      .prepare(`SELECT a.id, a.name FROM assets a ${clause} ORDER BY a.asset_type, a.name`)
+      .all(payload.plant_id ? { plant_id: payload.plant_id } : {})) as { id: number; name: string }[]
   } else {
     const table = PARTY_TABLE[payload.party_type as PartyType]
     if (!table) throw new Error('Invalid party type.')
