@@ -353,6 +353,30 @@ CREATE TABLE IF NOT EXISTS dispatch_machines (
   created_at   TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
+CREATE TABLE IF NOT EXISTS rack_sale_transporters (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  rack_sale_id   INTEGER NOT NULL REFERENCES rack_sales(id),
+  transporter_id INTEGER NOT NULL REFERENCES transporters(id),
+  vehicle_no     TEXT NOT NULL DEFAULT '',
+  basis          TEXT NOT NULL DEFAULT 'flat',
+  qty            REAL NOT NULL DEFAULT 0,
+  rate           REAL NOT NULL DEFAULT 0,
+  charge         REAL NOT NULL DEFAULT 0,
+  created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS rack_sale_machines (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  rack_sale_id INTEGER NOT NULL REFERENCES rack_sales(id),
+  asset_id     INTEGER NOT NULL REFERENCES assets(id),
+  basis        TEXT NOT NULL DEFAULT 'hour',
+  qty          REAL NOT NULL DEFAULT 0,
+  rate         REAL NOT NULL DEFAULT 0,
+  amount       REAL NOT NULL DEFAULT 0,
+  outsource_id INTEGER,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS production_settings (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
   plant_id          INTEGER NOT NULL REFERENCES plants(id),
@@ -718,6 +742,9 @@ CREATE INDEX IF NOT EXISTS idx_pmach_purchase ON purchase_machines(purchase_id);
 CREATE INDEX IF NOT EXISTS idx_dtrans_dispatch ON dispatch_transporters(dispatch_id);
 CREATE INDEX IF NOT EXISTS idx_dtrans_transporter ON dispatch_transporters(transporter_id);
 CREATE INDEX IF NOT EXISTS idx_dmach_dispatch ON dispatch_machines(dispatch_id);
+CREATE INDEX IF NOT EXISTS idx_rstrans_sale ON rack_sale_transporters(rack_sale_id);
+CREATE INDEX IF NOT EXISTS idx_rstrans_transporter ON rack_sale_transporters(transporter_id);
+CREATE INDEX IF NOT EXISTS idx_rsmach_sale ON rack_sale_machines(rack_sale_id);
 `;
 
 // src/main/crypto.ts
@@ -944,6 +971,28 @@ CREATE TABLE IF NOT EXISTS dispatch_transporters (
 CREATE TABLE IF NOT EXISTS dispatch_machines (
   id           INT AUTO_INCREMENT PRIMARY KEY,
   dispatch_id  INT NOT NULL,
+  asset_id     INT NOT NULL,
+  basis        VARCHAR(8) NOT NULL DEFAULT 'hour',
+  qty          DOUBLE NOT NULL DEFAULT 0,
+  rate         DOUBLE NOT NULL DEFAULT 0,
+  amount       DOUBLE NOT NULL DEFAULT 0,
+  outsource_id INT,
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS rack_sale_transporters (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  rack_sale_id   INT NOT NULL,
+  transporter_id INT NOT NULL,
+  vehicle_no     VARCHAR(64) NOT NULL DEFAULT '',
+  basis          VARCHAR(8) NOT NULL DEFAULT 'flat',
+  qty            DOUBLE NOT NULL DEFAULT 0,
+  rate           DOUBLE NOT NULL DEFAULT 0,
+  charge         DOUBLE NOT NULL DEFAULT 0,
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS rack_sale_machines (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  rack_sale_id INT NOT NULL,
   asset_id     INT NOT NULL,
   basis        VARCHAR(8) NOT NULL DEFAULT 'hour',
   qty          DOUBLE NOT NULL DEFAULT 0,
@@ -1437,6 +1486,35 @@ ALTER TABLE customers ADD COLUMN plant_ref_id INT;
 CREATE INDEX idx_dtrans_dispatch ON dispatch_transporters(dispatch_id);
 CREATE INDEX idx_dtrans_transporter ON dispatch_transporters(transporter_id);
 CREATE INDEX idx_dmach_dispatch ON dispatch_machines(dispatch_id)`
+  },
+  {
+    // Transporter + machine cost lines on railway rack sales.
+    id: "015_rack_sale_lines",
+    sql: `CREATE TABLE IF NOT EXISTS rack_sale_transporters (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  rack_sale_id   INT NOT NULL,
+  transporter_id INT NOT NULL,
+  vehicle_no     VARCHAR(64) NOT NULL DEFAULT '',
+  basis          VARCHAR(8) NOT NULL DEFAULT 'flat',
+  qty            DOUBLE NOT NULL DEFAULT 0,
+  rate           DOUBLE NOT NULL DEFAULT 0,
+  charge         DOUBLE NOT NULL DEFAULT 0,
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS rack_sale_machines (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  rack_sale_id INT NOT NULL,
+  asset_id     INT NOT NULL,
+  basis        VARCHAR(8) NOT NULL DEFAULT 'hour',
+  qty          DOUBLE NOT NULL DEFAULT 0,
+  rate         DOUBLE NOT NULL DEFAULT 0,
+  amount       DOUBLE NOT NULL DEFAULT 0,
+  outsource_id INT,
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_rstrans_sale ON rack_sale_transporters(rack_sale_id);
+CREATE INDEX idx_rstrans_transporter ON rack_sale_transporters(transporter_id);
+CREATE INDEX idx_rsmach_sale ON rack_sale_machines(rack_sale_id)`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -3884,7 +3962,9 @@ async function getRackDetail(payload) {
   ).all(payload.id);
   const expenses = await d.prepare(`SELECT * FROM rack_expenses WHERE rack_id = ? ORDER BY date DESC, id DESC`).all(payload.id);
   const sales = await d.prepare(
-    `SELECT rs.*, c.name AS customer_name, r.rack_no
+    `SELECT rs.*, c.name AS customer_name, r.rack_no,
+        (SELECT COALESCE(SUM(charge),0) FROM rack_sale_transporters rst WHERE rst.rack_sale_id = rs.id) AS transport_total,
+        (SELECT COALESCE(SUM(amount),0) FROM rack_sale_machines rsm WHERE rsm.rack_sale_id = rs.id) AS machine_total
        FROM rack_sales rs
        JOIN customers c ON c.id = rs.customer_id
        JOIN racks r ON r.id = rs.rack_id
@@ -3904,7 +3984,7 @@ async function getRackDetail(payload) {
          SELECT product_name, 0 AS loaded, qty_cm AS unloaded, 0 AS sold FROM rack_unloadings WHERE rack_id = @id
          UNION ALL
          SELECT product_name, 0 AS loaded, 0 AS unloaded, qty_cm AS sold FROM rack_sales WHERE rack_id = @id
-       )
+       ) AS m
        GROUP BY product_name ORDER BY product_name`
   ).all({ id: payload.id });
   return { rack, loadings, unloadings, expenses, sales, products };
@@ -4243,6 +4323,46 @@ async function listExpenses(filter = {}) {
        ORDER BY e.date DESC, e.id DESC`
   ).all(params);
 }
+async function writeRackSaleChildLines(d, saleId, transporters, machines) {
+  await d.prepare(`DELETE FROM rack_sale_transporters WHERE rack_sale_id = ?`).run(saleId);
+  await d.prepare(`DELETE FROM rack_sale_machines WHERE rack_sale_id = ?`).run(saleId);
+  const tStmt = d.prepare(
+    `INSERT INTO rack_sale_transporters (rack_sale_id, transporter_id, vehicle_no, basis, qty, rate, charge) VALUES (?, ?, ?, ?, ?, ?, ?)`
+  );
+  for (const t of transporters ?? []) {
+    if (!t.transporter_id) continue;
+    const basis = t.basis === "trip" || t.basis === "uom" ? t.basis : "flat";
+    const qty = basis === "flat" ? 0 : Number(t.qty) || 0;
+    const rate = basis === "flat" ? 0 : Number(t.rate) || 0;
+    const charge = basis === "flat" ? roundMoney(Number(t.charge) || 0) : roundMoney(qty * rate);
+    await tStmt.run(saleId, t.transporter_id, properCase(t.vehicle_no || ""), basis, qty, rate, charge);
+  }
+  const mStmt = d.prepare(
+    `INSERT INTO rack_sale_machines (rack_sale_id, asset_id, basis, qty, rate, amount, outsource_id) VALUES (?, ?, ?, ?, ?, ?, ?)`
+  );
+  for (const m of machines ?? []) {
+    if (!m.asset_id) continue;
+    const basis = m.basis === "cm" ? "cm" : "hour";
+    const qty = Number(m.qty) || 0;
+    const rate = Number(m.rate) || 0;
+    await mStmt.run(saleId, m.asset_id, basis, qty, rate, roundMoney(qty * rate), m.outsource_id ?? null);
+  }
+}
+async function getSaleDetail(payload) {
+  const d = getDb();
+  const sale = await d.prepare(`SELECT * FROM rack_sales WHERE id = ?`).get(payload.id);
+  if (!sale) return null;
+  sale.transporters = await d.prepare(
+    `SELECT rst.*, t.name AS transporter_name FROM rack_sale_transporters rst
+       JOIN transporters t ON t.id = rst.transporter_id WHERE rst.rack_sale_id = ? ORDER BY rst.id`
+  ).all(payload.id);
+  sale.machines = await d.prepare(
+    `SELECT rsm.*, a.name AS asset_name, o.name AS outsource_name FROM rack_sale_machines rsm
+       JOIN assets a ON a.id = rsm.asset_id
+       LEFT JOIN outsource o ON o.id = rsm.outsource_id WHERE rsm.rack_sale_id = ? ORDER BY rsm.id`
+  ).all(payload.id);
+  return sale;
+}
 function resolveSale(p, factors) {
   if (!(Number(p.quantity) > 0)) throw new Error("Quantity must be greater than 0.");
   if (!["CM", "TON", "CFT"].includes(p.uom)) throw new Error("Invalid unit of measure.");
@@ -4282,7 +4402,9 @@ async function addSale(p) {
       date: p.date,
       remarks: p.remarks ?? ""
     });
-    return Number(info.lastInsertRowid);
+    const saleId = Number(info.lastInsertRowid);
+    await writeRackSaleChildLines(d, saleId, p.transporters, p.machines);
+    return saleId;
   });
   return await d.prepare(`SELECT * FROM rack_sales WHERE id = ?`).get(id);
 }
@@ -4297,28 +4419,35 @@ async function updateSale(p) {
     throw new Error(
       `Not enough unloaded material at destination. Available ${p.product_name}: ${available} m\xB3, requested: ${qtyCm} m\xB3.`
     );
-  await d.prepare(
-    `UPDATE rack_sales SET customer_id=@customer_id, product_name=@product_name, uom=@uom,
-       quantity=@quantity, qty_cm=@qty_cm, rate=@rate, amount=@amount, truck_no=@truck_no, date=@date, remarks=@remarks
-     WHERE id=@id`
-  ).run({
-    id: p.id,
-    customer_id: p.customer_id,
-    product_name: p.product_name.trim(),
-    uom: p.uom,
-    quantity: Number(p.quantity),
-    qty_cm: qtyCm,
-    rate: p.rate,
-    amount,
-    truck_no: (p.truck_no ?? "").trim(),
-    date: p.date,
-    remarks: p.remarks ?? ""
+  await d.transaction(async () => {
+    await d.prepare(
+      `UPDATE rack_sales SET customer_id=@customer_id, product_name=@product_name, uom=@uom,
+         quantity=@quantity, qty_cm=@qty_cm, rate=@rate, amount=@amount, truck_no=@truck_no, date=@date, remarks=@remarks
+       WHERE id=@id`
+    ).run({
+      id: p.id,
+      customer_id: p.customer_id,
+      product_name: p.product_name.trim(),
+      uom: p.uom,
+      quantity: Number(p.quantity),
+      qty_cm: qtyCm,
+      rate: p.rate,
+      amount,
+      truck_no: (p.truck_no ?? "").trim(),
+      date: p.date,
+      remarks: p.remarks ?? ""
+    });
+    await writeRackSaleChildLines(d, p.id, p.transporters, p.machines);
   });
   return await d.prepare(`SELECT * FROM rack_sales WHERE id = ?`).get(p.id);
 }
 async function deleteSale(payload) {
   const d = getDb();
-  await d.prepare(`DELETE FROM rack_sales WHERE id = ?`).run(payload.id);
+  await d.transaction(async () => {
+    await d.prepare(`DELETE FROM rack_sale_transporters WHERE rack_sale_id = ?`).run(payload.id);
+    await d.prepare(`DELETE FROM rack_sale_machines WHERE rack_sale_id = ?`).run(payload.id);
+    await d.prepare(`DELETE FROM rack_sales WHERE id = ?`).run(payload.id);
+  });
   return { ok: true };
 }
 async function listSales(filter = {}) {
@@ -4523,6 +4652,36 @@ async function buildEntries(partyType, partyId) {
           ref: x.sale_no,
           debit: 0,
           credit: x.amount
+        });
+    const saleTrans = await d.prepare(
+      `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rst.charge,0) AS charge, t.name AS tname
+         FROM rack_sale_transporters rst JOIN rack_sales rs ON rs.id = rst.rack_sale_id
+         JOIN transporters t ON t.id = rst.transporter_id WHERE rs.rack_id = ?`
+    ).all(partyId);
+    for (const x of saleTrans)
+      if (x.charge > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Sale transport \u2014 ${x.tname}`,
+          ref: x.sale_no,
+          debit: x.charge,
+          credit: 0
+        });
+    const saleMach = await d.prepare(
+      `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rsm.amount,0) AS amount, a.name AS aname
+         FROM rack_sale_machines rsm JOIN rack_sales rs ON rs.id = rsm.rack_sale_id
+         JOIN assets a ON a.id = rsm.asset_id WHERE rs.rack_id = ?`
+    ).all(partyId);
+    for (const x of saleMach)
+      if (x.amount > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Machine \u2014 ${x.aname}`,
+          ref: x.sale_no,
+          debit: x.amount,
+          credit: 0
         });
     entries.sort(
       (a, b) => a.date === b.date ? a.created_at.localeCompare(b.created_at) : a.date.localeCompare(b.date)
@@ -4843,6 +5002,21 @@ async function buildEntries(partyType, partyId) {
           debit: 0,
           credit: x.amount
         });
+    const rsmach = await d.prepare(
+      `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rsm.amount,0) AS amount, a.name AS aname
+         FROM rack_sale_machines rsm JOIN rack_sales rs ON rs.id = rsm.rack_sale_id
+         JOIN assets a ON a.id = rsm.asset_id WHERE rsm.outsource_id = ?`
+    ).all(partyId);
+    for (const x of rsmach)
+      if (x.amount > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Machine hire \u2014 ${x.aname}`,
+          ref: x.sale_no,
+          debit: 0,
+          credit: x.amount
+        });
   }
   if (partyType === "customer") {
     const dispatches = await d.prepare(
@@ -5032,6 +5206,21 @@ async function buildEntries(partyType, partyId) {
           created_at: x.created_at,
           particulars: `Transport \u2014 direct sale${x.vno ? ` (${x.vno})` : ""}`,
           ref: x.dispatch_no,
+          debit: 0,
+          credit: x.charge
+        });
+    const rstin = await d.prepare(
+      `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rst.charge,0) AS charge, COALESCE(rst.vehicle_no,'') AS vno
+         FROM rack_sale_transporters rst JOIN rack_sales rs ON rs.id = rst.rack_sale_id
+         WHERE rst.transporter_id = ?`
+    ).all(partyId);
+    for (const x of rstin)
+      if (x.charge > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Transport \u2014 rack sale${x.vno ? ` (${x.vno})` : ""}`,
+          ref: x.sale_no,
           debit: 0,
           credit: x.charge
         });
@@ -6418,6 +6607,7 @@ var handlers = {
   "racks.deleteExpense": deleteExpense,
   "racks.listExpenses": listExpenses,
   "racks.addSale": addSale,
+  "racks.saleDetail": getSaleDetail,
   "racks.updateSale": updateSale,
   "racks.deleteSale": deleteSale,
   "racks.listSales": listSales,

@@ -11375,6 +11375,7 @@ const api = {
     deleteExpense: (id2) => call("racks.deleteExpense", { id: id2 }),
     listExpenses: (filter) => call("racks.listExpenses", filter),
     addSale: (p2) => call("racks.addSale", p2),
+    saleDetail: (id2) => call("racks.saleDetail", { id: id2 }),
     updateSale: (p2) => call("racks.updateSale", p2),
     deleteSale: (id2) => call("racks.deleteSale", { id: id2 }),
     listSales: (filter) => call("racks.listSales", filter)
@@ -63558,6 +63559,8 @@ function RackDetail() {
     queryFn: () => api.transporters.list()
   });
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: () => api.customers.list() });
+  const { data: assets = [] } = useQuery({ queryKey: ["assets"], queryFn: () => api.assets.list() });
+  const { data: outsourceVendors = [] } = useQuery({ queryKey: ["outsource"], queryFn: () => api.outsource.list() });
   const { data: expenseTypes = [] } = useQuery({
     queryKey: ["expenseTypes"],
     queryFn: api.racks.expenseTypes
@@ -63718,9 +63721,42 @@ function RackDetail() {
       rate: "",
       truck_no: "",
       date: today(),
-      remarks: ""
+      remarks: "",
+      transporters: [],
+      machines: []
     });
   }
+  async function openEditSale(s2) {
+    const det = await api.racks.saleDetail(s2.id).catch(() => null);
+    const src = det ?? s2;
+    setSaleForm({
+      ...src,
+      rate: src.rate ?? "",
+      transporters: (src.transporters ?? []).map((t2) => ({ transporter_id: t2.transporter_id, vehicle_no: t2.vehicle_no, basis: t2.basis || "flat", qty: t2.qty || "", rate: t2.rate || "", charge: t2.charge })),
+      machines: (src.machines ?? []).map((m2) => ({ asset_id: m2.asset_id, basis: m2.basis, qty: m2.qty, rate: m2.rate, outsource_id: m2.outsource_id }))
+    });
+  }
+  const sTLines = saleForm?.transporters ?? [];
+  function addSaleTransporter() {
+    setSaleForm({ ...saleForm, transporters: [...sTLines, { transporter_id: 0, vehicle_no: "", basis: "flat", qty: "", rate: "", charge: "" }] });
+  }
+  function setSaleTransporter(i, patch) {
+    setSaleForm({ ...saleForm, transporters: sTLines.map((t2, idx) => idx === i ? { ...t2, ...patch } : t2) });
+  }
+  function delSaleTransporter(i) {
+    setSaleForm({ ...saleForm, transporters: sTLines.filter((_, idx) => idx !== i) });
+  }
+  const sMLines = saleForm?.machines ?? [];
+  function addSaleMachine() {
+    setSaleForm({ ...saleForm, machines: [...sMLines, { asset_id: 0, basis: "hour", qty: "", rate: "", outsource_id: null }] });
+  }
+  function setSaleMachine(i, patch) {
+    setSaleForm({ ...saleForm, machines: sMLines.map((m2, idx) => idx === i ? { ...m2, ...patch } : m2) });
+  }
+  function delSaleMachine(i) {
+    setSaleForm({ ...saleForm, machines: sMLines.filter((_, idx) => idx !== i) });
+  }
+  const saleLineCharge = (t2) => t2.basis === "trip" || t2.basis === "uom" ? (Number(t2.qty) || 0) * (Number(t2.rate) || 0) : Number(t2.charge) || 0;
   const loadingTotal = loadingForm ? (Number(loadingForm.trips) || 0) * (Number(loadingForm.per_trip_cm) || 0) : 0;
   const loadingAmount = loadingForm && loadingForm.rate !== "" ? loadingTotal * Number(loadingForm.rate) : null;
   const unloadTotal = unloadForm ? (Number(unloadForm.trips) || 0) * (Number(unloadForm.per_trip_cm) || 0) : 0;
@@ -64036,7 +64072,19 @@ function RackDetail() {
             /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-mono text-xs", children: s2.sale_no }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: fmtDate(s2.date) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: s2.customer_name }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: s2.product_name }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { children: [
+              s2.product_name,
+              ((s2.transport_total ?? 0) > 0 || (s2.machine_total ?? 0) > 0) && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "mt-0.5 flex flex-wrap gap-x-2 text-[11px] text-muted-foreground", children: [
+                (s2.transport_total ?? 0) > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+                  "🚚 ",
+                  fmtMoney(s2.transport_total)
+                ] }),
+                (s2.machine_total ?? 0) > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+                  "⚙ ",
+                  fmtMoney(s2.machine_total)
+                ] })
+              ] })
+            ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtQty(s2.quantity) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "muted", children: s2.uom }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right text-muted-foreground", children: fmtQty(s2.qty_cm) }),
@@ -64044,7 +64092,7 @@ function RackDetail() {
             /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right font-semibold", children: fmtMoney(s2.amount) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-mono text-xs", children: s2.truck_no || "-" }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => setSaleForm({ ...s2, rate: s2.rate ?? "" }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => openEditSale(s2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
               /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => removeSale(s2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
             ] })
           ] }, s2.id)) })
@@ -64255,7 +64303,7 @@ function RackDetail() {
         open: true,
         onClose: () => setSaleForm(null),
         title: saleForm.id ? `Edit ${saleForm.sale_no}` : "New Sale from Rack",
-        width: "max-w-2xl",
+        width: "max-w-3xl",
         children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Customer", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -64301,6 +64349,127 @@ function RackDetail() {
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: saleForm.date, onChange: (e3) => setSaleForm({ ...saleForm, date: e3.target.value }) }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: saleForm.remarks || "", onChange: (e3) => setSaleForm({ ...saleForm, remarks: e3.target.value }) }) }) })
           ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 space-y-3", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground/80", children: "Transport — cost lines (optional)" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "h-px flex-1 bg-border" })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+              sTLines.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-[1fr_92px_96px_64px_76px_90px_32px] gap-2 px-1 text-[11px] font-semibold uppercase text-muted-foreground", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Transporter" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Vehicle" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Basis" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Qty" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Rate ₹" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Charge ₹" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", {})
+              ] }),
+              sTLines.map((t2, i) => {
+                const computed = t2.basis === "trip" || t2.basis === "uom";
+                return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-[1fr_92px_96px_64px_76px_90px_32px] items-center gap-2", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    SearchSelect,
+                    {
+                      value: t2.transporter_id || "",
+                      onChange: (v2) => setSaleTransporter(i, { transporter_id: Number(v2) }),
+                      options: transporters.map((tr) => ({ value: tr.id, label: tr.name })),
+                      placeholder: "Transporter…"
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: t2.vehicle_no, onChange: (e3) => setSaleTransporter(i, { vehicle_no: e3.target.value }), placeholder: "JH01AB1234" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    SearchSelect,
+                    {
+                      value: t2.basis || "flat",
+                      onChange: (v2) => setSaleTransporter(i, { basis: v2 }),
+                      options: [{ value: "flat", label: "Flat" }, { value: "trip", label: "Per Trip" }, { value: "uom", label: `Per ${saleForm.uom || "UOM"}` }]
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    Input,
+                    {
+                      type: "number",
+                      step: "0.01",
+                      value: computed ? t2.qty : "",
+                      disabled: !computed,
+                      placeholder: computed ? "" : "—",
+                      onChange: (e3) => setSaleTransporter(i, { qty: e3.target.value })
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    Input,
+                    {
+                      type: "number",
+                      step: "0.01",
+                      value: computed ? t2.rate : "",
+                      disabled: !computed,
+                      placeholder: computed ? "" : "—",
+                      onChange: (e3) => setSaleTransporter(i, { rate: e3.target.value })
+                    }
+                  ),
+                  computed ? /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "text", value: fmtMoney(saleLineCharge(t2)), disabled: true, className: "text-right font-medium" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: t2.charge, onChange: (e3) => setSaleTransporter(i, { charge: e3.target.value }) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => delSaleTransporter(i), children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 15, className: "text-destructive" }) })
+                ] }, i);
+              })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", size: "sm", disabled: !transporters.length, onClick: addSaleTransporter, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 14 }),
+              " Add Transporter"
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[11px] text-muted-foreground", children: "Posts to the transporter ledger and the rack's profit/loss." })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 space-y-3", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground/80", children: "Machines (optional)" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "h-px flex-1 bg-border" })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+              sMLines.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-[1fr_90px_80px_90px_1fr_32px] gap-2 px-1 text-[11px] font-semibold uppercase text-muted-foreground", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Machine" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Basis" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Qty" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Rate ₹" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Vendor (opt)" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", {})
+              ] }),
+              sMLines.map((m2, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-[1fr_90px_80px_90px_1fr_32px] items-center gap-2", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  SearchSelect,
+                  {
+                    value: m2.asset_id || "",
+                    onChange: (v2) => setSaleMachine(i, { asset_id: Number(v2) }),
+                    options: assets.map((a2) => ({ value: a2.id, label: a2.name })),
+                    placeholder: "Machine…"
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  SearchSelect,
+                  {
+                    value: m2.basis || "hour",
+                    onChange: (v2) => setSaleMachine(i, { basis: v2 }),
+                    options: [{ value: "hour", label: "Per Hour" }, { value: "cm", label: "Per m³" }]
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: m2.qty, onChange: (e3) => setSaleMachine(i, { qty: e3.target.value }) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: m2.rate, onChange: (e3) => setSaleMachine(i, { rate: e3.target.value }) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  SearchSelect,
+                  {
+                    value: m2.outsource_id ?? "",
+                    onChange: (v2) => setSaleMachine(i, { outsource_id: v2 ? Number(v2) : null }),
+                    options: [{ value: "", label: "— None —" }, ...outsourceVendors.map((o) => ({ value: o.id, label: o.name }))],
+                    placeholder: "— None —"
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => delSaleMachine(i), children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 15, className: "text-destructive" }) })
+              ] }, i))
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", size: "sm", disabled: !assets.length, onClick: addSaleMachine, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 14 }),
+              " Add Machine"
+            ] }),
+            !assets.length && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[11px] text-muted-foreground", children: "Add machines under Machinery & Vehicles first." })
+          ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 flex items-center justify-between rounded-lg bg-muted/60 px-4 py-2.5 text-sm", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
               "Available in rack: ",
@@ -64323,7 +64492,16 @@ function RackDetail() {
                 onClick: () => saveSale.mutate({
                   ...saleForm,
                   quantity: Number(saleForm.quantity),
-                  rate: saleForm.rate === "" ? null : Number(saleForm.rate)
+                  rate: saleForm.rate === "" ? null : Number(saleForm.rate),
+                  transporters: (saleForm.transporters ?? []).filter((t2) => t2.transporter_id).map((t2) => ({
+                    transporter_id: Number(t2.transporter_id),
+                    vehicle_no: t2.vehicle_no || "",
+                    basis: t2.basis || "flat",
+                    qty: Number(t2.qty) || 0,
+                    rate: Number(t2.rate) || 0,
+                    charge: Number(t2.charge) || 0
+                  })),
+                  machines: (saleForm.machines ?? []).filter((m2) => m2.asset_id).map((m2) => ({ asset_id: Number(m2.asset_id), basis: m2.basis || "hour", qty: Number(m2.qty) || 0, rate: Number(m2.rate) || 0, outsource_id: m2.outsource_id ? Number(m2.outsource_id) : null }))
                 }),
                 disabled: !saleForm.customer_id || !saleForm.product_name || !(Number(saleForm.quantity) > 0) || saleQtyCm > saleAvailable,
                 children: "Save Sale"
