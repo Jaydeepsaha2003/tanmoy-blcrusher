@@ -657,6 +657,7 @@ export function RackDetail(): React.JSX.Element {
                           {(s.machine_total ?? 0) > 0 && <span>⚙ {fmtMoney(s.machine_total)}</span>}
                         </span>
                       )}
+                      {s.remarks && <span className="mt-0.5 block text-[11px] italic text-muted-foreground">“{s.remarks}”</span>}
                     </TD>
                     <TD className="text-right">{fmtQty(s.quantity)}</TD>
                     <TD><Badge variant="muted">{s.uom}</Badge></TD>

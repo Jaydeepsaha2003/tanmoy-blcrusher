@@ -168,11 +168,11 @@ export function Purchases(): React.JSX.Element {
     downloadExcel(
       'purchases',
       'Purchases',
-      ['Purchase No', 'Date', 'Mode', 'Supplier', 'Plant', 'Item', 'UOM', 'Quantity', 'Qty (m³)', 'Rate', 'Amount', 'Transport', 'Machines', 'Paid', 'Status'],
+      ['Purchase No', 'Date', 'Mode', 'Supplier', 'Plant', 'Item', 'UOM', 'Quantity', 'Qty (m³)', 'Rate', 'Amount', 'Transport', 'Machines', 'Paid', 'Status', 'Remarks'],
       data.map((p) => [
         p.purchase_no, fmtDate(p.date), p.purchase_mode === 'mining' ? 'Mining' : p.material_type === 'finished' ? 'Finished' : 'Raw',
         p.supplier_name, p.plant_name, p.material_type === 'finished' ? p.product_name : p.stock_location_name,
-        p.uom, p.quantity, p.qty_cm, p.rate ?? '', p.amount ?? '', p.transport_total ?? 0, p.machine_total ?? 0, p.paid_amount, p.payment_status
+        p.uom, p.quantity, p.qty_cm, p.rate ?? '', p.amount ?? '', p.transport_total ?? 0, p.machine_total ?? 0, p.paid_amount, p.payment_status, p.remarks ?? ''
       ])
     )
   }
@@ -262,6 +262,7 @@ export function Purchases(): React.JSX.Element {
                         {(p.machine_total ?? 0) > 0 && <span>⚙ {fmtMoney(p.machine_total)}</span>}
                       </div>
                     )}
+                    {p.remarks && <div className="mt-0.5 text-[11px] italic text-muted-foreground">“{p.remarks}”</div>}
                   </TD>
                   <TD className="whitespace-nowrap text-right tnum">
                     {fmtQty(p.quantity)} <span className="text-[11px] text-muted-foreground">{p.uom}</span>

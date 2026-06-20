@@ -192,12 +192,12 @@ export function Dispatch(): React.JSX.Element {
       'direct-sales',
       'Direct Sales',
       ['Sale No', 'Date', 'Customer / Plant', 'Plant', 'Product', 'Qty', 'UOM', 'Rate', 'Goods Amt',
-        'Transport', 'Other', 'Invoice Total', 'Transport Cost', 'Machine Cost', 'Paid', 'Vehicle', 'Vehicle Type', 'Challan', 'Delivery', 'Payment'],
+        'Transport', 'Other', 'Invoice Total', 'Transport Cost', 'Machine Cost', 'Paid', 'Vehicle', 'Vehicle Type', 'Challan', 'Delivery', 'Payment', 'Remarks'],
       data.map((d) => [
         d.dispatch_no, fmtDate(d.date), d.to_plant_id ? `${d.to_plant_name} (plant)` : d.customer_name, d.plant_name, d.product_name,
         d.quantity, d.uom, d.rate ?? '', d.amount ?? '', d.transport_charge, d.other_charge,
         d.billed_total ?? '', d.transport_total ?? 0, d.machine_total ?? 0, d.paid_amount, d.vehicle_no, vehicleLabel[d.vehicle_type], d.challan_no,
-        d.delivery_status, d.payment_status
+        d.delivery_status, d.payment_status, d.remarks ?? ''
       ])
     )
   }
@@ -330,6 +330,7 @@ export function Dispatch(): React.JSX.Element {
                         {(d.machine_total ?? 0) > 0 && <span>⚙ {fmtMoney(d.machine_total)}</span>}
                       </div>
                     )}
+                    {d.remarks && <div className="mt-0.5 text-[11px] italic text-muted-foreground">“{d.remarks}”</div>}
                   </TD>
                   <TD className="text-right">
                     <span className="tnum">{fmtQty(d.quantity)}</span> <span className="text-xs text-muted-foreground">{d.uom}</span>
