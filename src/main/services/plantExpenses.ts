@@ -12,6 +12,7 @@ function num(n: number): number {
 export interface ExpenseFilter {
   plant_id?: number
   category?: ExpenseCategory
+  asset_id?: number
   from?: string
   to?: string
 }
@@ -27,6 +28,10 @@ export async function listPlantExpenses(filter: ExpenseFilter = {}): Promise<Pla
   if (filter.category) {
     where.push('e.category = @category')
     params.category = filter.category
+  }
+  if (filter.asset_id) {
+    where.push('e.asset_id = @asset_id')
+    params.asset_id = filter.asset_id
   }
   if (filter.from) {
     where.push('e.date >= @from')

@@ -444,6 +444,7 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
     const catLabel: Record<string, string> = {
       electricity: 'Electricity',
       maintenance: 'Maintenance',
+      fixed: 'Fixed Cost',
       tipper_rent: 'Tipper Rent',
       equipment_rent: 'Equipment Rent',
       other: 'Other Expense'

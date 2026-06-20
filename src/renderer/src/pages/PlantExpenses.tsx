@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, FileSpreadsheet, Zap, Wrench, Truck, Boxes, Receipt } from 'lucide-react'
+import { Plus, Pencil, Trash2, FileSpreadsheet, Zap, Wrench, Truck, Boxes, Receipt, Banknote } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { PlantExpense, ExpenseCategory, PaymentStatus } from '@shared/types'
 import { PageHeader, Page } from '@/components/layout'
@@ -32,6 +32,7 @@ import { fmtMoney, fmtQty, fmtDate, today, downloadExcel } from '@/lib/utils'
 const CATS: { value: ExpenseCategory; label: string; icon: typeof Zap }[] = [
   { value: 'electricity', label: 'Electricity', icon: Zap },
   { value: 'maintenance', label: 'Maintenance', icon: Wrench },
+  { value: 'fixed', label: 'Fixed Cost (EMI / premium / permit)', icon: Banknote },
   { value: 'tipper_rent', label: 'Tipper / Own Vehicle Rent', icon: Truck },
   { value: 'equipment_rent', label: 'Rented Equipment', icon: Boxes },
   { value: 'other', label: 'Other', icon: Receipt }

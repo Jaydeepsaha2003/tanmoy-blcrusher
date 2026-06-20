@@ -6,6 +6,7 @@ import type { BudgetReport, BudgetItem } from '@shared/types'
 const HEADS: { head: string; label: string; source: 'expense' | 'diesel' | 'payroll' }[] = [
   { head: 'electricity', label: 'Electricity', source: 'expense' },
   { head: 'maintenance', label: 'Maintenance', source: 'expense' },
+  { head: 'fixed', label: 'Fixed Costs', source: 'expense' },
   { head: 'tipper_rent', label: 'Tipper Rent', source: 'expense' },
   { head: 'equipment_rent', label: 'Equipment Rent', source: 'expense' },
   { head: 'other', label: 'Other', source: 'expense' },

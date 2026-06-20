@@ -202,12 +202,14 @@ export async function machineBalanceSheet(payload: {
     .prepare(
       `SELECT
         COALESCE(SUM(CASE WHEN category='maintenance' THEN amount ELSE 0 END),0) AS maintenance,
+        COALESCE(SUM(CASE WHEN category='fixed' THEN amount ELSE 0 END),0) AS fixed_cost,
         COALESCE(SUM(CASE WHEN category IN ('tipper_rent','equipment_rent') THEN amount ELSE 0 END),0) AS rent,
-        COALESCE(SUM(CASE WHEN category NOT IN ('maintenance','tipper_rent','equipment_rent') THEN amount ELSE 0 END),0) AS other
+        COALESCE(SUM(CASE WHEN category NOT IN ('maintenance','fixed','tipper_rent','equipment_rent') THEN amount ELSE 0 END),0) AS other
        FROM plant_expenses pe WHERE pe.asset_id = @asset_id${pe.sql}`
     )
     .get({ asset_id: payload.asset_id, ...pe.params })) as {
     maintenance: number
+    fixed_cost: number
     rent: number
     other: number
   }
@@ -218,7 +220,7 @@ export async function machineBalanceSheet(payload: {
       .get({ asset_id: payload.asset_id, ...we.params })) as { q: number }
   ).q
 
-  const totalCost = money(dieselCost + exp.maintenance + exp.other + wages)
+  const totalCost = money(dieselCost + exp.maintenance + exp.fixed_cost + exp.other + wages)
   const runIncome = money(logAgg.run_income)
   const totalIncome = money(exp.rent + runIncome)
   return {
@@ -237,6 +239,7 @@ export async function machineBalanceSheet(payload: {
     closing_meter: logAgg.max_close,
     diesel_cost: dieselCost,
     maintenance: money(exp.maintenance),
+    fixed_expense: money(exp.fixed_cost),
     other_expense: money(exp.other),
     wages: money(wages),
     rent_income: money(exp.rent),

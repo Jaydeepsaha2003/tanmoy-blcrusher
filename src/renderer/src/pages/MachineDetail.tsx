@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Plus, Pencil, Trash2, Gauge, FileText, BarChart3, Paperclip, AlertTriangle, BookOpen } from 'lucide-react'
+import { ArrowLeft, Plus, Pencil, Trash2, Gauge, FileText, BarChart3, Paperclip, AlertTriangle, BookOpen, Wrench } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { MachineLog, AssetDocument, AssetDocType } from '@shared/types'
 import { PageHeader, Page } from '@/components/layout'
@@ -120,7 +120,12 @@ export function MachineDetail(): React.JSX.Element {
       <PageHeader
         title={asset?.name ?? 'Machine'}
         description={asset ? `${asset.asset_type === 'vehicle' ? 'Vehicle' : 'Machine'}${asset.category ? ` · ${asset.category}` : ''}${asset.identifier ? ` · ${asset.identifier}` : ''}${asset.business_name ? ` · ${asset.business_name}` : ''}` : ''}
-        actions={<Button variant="outline" onClick={() => nav('/assets')}><ArrowLeft size={16} /> Machinery</Button>}
+        actions={
+          <>
+            <Button variant="outline" onClick={() => nav(`/maintenance?machine=${assetId}`)}><Wrench size={16} /> Manage Costs</Button>
+            <Button variant="outline" onClick={() => nav('/assets')}><ArrowLeft size={16} /> Machinery</Button>
+          </>
+        }
       />
       <Page>
         {/* Tabs */}
@@ -191,6 +196,7 @@ export function MachineDetail(): React.JSX.Element {
                     <SheetRow label="Total income" value={fmtMoney(sheet.total_income)} tone="success" bold />
                     <SheetRow label="Diesel cost (avg rate)" value={fmtMoney(sheet.diesel_cost)} tone="destructive" />
                     <SheetRow label="Maintenance" value={fmtMoney(sheet.maintenance)} tone="destructive" />
+                    <SheetRow label="Fixed costs (EMI / premium / permit)" value={fmtMoney(sheet.fixed_expense)} tone="destructive" />
                     <SheetRow label="Operator wages" value={fmtMoney(sheet.wages)} tone="destructive" />
                     <SheetRow label="Other expenses" value={fmtMoney(sheet.other_expense)} tone="destructive" />
                     <SheetRow label="Total cost" value={fmtMoney(sheet.total_cost)} tone="destructive" bold />

@@ -22,6 +22,7 @@ export type AssetType = 'machine' | 'vehicle'
 export type ExpenseCategory =
   | 'electricity'
   | 'maintenance'
+  | 'fixed'
   | 'tipper_rent'
   | 'equipment_rent'
   | 'other'
@@ -814,6 +815,7 @@ export interface MachineBalanceSheet {
   closing_meter: number | null
   diesel_cost: number
   maintenance: number
+  fixed_expense: number
   other_expense: number
   wages: number
   /** Externally-billed rent (tipper/equipment-rent expense entries tagged to this machine). */

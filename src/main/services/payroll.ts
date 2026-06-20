@@ -123,6 +123,7 @@ export async function deleteEmployee(payload: {
 export interface WageFilter {
   plant_id?: number
   employee_id?: number
+  asset_id?: number
   period?: string
   payment_status?: PaymentStatus
   from?: string
@@ -140,6 +141,10 @@ export async function listWageEntries(filter: WageFilter = {}): Promise<WageEntr
   if (filter.employee_id) {
     where.push('w.employee_id = @employee_id')
     params.employee_id = filter.employee_id
+  }
+  if (filter.asset_id) {
+    where.push('w.asset_id = @asset_id')
+    params.asset_id = filter.asset_id
   }
   if (filter.period) {
     where.push('w.period = @period')
