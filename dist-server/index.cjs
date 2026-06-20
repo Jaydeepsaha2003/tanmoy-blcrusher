@@ -308,6 +308,9 @@ CREATE TABLE IF NOT EXISTS purchase_transporters (
   purchase_id    INTEGER NOT NULL REFERENCES purchases(id),
   transporter_id INTEGER NOT NULL REFERENCES transporters(id),
   vehicle_no     TEXT NOT NULL DEFAULT '',
+  basis          TEXT NOT NULL DEFAULT 'flat',
+  qty            REAL NOT NULL DEFAULT 0,
+  rate           REAL NOT NULL DEFAULT 0,
   charge         REAL NOT NULL DEFAULT 0,
   created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
@@ -875,6 +878,9 @@ CREATE TABLE IF NOT EXISTS purchase_transporters (
   purchase_id    INT NOT NULL,
   transporter_id INT NOT NULL,
   vehicle_no     VARCHAR(64) NOT NULL DEFAULT '',
+  basis          VARCHAR(8) NOT NULL DEFAULT 'flat',
+  qty            DOUBLE NOT NULL DEFAULT 0,
+  rate           DOUBLE NOT NULL DEFAULT 0,
   charge         DOUBLE NOT NULL DEFAULT 0,
   created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -1330,6 +1336,13 @@ CREATE TABLE IF NOT EXISTS purchase_machines (
 CREATE INDEX idx_ptrans_purchase ON purchase_transporters(purchase_id);
 CREATE INDEX idx_ptrans_transporter ON purchase_transporters(transporter_id);
 CREATE INDEX idx_pmach_purchase ON purchase_machines(purchase_id)`
+  },
+  {
+    // Purchase transport lines can be priced flat, per trip, or per UOM unit.
+    id: "013_purchase_transport_basis",
+    sql: `ALTER TABLE purchase_transporters ADD COLUMN basis VARCHAR(8) NOT NULL DEFAULT 'flat';
+ALTER TABLE purchase_transporters ADD COLUMN qty DOUBLE NOT NULL DEFAULT 0;
+ALTER TABLE purchase_transporters ADD COLUMN rate DOUBLE NOT NULL DEFAULT 0`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -1387,6 +1400,9 @@ async function sqliteLegacyMigrate(adapter2) {
   await addColumn("dispatches", "outsource_id", "INTEGER");
   await addColumn("purchases", "outsource_id", "INTEGER");
   await addColumn("purchases", "purchase_mode", `TEXT NOT NULL DEFAULT 'purchase'`);
+  await addColumn("purchase_transporters", "basis", `TEXT NOT NULL DEFAULT 'flat'`);
+  await addColumn("purchase_transporters", "qty", "REAL NOT NULL DEFAULT 0");
+  await addColumn("purchase_transporters", "rate", "REAL NOT NULL DEFAULT 0");
 }
 async function importProductsFromSettings(adapter2) {
   const all = (await adapter2.exec(`SELECT id, name FROM products ORDER BY id`, void 0, null)).rows;
@@ -2582,11 +2598,15 @@ async function writeChildLines(d, purchaseId, transporters, machines) {
   await d.prepare(`DELETE FROM purchase_transporters WHERE purchase_id = ?`).run(purchaseId);
   await d.prepare(`DELETE FROM purchase_machines WHERE purchase_id = ?`).run(purchaseId);
   const tStmt = d.prepare(
-    `INSERT INTO purchase_transporters (purchase_id, transporter_id, vehicle_no, charge) VALUES (?, ?, ?, ?)`
+    `INSERT INTO purchase_transporters (purchase_id, transporter_id, vehicle_no, basis, qty, rate, charge) VALUES (?, ?, ?, ?, ?, ?, ?)`
   );
   for (const t of transporters ?? []) {
     if (!t.transporter_id) continue;
-    await tStmt.run(purchaseId, t.transporter_id, properCase(t.vehicle_no || ""), round22(Number(t.charge) || 0));
+    const basis = t.basis === "trip" || t.basis === "uom" ? t.basis : "flat";
+    const qty = basis === "flat" ? 0 : Number(t.qty) || 0;
+    const rate = basis === "flat" ? 0 : Number(t.rate) || 0;
+    const charge = basis === "flat" ? round22(Number(t.charge) || 0) : round22(qty * rate);
+    await tStmt.run(purchaseId, t.transporter_id, properCase(t.vehicle_no || ""), basis, qty, rate, charge);
   }
   const mStmt = d.prepare(
     `INSERT INTO purchase_machines (purchase_id, asset_id, basis, qty, rate, amount, outsource_id) VALUES (?, ?, ?, ?, ?, ?, ?)`

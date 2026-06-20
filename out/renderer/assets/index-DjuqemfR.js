@@ -59390,7 +59390,7 @@ function Purchases() {
     setForm({
       ...src,
       rate: src.rate ?? "",
-      transporters: (src.transporters ?? []).map((t2) => ({ transporter_id: t2.transporter_id, vehicle_no: t2.vehicle_no, charge: t2.charge })),
+      transporters: (src.transporters ?? []).map((t2) => ({ transporter_id: t2.transporter_id, vehicle_no: t2.vehicle_no, basis: t2.basis || "flat", qty: t2.qty || "", rate: t2.rate || "", charge: t2.charge })),
       machines: (src.machines ?? []).map((m2) => ({ asset_id: m2.asset_id, basis: m2.basis, qty: m2.qty, rate: m2.rate, outsource_id: m2.outsource_id }))
     });
     setOpen(true);
@@ -59410,7 +59410,7 @@ function Purchases() {
   }
   const lines = form?.transporters ?? [];
   function addTransporter() {
-    setForm({ ...form, transporters: [...lines, { transporter_id: 0, vehicle_no: "", charge: "" }] });
+    setForm({ ...form, transporters: [...lines, { transporter_id: 0, vehicle_no: "", basis: "flat", qty: "", rate: "", charge: "" }] });
   }
   function setTransporter(i, patch) {
     setForm({ ...form, transporters: lines.map((t2, idx) => idx === i ? { ...t2, ...patch } : t2) });
@@ -59434,7 +59434,14 @@ function Purchases() {
       quantity: Number(form.quantity),
       rate: form.rate === "" || form.rate == null ? null : Number(form.rate),
       paid_amount: Number(form.paid_amount) || 0,
-      transporters: (form.transporters ?? []).filter((t2) => t2.transporter_id).map((t2) => ({ transporter_id: Number(t2.transporter_id), vehicle_no: t2.vehicle_no || "", charge: Number(t2.charge) || 0 })),
+      transporters: (form.transporters ?? []).filter((t2) => t2.transporter_id).map((t2) => ({
+        transporter_id: Number(t2.transporter_id),
+        vehicle_no: t2.vehicle_no || "",
+        basis: t2.basis || "flat",
+        qty: Number(t2.qty) || 0,
+        rate: Number(t2.rate) || 0,
+        charge: Number(t2.charge) || 0
+      })),
       machines: (form.machines ?? []).filter((m2) => m2.asset_id).map((m2) => ({ asset_id: Number(m2.asset_id), basis: m2.basis || "hour", qty: Number(m2.qty) || 0, rate: Number(m2.rate) || 0, outsource_id: m2.outsource_id ? Number(m2.outsource_id) : null }))
     });
   }
@@ -59463,7 +59470,8 @@ function Purchases() {
     );
   }
   const goods = (Number(form?.quantity) || 0) * (Number(form?.rate) || 0);
-  const transportTotal = (form?.transporters ?? []).reduce((s2, t2) => s2 + (Number(t2.charge) || 0), 0);
+  const lineCharge = (t2) => t2.basis === "trip" || t2.basis === "uom" ? (Number(t2.qty) || 0) * (Number(t2.rate) || 0) : Number(t2.charge) || 0;
+  const transportTotal = (form?.transporters ?? []).reduce((s2, t2) => s2 + lineCharge(t2), 0);
   const machineTotal = (form?.machines ?? []).reduce((s2, m2) => s2 + (Number(m2.qty) || 0) * (Number(m2.rate) || 0), 0);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -59624,32 +59632,68 @@ function Purchases() {
         mk2 !== "finished" && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs(Section$1, { title: "Transport (optional)", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
-              lines.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-[1fr_120px_110px_32px] gap-2 px-1 text-[11px] font-semibold uppercase text-muted-foreground", children: [
+              lines.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-[1fr_92px_96px_64px_76px_90px_32px] gap-2 px-1 text-[11px] font-semibold uppercase text-muted-foreground", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Transporter" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Vehicle No." }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Vehicle" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Basis" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Qty" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Rate ₹" }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Charge ₹" }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("div", {})
               ] }),
-              lines.map((t2, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-[1fr_120px_110px_32px] gap-2", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  SearchSelect,
-                  {
-                    value: t2.transporter_id || "",
-                    onChange: (v2) => setTransporter(i, { transporter_id: Number(v2) }),
-                    options: transporters.map((tr) => ({ value: tr.id, label: tr.name })),
-                    placeholder: "Transporter…"
-                  }
-                ),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: t2.vehicle_no, onChange: (e3) => setTransporter(i, { vehicle_no: e3.target.value }), placeholder: "JH01AB1234" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: t2.charge, onChange: (e3) => setTransporter(i, { charge: e3.target.value }) }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => delTransporter(i), children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 15, className: "text-destructive" }) })
-              ] }, i))
+              lines.map((t2, i) => {
+                const computed = t2.basis === "trip" || t2.basis === "uom";
+                return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-[1fr_92px_96px_64px_76px_90px_32px] items-center gap-2", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    SearchSelect,
+                    {
+                      value: t2.transporter_id || "",
+                      onChange: (v2) => setTransporter(i, { transporter_id: Number(v2) }),
+                      options: transporters.map((tr) => ({ value: tr.id, label: tr.name })),
+                      placeholder: "Transporter…"
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: t2.vehicle_no, onChange: (e3) => setTransporter(i, { vehicle_no: e3.target.value }), placeholder: "JH01AB1234" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: t2.basis || "flat", onChange: (e3) => setTransporter(i, { basis: e3.target.value }), children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "flat", children: "Flat" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "trip", children: "Per Trip" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: "uom", children: [
+                      "Per ",
+                      form.uom || "UOM"
+                    ] })
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    Input,
+                    {
+                      type: "number",
+                      step: "0.01",
+                      value: computed ? t2.qty : "",
+                      disabled: !computed,
+                      placeholder: computed ? "" : "—",
+                      onChange: (e3) => setTransporter(i, { qty: e3.target.value })
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    Input,
+                    {
+                      type: "number",
+                      step: "0.01",
+                      value: computed ? t2.rate : "",
+                      disabled: !computed,
+                      placeholder: computed ? "" : "—",
+                      onChange: (e3) => setTransporter(i, { rate: e3.target.value })
+                    }
+                  ),
+                  computed ? /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "text", value: fmtMoney(lineCharge(t2)), disabled: true, className: "text-right font-medium" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: t2.charge, onChange: (e3) => setTransporter(i, { charge: e3.target.value }) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => delTransporter(i), children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 15, className: "text-destructive" }) })
+                ] }, i);
+              })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", size: "sm", className: "mt-2", disabled: !transporters.length, onClick: addTransporter, children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 14 }),
               " Add Transporter"
             ] }),
-            !transporters.length && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-[11px] text-muted-foreground", children: "Add transporters under Transporters first." })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-[11px] text-muted-foreground", children: transporters.length ? "Charge by flat amount, per trip (qty × rate), or per UOM unit. Posts to the transporter ledger." : "Add transporters under Transporters first." })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(Section$1, { title: "Machines (optional) — posts to Equipment Rent", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
