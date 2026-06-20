@@ -35517,7 +35517,8 @@ function SearchSelect({
   options,
   placeholder = "Select…",
   disabled,
-  className
+  className,
+  alwaysSearch
 }) {
   const [open, setOpen] = reactExports.useState(false);
   const [q2, setQ] = reactExports.useState("");
@@ -35532,7 +35533,7 @@ function SearchSelect({
   const sel = options.find((o) => String(o.value) === String(value ?? ""));
   const ql2 = q2.trim().toLowerCase();
   const filtered = ql2 ? options.filter((o) => o.label.toLowerCase().includes(ql2)) : options;
-  const showSearch = options.length > 7;
+  const showSearch = alwaysSearch || options.length > 7;
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { ref, className: cn("relative", className), children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs(
       "button",
@@ -64737,6 +64738,7 @@ function Ledgers() {
           SearchSelect,
           {
             className: "w-full sm:w-44",
+            alwaysSearch: true,
             value: partyType,
             onChange: (v2) => switchType(v2),
             options: [
@@ -64755,6 +64757,7 @@ function Ledgers() {
           SearchSelect,
           {
             className: "w-full sm:w-56",
+            alwaysSearch: true,
             value: partyId ?? "",
             onChange: (v2) => setPartyId(v2 ? Number(v2) : void 0),
             options: [
@@ -64769,6 +64772,7 @@ function Ledgers() {
             SearchSelect,
             {
               className: "w-full sm:w-36",
+              alwaysSearch: true,
               value: fy === "" ? "" : String(fy),
               onChange: (v2) => selectFy(v2),
               options: [
