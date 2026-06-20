@@ -24,6 +24,7 @@ async function delSetting(key: string): Promise<void> {
 }
 
 const DATA_TABLES = [
+  'spare_part_movements',
   'production_outputs',
   'productions',
   'rack_sales',
@@ -41,6 +42,7 @@ const DATA_TABLES = [
   'diesel_issues',
   'diesel_purchases',
   'plant_expenses',
+  'spare_parts',
   'assets',
   'stock_locations',
   'racks',

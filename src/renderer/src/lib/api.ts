@@ -35,6 +35,8 @@ import type {
   Asset,
   MachineLog,
   AssetDocument,
+  SparePart,
+  SparePartMovement,
   MachineBalanceSheet,
   MachineMileageRow,
   MachineOverviewRow,
@@ -305,6 +307,19 @@ export const api = {
     reminders: (days?: number) => call<AssetDocument[]>('machinery.reminders', { days }),
     reminderSettings: () => call<{ days: number }>('machinery.reminderSettings'),
     setReminderDays: (days: number) => call<{ ok: boolean }>('machinery.setReminderDays', { days })
+  },
+  parts: {
+    list: (filter?: { plant_id?: number; part_type?: string }) =>
+      call<SparePart[]>('parts.list', filter ?? {}),
+    create: (p: Partial<SparePart> & { opening_qty?: number }) => call<SparePart>('parts.create', p),
+    update: (p: Partial<SparePart> & { id: number }) => call<SparePart>('parts.update', p),
+    stockIn: (p: { part_id: number; quantity: number; date: string; note?: string }) =>
+      call<{ ok: boolean }>('parts.stockIn', p),
+    stockOut: (p: { part_id: number; asset_id: number; quantity: number; date: string; note?: string }) =>
+      call<{ ok: boolean }>('parts.stockOut', p),
+    movements: (filter?: { part_id?: number; asset_id?: number; from?: string; to?: string }) =>
+      call<SparePartMovement[]>('parts.movements', filter ?? {}),
+    delete: (id: number) => call<{ ok: boolean; error?: string }>('parts.delete', { id })
   },
   businesses: {
     list: () => call<Business[]>('businesses.list'),

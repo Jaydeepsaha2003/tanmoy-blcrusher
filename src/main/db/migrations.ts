@@ -860,6 +860,34 @@ CREATE TABLE IF NOT EXISTS asset_documents (
 CREATE INDEX idx_mlog_asset ON machine_logs(asset_id);
 CREATE INDEX idx_adoc_asset ON asset_documents(asset_id);
 CREATE INDEX idx_adoc_expiry ON asset_documents(expiry_date)`
+  },
+  {
+    // Standalone spare-parts inventory under Machines & Vehicles.
+    id: '019_spare_parts_stock',
+    sql: `CREATE TABLE IF NOT EXISTS spare_parts (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  name       VARCHAR(255) NOT NULL,
+  part_type  VARCHAR(32) NOT NULL DEFAULT 'new',
+  unit       VARCHAR(32) NOT NULL DEFAULT 'PCS',
+  plant_id   INT,
+  min_qty    DOUBLE NOT NULL DEFAULT 0,
+  remarks    TEXT,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS spare_part_movements (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  part_id       INT NOT NULL,
+  asset_id      INT,
+  movement_type VARCHAR(32) NOT NULL,
+  ref_no        VARCHAR(191) NOT NULL DEFAULT '',
+  quantity      DOUBLE NOT NULL,
+  date          VARCHAR(32) NOT NULL,
+  note          TEXT,
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_spare_parts_plant ON spare_parts(plant_id);
+CREATE INDEX idx_part_moves_part ON spare_part_movements(part_id);
+CREATE INDEX idx_part_moves_asset ON spare_part_movements(asset_id)`
   }
 ]
 

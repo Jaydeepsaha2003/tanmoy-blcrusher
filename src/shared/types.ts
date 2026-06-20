@@ -312,7 +312,7 @@ export interface Purchase {
   plant_name?: string
   stock_location_id: number
   stock_location_name?: string
-  /** 'raw' = raw material into a location; 'finished' = a product into finished-goods stock. */
+  /** Raw material or finished product. */
   material_type: MaterialType
   /** 'purchase' = buy from supplier; 'mining' = extract from supplier's land (royalty). */
   purchase_mode: PurchaseMode
@@ -755,6 +755,37 @@ export interface Asset {
   plant_names?: string[]
   status: Status
   remarks: string
+  created_at: string
+}
+
+export type SparePartType = 'new' | 'repairable' | 'scrap'
+
+export interface SparePart {
+  id: number
+  name: string
+  part_type: SparePartType
+  unit: string
+  plant_id: number | null
+  plant_name?: string | null
+  min_qty: number
+  remarks: string
+  created_at: string
+  balance_qty: number
+}
+
+export interface SparePartMovement {
+  id: number
+  part_id: number
+  part_name?: string
+  part_type?: SparePartType
+  unit?: string
+  asset_id: number | null
+  asset_name?: string | null
+  movement_type: 'opening' | 'stock_in' | 'stock_out' | 'adjustment'
+  ref_no: string
+  quantity: number
+  date: string
+  note: string
   created_at: string
 }
 

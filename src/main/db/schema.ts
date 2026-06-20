@@ -244,6 +244,29 @@ CREATE TABLE IF NOT EXISTS production_outputs (
   quantity      REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS spare_parts (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  name       TEXT NOT NULL,
+  part_type  TEXT NOT NULL DEFAULT 'new',
+  unit       TEXT NOT NULL DEFAULT 'PCS',
+  plant_id   INTEGER REFERENCES plants(id),
+  min_qty    REAL NOT NULL DEFAULT 0,
+  remarks    TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS spare_part_movements (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  part_id       INTEGER NOT NULL REFERENCES spare_parts(id),
+  asset_id      INTEGER REFERENCES assets(id),
+  movement_type TEXT NOT NULL,
+  ref_no        TEXT NOT NULL DEFAULT '',
+  quantity      REAL NOT NULL,
+  date          TEXT NOT NULL,
+  note          TEXT NOT NULL DEFAULT '',
+  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS finished_goods_opening (
   plant_id     INTEGER NOT NULL REFERENCES plants(id),
   product_name TEXT NOT NULL,
@@ -635,4 +658,7 @@ CREATE INDEX IF NOT EXISTS idx_adoc_expiry ON asset_documents(expiry_date);
 CREATE INDEX IF NOT EXISTS idx_aplants_asset ON asset_plants(asset_id);
 CREATE INDEX IF NOT EXISTS idx_aplants_plant ON asset_plants(plant_id);
 CREATE INDEX IF NOT EXISTS idx_amoves_asset ON asset_plant_moves(asset_id);
+CREATE INDEX IF NOT EXISTS idx_spare_parts_plant ON spare_parts(plant_id);
+CREATE INDEX IF NOT EXISTS idx_part_moves_part ON spare_part_movements(part_id);
+CREATE INDEX IF NOT EXISTS idx_part_moves_asset ON spare_part_movements(asset_id);
 `

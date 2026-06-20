@@ -26,6 +26,7 @@ import { OutsourceVendors } from './pages/OutsourceVendors'
 import { Assets } from './pages/Assets'
 import { MachineDetail } from './pages/MachineDetail'
 import { MachineLogs } from './pages/MachineLogs'
+import { SpareParts } from './pages/SpareParts'
 import { Maintenance } from './pages/Maintenance'
 import { Reminders } from './pages/Reminders'
 import { PlantExpenses } from './pages/PlantExpenses'
@@ -79,6 +80,7 @@ function AppRoutes(): React.JSX.Element {
       <Route path="/assets" element={<Guard module="masters"><Assets /></Guard>} />
       <Route path="/machinery/:id" element={<Guard module="masters"><MachineDetail /></Guard>} />
       <Route path="/machine-logs" element={<Guard module="masters"><MachineLogs /></Guard>} />
+      <Route path="/spare-parts" element={<Guard module="masters"><SpareParts /></Guard>} />
       <Route path="/maintenance" element={<Guard module="plantExpenses"><Maintenance /></Guard>} />
       <Route path="/reminders" element={<Guard module="masters"><Reminders /></Guard>} />
       <Route path="/plant-expenses" element={<Guard module="plantExpenses"><PlantExpenses /></Guard>} />

@@ -18,6 +18,7 @@ import * as racks from './services/racks'
 import * as ledgers from './services/ledgers'
 import * as assets from './services/assets'
 import * as machinery from './services/machinery'
+import * as parts from './services/parts'
 import * as plantExpenses from './services/plantExpenses'
 import * as budget from './services/budget'
 import * as diesel from './services/diesel'
@@ -185,6 +186,14 @@ export const handlers: Record<string, (payload: any) => unknown> = {
   'machinery.reminders': machinery.getDocumentReminders,
   'machinery.reminderSettings': machinery.getReminderSettings,
   'machinery.setReminderDays': machinery.setReminderDays,
+
+  'parts.list': parts.listParts,
+  'parts.create': parts.createPart,
+  'parts.update': parts.updatePart,
+  'parts.stockIn': parts.stockIn,
+  'parts.stockOut': parts.stockOut,
+  'parts.movements': parts.listPartMovements,
+  'parts.delete': parts.deletePart,
 
   'businesses.list': businesses.listBusinesses,
   'businesses.create': businesses.createBusiness,
