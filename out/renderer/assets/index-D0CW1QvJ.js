@@ -11402,6 +11402,20 @@ const api = {
     delete: (id2) => call("assets.delete", { id: id2 }),
     report: (id2) => call("assets.report", { id: id2 })
   },
+  machinery: {
+    logs: (asset_id, from, to) => call("machinery.logs", { asset_id, from, to }),
+    addLog: (p2) => call("machinery.addLog", p2),
+    updateLog: (p2) => call("machinery.updateLog", p2),
+    deleteLog: (id2) => call("machinery.deleteLog", { id: id2 }),
+    balanceSheet: (asset_id, from, to) => call("machinery.balanceSheet", { asset_id, from, to }),
+    documents: (asset_id) => call("machinery.documents", { asset_id }),
+    addDocument: (p2) => call("machinery.addDocument", p2),
+    updateDocument: (p2) => call("machinery.updateDocument", p2),
+    deleteDocument: (id2) => call("machinery.deleteDocument", { id: id2 }),
+    reminders: (days2) => call("machinery.reminders", { days: days2 }),
+    reminderSettings: () => call("machinery.reminderSettings"),
+    setReminderDays: (days2) => call("machinery.setReminderDays", { days: days2 })
+  },
   businesses: {
     list: () => call("businesses.list"),
     create: (p2) => call("businesses.create", p2),
@@ -11771,6 +11785,24 @@ const ArrowUpFromLine = createLucideIcon("ArrowUpFromLine", [
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
+const BellRing = createLucideIcon("BellRing", [
+  ["path", { d: "M10.268 21a2 2 0 0 0 3.464 0", key: "vwvbt9" }],
+  ["path", { d: "M22 8c0-2.3-.8-4.3-2-6", key: "5bb3ad" }],
+  [
+    "path",
+    {
+      d: "M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326",
+      key: "11g9vi"
+    }
+  ],
+  ["path", { d: "M4 2C2.8 3.7 2 5.7 2 8", key: "tap9e0" }]
+]);
+/**
+ * @license lucide-react v0.468.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
 const BookOpen = createLucideIcon("BookOpen", [
   ["path", { d: "M12 7v14", key: "1akyts" }],
   [
@@ -12013,6 +12045,19 @@ const FileSpreadsheet = createLucideIcon("FileSpreadsheet", [
   ["path", { d: "M14 13h2", key: "un5t4a" }],
   ["path", { d: "M8 17h2", key: "2yhykz" }],
   ["path", { d: "M14 17h2", key: "10kma7" }]
+]);
+/**
+ * @license lucide-react v0.468.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const FileText = createLucideIcon("FileText", [
+  ["path", { d: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z", key: "1rqfz7" }],
+  ["path", { d: "M14 2v4a2 2 0 0 0 2 2h4", key: "tnqrlb" }],
+  ["path", { d: "M10 9H8", key: "b1mrlr" }],
+  ["path", { d: "M16 13H8", key: "t4e002" }],
+  ["path", { d: "M16 17H8", key: "z1uh3a" }]
 ]);
 /**
  * @license lucide-react v0.468.0 - ISC
@@ -12321,6 +12366,22 @@ const Package = createLucideIcon("Package", [
   ["path", { d: "M12 22V12", key: "d0xqtd" }],
   ["path", { d: "m3.3 7 7.703 4.734a2 2 0 0 0 1.994 0L20.7 7", key: "yx3hmr" }],
   ["path", { d: "m7.5 4.27 9 5.15", key: "1c824w" }]
+]);
+/**
+ * @license lucide-react v0.468.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const Paperclip = createLucideIcon("Paperclip", [
+  ["path", { d: "M13.234 20.252 21 12.3", key: "1cbrk9" }],
+  [
+    "path",
+    {
+      d: "m16 6-8.414 8.586a2 2 0 0 0 0 2.828 2 2 0 0 0 2.828 0l8.414-8.586a4 4 0 0 0 0-5.656 4 4 0 0 0-5.656 0l-8.415 8.585a6 6 0 1 0 8.486 8.486",
+      key: "1pkts6"
+    }
+  ]
 ]);
 /**
  * @license lucide-react v0.468.0 - ISC
@@ -35856,6 +35917,7 @@ const NAV = [
       { to: "/plants", label: "Plants", icon: Factory, module: "masters" },
       { to: "/businesses", label: "Businesses", icon: Briefcase, module: "masters" },
       { to: "/assets", label: "Machinery & Vehicles", icon: Wrench, module: "masters" },
+      { to: "/reminders", label: "Reminders", icon: BellRing, module: "masters" },
       { to: "/employees", label: "Employees", icon: UsersRound, module: "payroll" },
       { to: "/suppliers", label: "Suppliers", icon: Users, module: "masters" },
       { to: "/customers", label: "Customers", icon: SquareUserRound, module: "masters" },
@@ -58702,7 +58764,9 @@ function SectionLabel({ children }) {
 }
 function Dashboard() {
   const { plantId } = usePlant();
+  const nav = useNavigate();
   const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
+  const { data: reminders = [] } = useQuery({ queryKey: ["reminders"], queryFn: () => api.machinery.reminders() });
   const { data } = useQuery({
     queryKey: ["dashboard", plantId],
     queryFn: () => api.dashboard.get(plantId),
@@ -58727,6 +58791,24 @@ function Dashboard() {
       }
     ),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Page, { children: [
+      reminders.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "button",
+        {
+          onClick: () => nav("/reminders"),
+          className: "mb-4 flex w-full items-center gap-3 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-left text-sm transition-colors hover:bg-warning/15",
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TriangleAlert, { size: 18, className: "shrink-0 text-warning" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: reminders.filter((r2) => r2.reminder_status === "expired").length }),
+              " document(s) expired and",
+              " ",
+              /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: reminders.filter((r2) => r2.reminder_status === "due").length }),
+              " expiring soon on your machines."
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ml-auto font-medium text-primary", children: "View reminders →" })
+          ]
+        }
+      ),
       /* @__PURE__ */ jsxRuntimeExports.jsxs(SectionLabel, { children: [
         "Inventory & Sales",
         plantId ? ` — ${activePlant}` : ""
@@ -62233,18 +62315,13 @@ const CATEGORIES = ["Crusher", "Tipper", "Excavator", "JCB", "JCB Loader", "Load
 function Assets() {
   const qc2 = useQueryClient();
   const toast = useToast();
+  const nav = useNavigate();
   const { plantId } = usePlant();
   const { data = [] } = useQuery({ queryKey: ["assets", plantId], queryFn: () => api.assets.list(plantId) });
   const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
   const { data: businesses = [] } = useQuery({ queryKey: ["businesses"], queryFn: api.businesses.list });
   const [open, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState({});
-  const [reportFor, setReportFor] = reactExports.useState(null);
-  const { data: report } = useQuery({
-    queryKey: ["assetReport", reportFor?.id],
-    queryFn: () => api.assets.report(reportFor.id),
-    enabled: !!reportFor
-  });
   const save = useMutation({
     mutationFn: (p2) => p2.id ? api.assets.update(p2) : api.assets.create(p2),
     onSuccess: () => {
@@ -62312,7 +62389,7 @@ function Assets() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: a2.business_name || "-" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "capitalize text-muted-foreground", children: a2.status }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Machine report", onClick: () => setReportFor(a2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChartColumn, { size: 15 }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Logbook, balance sheet & documents", onClick: () => nav(`/machinery/${a2.id}`), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Gauge, { size: 15 }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => {
             setForm(a2);
             setOpen(true);
@@ -62332,6 +62409,8 @@ function Assets() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Identifier / Reg. No.", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.identifier || "", onChange: (e3) => setForm({ ...form, identifier: e3.target.value }), placeholder: "e.g. JH-01-AB-1234" }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", hint: "Common = shared by all plants", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.plant_id ?? "", onChange: (v2) => setForm({ ...form, plant_id: v2 ? Number(v2) : null }), options: [{ value: "", label: "Common (all plants)" }, ...plants.map((p2) => ({ value: p2.id, label: p2.name }))] }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Owning Business / Firm", hint: "Costs & rent of this machine roll up here", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.business_id ?? "", onChange: (v2) => setForm({ ...form, business_id: v2 ? Number(v2) : null }), options: [{ value: "", label: "— None —" }, ...businesses.map((b2) => ({ value: b2.id, label: b2.name }))] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Meter", hint: "Machines run on hours; vehicles on km", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.meter_type || (form.asset_type === "vehicle" ? "km" : "hour"), onChange: (v2) => setForm({ ...form, meter_type: v2 }), options: [{ value: "hour", label: "Hours" }, { value: "km", label: "Kilometres" }] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Standard fuel", hint: `Litres per ${(form.meter_type || (form.asset_type === "vehicle" ? "km" : "hour")) === "km" ? "km" : "hour"} (for the over-use check)`, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.standard_consumption ?? "", onChange: (e3) => setForm({ ...form, standard_consumption: e3.target.value === "" ? null : Number(e3.target.value) }), placeholder: "Optional" }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Status", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.status || "active", onChange: (v2) => setForm({ ...form, status: v2 }), options: [{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }] }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.remarks || "", onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) }) })
       ] }),
@@ -62339,35 +62418,406 @@ function Assets() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setOpen(false), children: "Cancel" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: () => save.mutate(form), disabled: !form.name?.trim(), children: "Save" })
       ] })
-    ] }),
-    reportFor && /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { open: true, onClose: () => setReportFor(null), title: `Report — ${reportFor.name}`, width: "max-w-lg", children: [
-      !report ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted-foreground", children: "Loading…" }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs text-muted-foreground", children: report.business_name ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-          "Business: ",
-          /* @__PURE__ */ jsxRuntimeExports.jsx("b", { className: "text-foreground", children: report.business_name })
-        ] }) : "Not linked to a business" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-3", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(RptCard, { label: "Diesel Consumed", value: `${fmtQty(report.diesel_litres)} L` }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(RptCard, { label: "Diesel Cost (avg)", value: fmtMoney(report.diesel_cost), tone: "destructive" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(RptCard, { label: "Maintenance", value: fmtMoney(report.maintenance), tone: "destructive" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(RptCard, { label: "Operator Wages", value: fmtMoney(report.wages), tone: "destructive" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(RptCard, { label: "Other Expenses", value: fmtMoney(report.other_expense), tone: "destructive" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(RptCard, { label: "Rent Earned", value: fmtMoney(report.rent_income), tone: "success" })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between rounded-lg border bg-muted/40 px-4 py-3", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm font-semibold", children: "Net to Business (rent − costs)" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `tnum text-lg font-bold ${report.net < 0 ? "text-destructive" : "text-success"}`, children: fmtMoney(report.net) })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[11px] text-muted-foreground", children: "Diesel is valued at the average purchase rate. Operator wages count when a wage entry is tagged to this machine." })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-5 flex justify-end", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setReportFor(null), children: "Close" }) })
     ] })
   ] });
 }
-function RptCard({ label, value, tone }) {
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-lg border p-3", children: [
+const DOC_TYPES = [
+  { value: "insurance", label: "Insurance" },
+  { value: "permit", label: "Permit" },
+  { value: "fitness", label: "Fitness" },
+  { value: "puc", label: "PUC / Pollution" },
+  { value: "rc", label: "Registration (RC)" },
+  { value: "tax", label: "Road Tax" },
+  { value: "other", label: "Other" }
+];
+const docLabel$1 = (t2) => DOC_TYPES.find((d2) => d2.value === t2)?.label ?? t2;
+function MachineDetail() {
+  const { id: id2 } = useParams();
+  const assetId = Number(id2);
+  const qc2 = useQueryClient();
+  const toast = useToast();
+  const nav = useNavigate();
+  const [tab, setTab] = reactExports.useState("sheet");
+  const [from, setFrom] = reactExports.useState("");
+  const [to, setTo] = reactExports.useState("");
+  const { data: assets = [] } = useQuery({ queryKey: ["assets"], queryFn: () => api.assets.list() });
+  const asset = assets.find((a2) => a2.id === assetId);
+  const unit2 = (asset?.meter_type ?? "hour") === "km" ? "km" : "hr";
+  const { data: sheet } = useQuery({
+    queryKey: ["machineSheet", assetId, from, to],
+    queryFn: () => api.machinery.balanceSheet(assetId, from || void 0, to || void 0)
+  });
+  const { data: logs = [] } = useQuery({
+    queryKey: ["machineLogs", assetId, from, to],
+    queryFn: () => api.machinery.logs(assetId, from || void 0, to || void 0)
+  });
+  const { data: docs = [] } = useQuery({
+    queryKey: ["machineDocs", assetId],
+    queryFn: () => api.machinery.documents(assetId)
+  });
+  const refresh = () => {
+    qc2.invalidateQueries({ queryKey: ["machineSheet"] });
+    qc2.invalidateQueries({ queryKey: ["machineLogs"] });
+    qc2.invalidateQueries({ queryKey: ["machineDocs"] });
+    qc2.invalidateQueries({ queryKey: ["reminders"] });
+  };
+  const [logForm, setLogForm] = reactExports.useState(null);
+  const saveLog = useMutation({
+    mutationFn: (p2) => p2.id ? api.machinery.updateLog(p2) : api.machinery.addLog(p2),
+    onSuccess: () => {
+      refresh();
+      setLogForm(null);
+      toast.success("Logbook entry saved.");
+    },
+    onError: (e3) => toast.error(e3.message)
+  });
+  async function removeLog(l2) {
+    if (!await confirmDialog({ title: "Delete entry", message: `Delete the log for ${fmtDate(l2.date)}?` })) return;
+    await api.machinery.deleteLog(l2.id);
+    refresh();
+    toast.success("Deleted.");
+  }
+  const logUsage = logForm ? (Number(logForm.closing_meter) || 0) - (Number(logForm.opening_meter) || 0) : 0;
+  const [docForm, setDocForm] = reactExports.useState(null);
+  const docFileRef = reactExports.useRef(null);
+  const saveDoc = useMutation({
+    mutationFn: (p2) => p2.id ? api.machinery.updateDocument(p2) : api.machinery.addDocument(p2),
+    onSuccess: (res) => {
+      if (res.ok) {
+        refresh();
+        setDocForm(null);
+        toast.success("Document saved.");
+      } else toast.error(res.error || "Could not save.");
+    },
+    onError: (e3) => toast.error(e3.message)
+  });
+  async function removeDoc(dc2) {
+    if (!await confirmDialog({ title: "Delete document", message: `Delete this ${docLabel$1(dc2.doc_type)} record?` })) return;
+    await api.machinery.deleteDocument(dc2.id);
+    refresh();
+    toast.success("Deleted.");
+  }
+  function onDocFile(file) {
+    if (file.size > 6e6) {
+      toast.error("File is too large (max ~6 MB).");
+      return;
+    }
+    const r2 = new FileReader();
+    r2.onload = () => setDocForm((f2) => ({ ...f2, file_data: String(r2.result), file_name: file.name }));
+    r2.onerror = () => toast.error("Could not read the file.");
+    r2.readAsDataURL(file);
+  }
+  if (!Number.isFinite(assetId)) return /* @__PURE__ */ jsxRuntimeExports.jsx(Page, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "Invalid machine." }) });
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      PageHeader,
+      {
+        title: asset?.name ?? "Machine",
+        description: asset ? `${asset.asset_type === "vehicle" ? "Vehicle" : "Machine"}${asset.category ? ` · ${asset.category}` : ""}${asset.identifier ? ` · ${asset.identifier}` : ""}${asset.business_name ? ` · ${asset.business_name}` : ""}` : "",
+        actions: /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", onClick: () => nav("/assets"), children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowLeft, { size: 16 }),
+          " Machinery"
+        ] })
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(Page, { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-4 flex flex-wrap gap-2", children: [["sheet", "Balance Sheet", ChartColumn], ["logbook", "Logbook", Gauge], ["documents", "Documents", FileText]].map(([key, label, Icon2]) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "button",
+        {
+          onClick: () => setTab(key),
+          className: "inline-flex items-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors " + (tab === key ? "border-primary bg-primary/5 text-foreground" : "border-input text-muted-foreground hover:bg-accent"),
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Icon2, { size: 15 }),
+            " ",
+            label,
+            key === "documents" && docs.some((x2) => x2.reminder_status && x2.reminder_status !== "ok") && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ml-0.5 h-2 w-2 rounded-full bg-destructive" })
+          ]
+        },
+        key
+      )) }),
+      tab !== "documents" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap items-center gap-2 text-sm", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-muted-foreground", children: "Period" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", className: "w-40", value: from, onChange: (e3) => setFrom(e3.target.value) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-muted-foreground", children: "to" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", className: "w-40", value: to, onChange: (e3) => setTo(e3.target.value) }),
+        (from || to) && /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "sm", onClick: () => {
+          setFrom("");
+          setTo("");
+        }, children: "All time" })
+      ] }),
+      tab === "sheet" && sheet && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-5", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-3 sm:grid-cols-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Metric, { label: `Usage (${unit2})`, value: fmtQty(sheet.usage_qty) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            Metric,
+            {
+              label: "Fuel used (L)",
+              value: fmtQty(sheet.fuel_litres),
+              sub: sheet.fuel_source === "logbook" ? "from logbook" : sheet.fuel_source === "diesel" ? "from diesel issues" : "no data"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            Metric,
+            {
+              label: `Actual fuel / ${unit2}`,
+              value: sheet.actual_consumption == null ? "—" : fmtQty(sheet.actual_consumption),
+              sub: sheet.standard_consumption != null ? `std ${fmtQty(sheet.standard_consumption)}` : void 0,
+              tone: sheet.actual_consumption != null && sheet.standard_consumption != null ? sheet.actual_consumption > sheet.standard_consumption ? "destructive" : "success" : void 0
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Metric, { label: `Cost / ${unit2}`, value: sheet.cost_per_unit == null ? "—" : fmtMoney(sheet.cost_per_unit) })
+        ] }),
+        sheet.actual_consumption != null && sheet.standard_consumption != null && sheet.actual_consumption > sheet.standard_consumption && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-2.5 text-sm text-destructive", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TriangleAlert, { size: 16 }),
+          " Burning more fuel than standard — ",
+          fmtQty(sheet.actual_consumption),
+          " vs ",
+          fmtQty(sheet.standard_consumption),
+          " L/",
+          unit2,
+          "."
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(CardContent, { className: "p-0", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Table, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TBody, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SheetRow, { label: "Rent earned (income)", value: fmtMoney(sheet.rent_income), tone: "success" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SheetRow, { label: "Diesel cost (avg rate)", value: fmtMoney(sheet.diesel_cost), tone: "destructive" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SheetRow, { label: "Maintenance", value: fmtMoney(sheet.maintenance), tone: "destructive" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SheetRow, { label: "Operator wages", value: fmtMoney(sheet.wages), tone: "destructive" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SheetRow, { label: "Other expenses", value: fmtMoney(sheet.other_expense), tone: "destructive" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SheetRow, { label: "Total cost", value: fmtMoney(sheet.total_cost), tone: "destructive", bold: true }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { className: "border-t-2 bg-muted/40", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-bold", children: "Net (rent − costs)" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: `tnum text-right text-lg font-bold ${sheet.net < 0 ? "text-destructive" : "text-success"}`, children: fmtMoney(sheet.net) })
+          ] })
+        ] }) }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[11px] text-muted-foreground", children: "Diesel is valued at the average purchase rate. Fuel comes from logbook entries when present, otherwise from diesel issued to this machine. Rent, maintenance and wages come from records tagged to this machine." })
+      ] }),
+      tab === "logbook" && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-3 flex justify-end", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { size: "sm", onClick: () => setLogForm({ asset_id: assetId, date: today(), work_type: "", opening_meter: "", closing_meter: "", fuel_litres: "", remarks: "" }), children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 15 }),
+          " Add Entry"
+        ] }) }),
+        logs.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No logbook entries in this period." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Date" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Work Type" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Opening" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Closing" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(TH, { className: "text-right", children: [
+              "Used (",
+              unit2,
+              ")"
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Fuel (L)" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right" })
+          ] }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: logs.map((l2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "whitespace-nowrap", children: fmtDate(l2.date) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { children: [
+              l2.work_type || "-",
+              l2.remarks && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "block text-[11px] text-muted-foreground", children: l2.remarks })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: fmtQty(l2.opening_meter) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: fmtQty(l2.closing_meter) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right font-semibold", children: fmtQty(l2.usage_qty) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: l2.fuel_litres == null ? "—" : fmtQty(l2.fuel_litres) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => setLogForm({ ...l2, fuel_litres: l2.fuel_litres ?? "" }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => removeLog(l2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+            ] })
+          ] }, l2.id)) })
+        ] })
+      ] }),
+      tab === "documents" && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-3 flex justify-end", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { size: "sm", onClick: () => setDocForm({ asset_id: assetId, doc_type: "insurance", number: "", issue_date: "", expiry_date: "", file_data: "", remarks: "" }), children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 15 }),
+          " Add Document"
+        ] }) }),
+        docs.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No documents recorded for this machine." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Type" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Number" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Issued" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Expiry" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Status" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "File" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right" })
+          ] }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: docs.map((dc2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: docLabel$1(dc2.doc_type) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-mono text-xs", children: dc2.number || "-" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: dc2.issue_date ? fmtDate(dc2.issue_date) : "-" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: dc2.expiry_date ? fmtDate(dc2.expiry_date) : "-" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(ExpiryBadge, { dc: dc2 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: dc2.file_data ? /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "text-xs font-medium text-primary hover:underline", onClick: () => window.open(dc2.file_data, "_blank"), children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Paperclip, { size: 12, className: "mr-0.5 inline" }),
+              " View"
+            ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-muted-foreground", children: "—" }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => setDocForm({ ...dc2, issue_date: dc2.issue_date ?? "", expiry_date: dc2.expiry_date ?? "", file_data: dc2.file_data ?? "" }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => removeDoc(dc2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+            ] })
+          ] }, dc2.id)) })
+        ] })
+      ] })
+    ] }),
+    logForm && /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { open: true, onClose: () => setLogForm(null), title: logForm.id ? "Edit Logbook Entry" : "New Logbook Entry", width: "max-w-xl", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: logForm.date, onChange: (e3) => setLogForm({ ...logForm, date: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Work Type", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: logForm.work_type, onChange: (e3) => setLogForm({ ...logForm, work_type: e3.target.value }), placeholder: "Loading, Excavation, Transport…" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `Opening meter (${unit2})`, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: logForm.opening_meter, onChange: (e3) => setLogForm({ ...logForm, opening_meter: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `Closing meter (${unit2})`, hint: logUsage > 0 ? `Used ${fmtQty(logUsage)} ${unit2}` : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: logForm.closing_meter, onChange: (e3) => setLogForm({ ...logForm, closing_meter: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Fuel used (L)", hint: "Leave blank to use diesel issued instead", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: logForm.fuel_litres, onChange: (e3) => setLogForm({ ...logForm, fuel_litres: e3.target.value }), placeholder: "Optional" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: logForm.remarks, onChange: (e3) => setLogForm({ ...logForm, remarks: e3.target.value }) }) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 flex justify-end gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setLogForm(null), children: "Cancel" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Button,
+          {
+            onClick: () => saveLog.mutate({
+              ...logForm,
+              opening_meter: Number(logForm.opening_meter) || 0,
+              closing_meter: Number(logForm.closing_meter) || 0,
+              fuel_litres: logForm.fuel_litres === "" || logForm.fuel_litres == null ? null : Number(logForm.fuel_litres)
+            }),
+            disabled: !logForm.date,
+            children: "Save"
+          }
+        )
+      ] })
+    ] }),
+    docForm && /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { open: true, onClose: () => setDocForm(null), title: docForm.id ? "Edit Document" : "New Document", width: "max-w-xl", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Document Type", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: docForm.doc_type, onChange: (v2) => setDocForm({ ...docForm, doc_type: v2 }), options: DOC_TYPES }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Number", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: docForm.number, onChange: (e3) => setDocForm({ ...docForm, number: e3.target.value }), placeholder: "Policy / certificate no." }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Issue Date", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: docForm.issue_date, onChange: (e3) => setDocForm({ ...docForm, issue_date: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Expiry Date", hint: "Drives the reminder", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: docForm.expiry_date, onChange: (e3) => setDocForm({ ...docForm, expiry_date: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sm:col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Attachment", hint: "Scan or photo of the document (optional, max ~6 MB)", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
+          docForm.file_data ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "inline-flex items-center gap-1 text-xs text-success", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Paperclip, { size: 12 }),
+            " ",
+            docForm.file_name || "Attached"
+          ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-muted-foreground", children: "No file" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("input", { ref: docFileRef, type: "file", accept: "image/*,application/pdf", className: "hidden", onChange: (e3) => {
+            const f2 = e3.target.files?.[0];
+            if (f2) onDocFile(f2);
+            e3.target.value = "";
+          } }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", size: "sm", onClick: () => docFileRef.current?.click(), children: docForm.file_data ? "Replace" : "Attach" }),
+          docForm.file_data && /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "sm", onClick: () => setDocForm({ ...docForm, file_data: "", file_name: "" }), children: "Remove" })
+        ] }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sm:col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: docForm.remarks, onChange: (e3) => setDocForm({ ...docForm, remarks: e3.target.value }) }) }) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 flex justify-end gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setDocForm(null), children: "Cancel" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: () => saveDoc.mutate(docForm), children: "Save" })
+      ] })
+    ] })
+  ] });
+}
+function Metric({ label, value, sub, tone }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border bg-card p-3.5", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: label }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `tnum mt-0.5 text-base font-bold ${tone === "success" ? "text-success" : tone === "destructive" ? "text-destructive" : ""}`, children: value })
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `tnum mt-0.5 text-xl font-bold ${tone === "success" ? "text-success" : tone === "destructive" ? "text-destructive" : ""}`, children: value }),
+    sub && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] text-muted-foreground", children: sub })
+  ] });
+}
+function SheetRow({ label, value, tone, bold }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: bold ? "font-semibold" : "", children: label }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: `tnum text-right ${bold ? "font-semibold" : ""} ${tone === "success" ? "text-success" : tone === "destructive" ? "text-destructive" : ""}`, children: value })
+  ] });
+}
+function ExpiryBadge({ dc: dc2 }) {
+  if (!dc2.expiry_date) return /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-muted-foreground", children: "—" });
+  const status = dc2.reminder_status;
+  if (status === "expired") return /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "destructive", children: "Expired" });
+  if (dc2.days_left != null && dc2.days_left <= 60) return /* @__PURE__ */ jsxRuntimeExports.jsxs(Badge, { variant: "warning", children: [
+    dc2.days_left,
+    "d left"
+  ] });
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "success", children: "Valid" });
+}
+const docLabel = {
+  insurance: "Insurance",
+  permit: "Permit",
+  fitness: "Fitness",
+  puc: "PUC / Pollution",
+  rc: "Registration (RC)",
+  tax: "Road Tax",
+  other: "Other"
+};
+function Reminders() {
+  const qc2 = useQueryClient();
+  const toast = useToast();
+  const nav = useNavigate();
+  const { data: settings } = useQuery({ queryKey: ["reminderSettings"], queryFn: api.machinery.reminderSettings });
+  const { data: rows = [] } = useQuery({ queryKey: ["reminders"], queryFn: () => api.machinery.reminders() });
+  const [days2, setDays] = reactExports.useState("");
+  reactExports.useEffect(() => {
+    if (settings?.days != null) setDays(String(settings.days));
+  }, [settings]);
+  const saveDays = useMutation({
+    mutationFn: (n2) => api.machinery.setReminderDays(n2),
+    onSuccess: () => {
+      qc2.invalidateQueries({ queryKey: ["reminderSettings"] });
+      qc2.invalidateQueries({ queryKey: ["reminders"] });
+      toast.success("Reminder window updated.");
+    },
+    onError: (e3) => toast.error(e3.message)
+  });
+  const expired = rows.filter((r2) => r2.reminder_status === "expired");
+  const due = rows.filter((r2) => r2.reminder_status === "due");
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      PageHeader,
+      {
+        title: "Reminders",
+        description: "Machine documents that have expired or are expiring soon — insurance, permit, fitness, PUC and more"
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(Page, { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap items-center gap-2 rounded-lg border bg-card px-4 py-3 text-sm", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(BellRing, { size: 16, className: "text-primary" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Remind me" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", className: "w-20", value: days2, onChange: (e3) => setDays(e3.target.value) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "days before a document expires." }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { size: "sm", onClick: () => saveDays.mutate(Math.max(1, Number(days2) || 30)), disabled: !days2, children: "Save" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "ml-auto text-muted-foreground", children: [
+          expired.length,
+          " expired · ",
+          due.length,
+          " due soon"
+        ] })
+      ] }),
+      rows.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "Nothing expiring. All machine documents are valid." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Machine" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Document" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Number" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Expiry" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Status" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right" })
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: rows.map((r2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { className: r2.reminder_status === "expired" ? "bg-destructive/5" : "", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: r2.asset_name }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: docLabel[r2.doc_type] ?? r2.doc_type }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-mono text-xs", children: r2.number || "-" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: r2.expiry_date ? fmtDate(r2.expiry_date) : "-" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: r2.reminder_status === "expired" ? /* @__PURE__ */ jsxRuntimeExports.jsxs(Badge, { variant: "destructive", children: [
+            "Expired",
+            r2.days_left != null ? ` ${Math.abs(r2.days_left)}d ago` : ""
+          ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Badge, { variant: "warning", children: [
+            r2.days_left,
+            "d left"
+          ] }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "ghost", size: "sm", onClick: () => nav(`/machinery/${r2.asset_id}`), children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Gauge, { size: 14 }),
+            " Open"
+          ] }) })
+        ] }, r2.id)) })
+      ] })
+    ] })
   ] });
 }
 const CATS = [
@@ -66463,6 +66913,8 @@ function AppRoutes() {
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/businesses", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "masters", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Businesses, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/outsource", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "masters", children: /* @__PURE__ */ jsxRuntimeExports.jsx(OutsourceVendors, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/assets", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "masters", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Assets, {}) }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/machinery/:id", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "masters", children: /* @__PURE__ */ jsxRuntimeExports.jsx(MachineDetail, {}) }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/reminders", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "masters", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Reminders, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/plant-expenses", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "plantExpenses", children: /* @__PURE__ */ jsxRuntimeExports.jsx(PlantExpenses, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/diesel", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "diesel", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Diesel, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/employees", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "payroll", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Employees, {}) }) }),

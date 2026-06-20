@@ -587,6 +587,31 @@ CREATE TABLE IF NOT EXISTS assets (
   created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
+CREATE TABLE IF NOT EXISTS machine_logs (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  asset_id      INTEGER NOT NULL REFERENCES assets(id),
+  date          TEXT NOT NULL,
+  work_type     TEXT NOT NULL DEFAULT '',
+  opening_meter REAL NOT NULL DEFAULT 0,
+  closing_meter REAL NOT NULL DEFAULT 0,
+  usage_qty     REAL NOT NULL DEFAULT 0,
+  fuel_litres   REAL,
+  remarks       TEXT NOT NULL DEFAULT '',
+  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS asset_documents (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  asset_id    INTEGER NOT NULL REFERENCES assets(id),
+  doc_type    TEXT NOT NULL DEFAULT 'other',
+  number      TEXT NOT NULL DEFAULT '',
+  issue_date  TEXT,
+  expiry_date TEXT,
+  file_data   TEXT,
+  remarks     TEXT NOT NULL DEFAULT '',
+  created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS plant_expenses (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   expense_no     TEXT NOT NULL UNIQUE,
@@ -745,6 +770,9 @@ CREATE INDEX IF NOT EXISTS idx_dmach_dispatch ON dispatch_machines(dispatch_id);
 CREATE INDEX IF NOT EXISTS idx_rstrans_sale ON rack_sale_transporters(rack_sale_id);
 CREATE INDEX IF NOT EXISTS idx_rstrans_transporter ON rack_sale_transporters(transporter_id);
 CREATE INDEX IF NOT EXISTS idx_rsmach_sale ON rack_sale_machines(rack_sale_id);
+CREATE INDEX IF NOT EXISTS idx_mlog_asset ON machine_logs(asset_id);
+CREATE INDEX IF NOT EXISTS idx_adoc_asset ON asset_documents(asset_id);
+CREATE INDEX IF NOT EXISTS idx_adoc_expiry ON asset_documents(expiry_date);
 `;
 
 // src/main/crypto.ts
@@ -1163,7 +1191,32 @@ CREATE TABLE IF NOT EXISTS assets (
   identifier  VARCHAR(64) NOT NULL DEFAULT '',
   plant_id    INT,
   business_id INT,
+  meter_type  VARCHAR(8) NOT NULL DEFAULT 'hour',
+  standard_consumption DOUBLE,
   status      VARCHAR(32) NOT NULL DEFAULT 'active',
+  remarks     TEXT,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS machine_logs (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  asset_id      INT NOT NULL,
+  date          VARCHAR(32) NOT NULL,
+  work_type     VARCHAR(64) NOT NULL DEFAULT '',
+  opening_meter DOUBLE NOT NULL DEFAULT 0,
+  closing_meter DOUBLE NOT NULL DEFAULT 0,
+  usage_qty     DOUBLE NOT NULL DEFAULT 0,
+  fuel_litres   DOUBLE,
+  remarks       TEXT,
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS asset_documents (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  asset_id    INT NOT NULL,
+  doc_type    VARCHAR(32) NOT NULL DEFAULT 'other',
+  number      VARCHAR(128) NOT NULL DEFAULT '',
+  issue_date  VARCHAR(32),
+  expiry_date VARCHAR(32),
+  file_data   MEDIUMTEXT,
   remarks     TEXT,
   created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -1520,6 +1573,38 @@ CREATE INDEX idx_rsmach_sale ON rack_sale_machines(rack_sale_id)`
     // Logo is stored as a data URL in settings — widen the value column to hold it.
     id: "016_settings_value_mediumtext",
     sql: "ALTER TABLE settings MODIFY value MEDIUMTEXT"
+  },
+  {
+    // Machine logbook, balance-sheet inputs and document/insurance tracking.
+    id: "017_machinery_logs_documents",
+    sql: `ALTER TABLE assets ADD COLUMN meter_type VARCHAR(8) NOT NULL DEFAULT 'hour';
+ALTER TABLE assets ADD COLUMN standard_consumption DOUBLE;
+CREATE TABLE IF NOT EXISTS machine_logs (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  asset_id      INT NOT NULL,
+  date          VARCHAR(32) NOT NULL,
+  work_type     VARCHAR(64) NOT NULL DEFAULT '',
+  opening_meter DOUBLE NOT NULL DEFAULT 0,
+  closing_meter DOUBLE NOT NULL DEFAULT 0,
+  usage_qty     DOUBLE NOT NULL DEFAULT 0,
+  fuel_litres   DOUBLE,
+  remarks       TEXT,
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS asset_documents (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  asset_id    INT NOT NULL,
+  doc_type    VARCHAR(32) NOT NULL DEFAULT 'other',
+  number      VARCHAR(128) NOT NULL DEFAULT '',
+  issue_date  VARCHAR(32),
+  expiry_date VARCHAR(32),
+  file_data   MEDIUMTEXT,
+  remarks     TEXT,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_mlog_asset ON machine_logs(asset_id);
+CREATE INDEX idx_adoc_asset ON asset_documents(asset_id);
+CREATE INDEX idx_adoc_expiry ON asset_documents(expiry_date)`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -1586,6 +1671,8 @@ async function sqliteLegacyMigrate(adapter2) {
   await addColumn("purchases", "linked_dispatch_id", "INTEGER");
   await addColumn("suppliers", "plant_ref_id", "INTEGER");
   await addColumn("customers", "plant_ref_id", "INTEGER");
+  await addColumn("assets", "meter_type", `TEXT NOT NULL DEFAULT 'hour'`);
+  await addColumn("assets", "standard_consumption", "REAL");
 }
 async function importProductsFromSettings(adapter2) {
   const all = (await adapter2.exec(`SELECT id, name FROM products ORDER BY id`, void 0, null)).rows;
@@ -1863,6 +1950,7 @@ var PREFIX_MODULE = {
   businesses: "masters",
   outsource: "masters",
   assets: "masters",
+  machinery: "masters",
   purchases: "purchases",
   productionSettings: "production",
   productions: "production",
@@ -5599,12 +5687,19 @@ async function listAssets(payload = {}) {
        ORDER BY a.asset_type, a.name`
   ).all(payload);
 }
+function meterTypeOf(p) {
+  if (p.meter_type === "hour" || p.meter_type === "km") return p.meter_type;
+  return p.asset_type === "vehicle" ? "km" : "hour";
+}
+function stdConsumption(p) {
+  return p.standard_consumption == null || p.standard_consumption === "" ? null : Number(p.standard_consumption);
+}
 async function createAsset(p) {
   const d = getDb();
   if (!p.name?.trim()) throw new Error("Name is required.");
   const info = await d.prepare(
-    `INSERT INTO assets (name, asset_type, category, identifier, plant_id, business_id, status, remarks)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO assets (name, asset_type, category, identifier, plant_id, business_id, meter_type, standard_consumption, status, remarks)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     properCase(p.name),
     p.asset_type || "machine",
@@ -5612,6 +5707,8 @@ async function createAsset(p) {
     (p.identifier ?? "").trim().toUpperCase(),
     p.plant_id ?? null,
     p.business_id ?? null,
+    meterTypeOf(p),
+    stdConsumption(p),
     p.status || "active",
     p.remarks ?? ""
   );
@@ -5620,7 +5717,7 @@ async function createAsset(p) {
 async function updateAsset(p) {
   const d = getDb();
   await d.prepare(
-    `UPDATE assets SET name=?, asset_type=?, category=?, identifier=?, plant_id=?, business_id=?, status=?, remarks=? WHERE id=?`
+    `UPDATE assets SET name=?, asset_type=?, category=?, identifier=?, plant_id=?, business_id=?, meter_type=?, standard_consumption=?, status=?, remarks=? WHERE id=?`
   ).run(
     properCase(p.name),
     p.asset_type || "machine",
@@ -5628,6 +5725,8 @@ async function updateAsset(p) {
     (p.identifier ?? "").trim().toUpperCase(),
     p.plant_id ?? null,
     p.business_id ?? null,
+    meterTypeOf(p),
+    stdConsumption(p),
     p.status || "active",
     p.remarks ?? "",
     p.id
@@ -5651,18 +5750,18 @@ async function assetReport(payload) {
        FROM plant_expenses WHERE asset_id = ?`
   ).get(payload.id);
   const wages = (await d.prepare(`SELECT COALESCE(SUM(amount),0) AS q FROM wage_entries WHERE asset_id = ?`).get(payload.id)).q;
-  const money7 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
-  const net = money7(exp.rent - dieselCost - exp.maintenance - exp.other - wages);
+  const money8 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+  const net = money8(exp.rent - dieselCost - exp.maintenance - exp.other - wages);
   return {
     asset_id: payload.id,
     asset_name: a.name,
     business_name: a.business_name,
-    diesel_litres: money7(litres2),
-    diesel_cost: money7(dieselCost),
-    maintenance: money7(exp.maintenance),
-    other_expense: money7(exp.other),
-    wages: money7(wages),
-    rent_income: money7(exp.rent),
+    diesel_litres: money8(litres2),
+    diesel_cost: money8(dieselCost),
+    maintenance: money8(exp.maintenance),
+    other_expense: money8(exp.other),
+    wages: money8(wages),
+    rent_income: money8(exp.rent),
     net
   };
 }
@@ -5672,12 +5771,252 @@ async function deleteAsset(payload) {
   if (used.c > 0) {
     return { ok: false, error: "Cannot delete: this asset has expense records." };
   }
-  await d.prepare(`DELETE FROM assets WHERE id = ?`).run(payload.id);
+  await d.transaction(async () => {
+    await d.prepare(`DELETE FROM machine_logs WHERE asset_id = ?`).run(payload.id);
+    await d.prepare(`DELETE FROM asset_documents WHERE asset_id = ?`).run(payload.id);
+    await d.prepare(`DELETE FROM assets WHERE id = ?`).run(payload.id);
+  });
+  return { ok: true };
+}
+
+// src/main/services/machinery.ts
+function money3(n) {
+  return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+}
+function round32(n) {
+  return Math.round((Number(n) + Number.EPSILON) * 1e3) / 1e3;
+}
+async function listMachineLogs(payload) {
+  const d = getDb();
+  const where = ["ml.asset_id = @asset_id"];
+  const params = { asset_id: payload.asset_id };
+  if (payload.from) {
+    where.push("ml.date >= @from");
+    params.from = payload.from;
+  }
+  if (payload.to) {
+    where.push("ml.date <= @to");
+    params.to = payload.to;
+  }
+  return await d.prepare(
+    `SELECT ml.*, a.name AS asset_name FROM machine_logs ml
+       JOIN assets a ON a.id = ml.asset_id
+       WHERE ${where.join(" AND ")}
+       ORDER BY ml.date DESC, ml.id DESC`
+  ).all(params);
+}
+function normalizeLog(p) {
+  const opening = Number(p.opening_meter) || 0;
+  const closing = Number(p.closing_meter) || 0;
+  if (closing < opening) throw new Error("Closing meter cannot be less than the opening meter.");
+  const fuel = p.fuel_litres == null || p.fuel_litres === "" ? null : Number(p.fuel_litres);
+  if (fuel != null && fuel < 0) throw new Error("Fuel cannot be negative.");
+  return {
+    work_type: properCase(p.work_type || ""),
+    opening: round32(opening),
+    closing: round32(closing),
+    usage: round32(closing - opening),
+    fuel: fuel == null ? null : round32(fuel)
+  };
+}
+async function addMachineLog(p) {
+  const d = getDb();
+  if (!p.asset_id) throw new Error("Select a machine.");
+  if (!p.date) throw new Error("Date is required.");
+  const n = normalizeLog(p);
+  const info = await d.prepare(
+    `INSERT INTO machine_logs (asset_id, date, work_type, opening_meter, closing_meter, usage_qty, fuel_litres, remarks)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(p.asset_id, p.date, n.work_type, n.opening, n.closing, n.usage, n.fuel, p.remarks ?? "");
+  return await d.prepare(`SELECT * FROM machine_logs WHERE id = ?`).get(info.lastInsertRowid);
+}
+async function updateMachineLog(p) {
+  const d = getDb();
+  if (!p.id) throw new Error("Missing log id.");
+  if (!p.date) throw new Error("Date is required.");
+  const n = normalizeLog(p);
+  await d.prepare(
+    `UPDATE machine_logs SET date=?, work_type=?, opening_meter=?, closing_meter=?, usage_qty=?, fuel_litres=?, remarks=? WHERE id=?`
+  ).run(p.date, n.work_type, n.opening, n.closing, n.usage, n.fuel, p.remarks ?? "", p.id);
+  return await d.prepare(`SELECT * FROM machine_logs WHERE id = ?`).get(p.id);
+}
+async function deleteMachineLog(payload) {
+  await getDb().prepare(`DELETE FROM machine_logs WHERE id = ?`).run(payload.id);
+  return { ok: true };
+}
+async function machineBalanceSheet(payload) {
+  const d = getDb();
+  const a = await d.prepare(
+    `SELECT a.name, a.meter_type, a.standard_consumption, b.name AS business_name
+       FROM assets a LEFT JOIN businesses b ON b.id = a.business_id WHERE a.id = ?`
+  ).get(payload.asset_id);
+  if (!a) throw new Error("Machine not found.");
+  const dateClause = (alias) => {
+    const parts = [];
+    const params = {};
+    if (payload.from) {
+      parts.push(`${alias}.date >= @from`);
+      params.from = payload.from;
+    }
+    if (payload.to) {
+      parts.push(`${alias}.date <= @to`);
+      params.to = payload.to;
+    }
+    return { sql: parts.length ? " AND " + parts.join(" AND ") : "", params };
+  };
+  const dl = dateClause("ml");
+  const logAgg = await d.prepare(
+    `SELECT COALESCE(SUM(usage_qty),0) AS usage_qty,
+              COALESCE(SUM(CASE WHEN fuel_litres IS NOT NULL THEN fuel_litres ELSE 0 END),0) AS log_fuel,
+              SUM(CASE WHEN fuel_litres IS NOT NULL THEN 1 ELSE 0 END) AS fuel_rows,
+              MIN(opening_meter) AS min_open, MAX(closing_meter) AS max_close
+       FROM machine_logs ml WHERE ml.asset_id = @asset_id${dl.sql}`
+  ).get({ asset_id: payload.asset_id, ...dl.params });
+  const di = dateClause("di");
+  const dieselLitres = (await d.prepare(
+    `SELECT COALESCE(SUM(litres),0) AS q FROM diesel_issues di WHERE di.asset_id = @asset_id${di.sql}`
+  ).get({ asset_id: payload.asset_id, ...di.params })).q;
+  let fuel = 0;
+  let fuelSource = "none";
+  if (logAgg.fuel_rows > 0) {
+    fuel = logAgg.log_fuel;
+    fuelSource = "logbook";
+  } else if (dieselLitres > 0) {
+    fuel = dieselLitres;
+    fuelSource = "diesel";
+  }
+  const usage = round32(logAgg.usage_qty);
+  const rate = await avgDieselRate();
+  const dieselCost = money3(fuel * rate);
+  const pe = dateClause("pe");
+  const exp = await d.prepare(
+    `SELECT
+        COALESCE(SUM(CASE WHEN category='maintenance' THEN amount ELSE 0 END),0) AS maintenance,
+        COALESCE(SUM(CASE WHEN category IN ('tipper_rent','equipment_rent') THEN amount ELSE 0 END),0) AS rent,
+        COALESCE(SUM(CASE WHEN category NOT IN ('maintenance','tipper_rent','equipment_rent') THEN amount ELSE 0 END),0) AS other
+       FROM plant_expenses pe WHERE pe.asset_id = @asset_id${pe.sql}`
+  ).get({ asset_id: payload.asset_id, ...pe.params });
+  const we = dateClause("we");
+  const wages = (await d.prepare(`SELECT COALESCE(SUM(amount),0) AS q FROM wage_entries we WHERE we.asset_id = @asset_id${we.sql}`).get({ asset_id: payload.asset_id, ...we.params })).q;
+  const totalCost = money3(dieselCost + exp.maintenance + exp.other + wages);
+  return {
+    asset_id: payload.asset_id,
+    asset_name: a.name,
+    meter_type: a.meter_type === "km" ? "km" : "hour",
+    business_name: a.business_name,
+    from: payload.from ?? "",
+    to: payload.to ?? "",
+    usage_qty: usage,
+    fuel_litres: round32(fuel),
+    fuel_source: fuelSource,
+    actual_consumption: usage > 0 ? round32(fuel / usage) : null,
+    standard_consumption: a.standard_consumption ?? null,
+    opening_meter: logAgg.min_open,
+    closing_meter: logAgg.max_close,
+    diesel_cost: dieselCost,
+    maintenance: money3(exp.maintenance),
+    other_expense: money3(exp.other),
+    wages: money3(wages),
+    rent_income: money3(exp.rent),
+    total_cost: totalCost,
+    net: money3(exp.rent - totalCost),
+    cost_per_unit: usage > 0 ? money3(totalCost / usage) : null
+  };
+}
+var DOC_TYPES = ["insurance", "permit", "fitness", "puc", "rc", "tax", "other"];
+async function listAssetDocuments(payload) {
+  const d = getDb();
+  const rows = await d.prepare(`SELECT * FROM asset_documents WHERE asset_id = ? ORDER BY expiry_date IS NULL, expiry_date, id`).all(payload.asset_id);
+  return rows.map((r) => ({ ...r, ...reminderFields(r.expiry_date) }));
+}
+function todayStr() {
+  return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+}
+function reminderFields(expiry) {
+  if (!expiry) return { days_left: null, reminder_status: "ok" };
+  const ms = (/* @__PURE__ */ new Date(expiry + "T00:00:00")).getTime() - (/* @__PURE__ */ new Date(todayStr() + "T00:00:00")).getTime();
+  const days = Math.round(ms / 864e5);
+  return { days_left: days, reminder_status: days < 0 ? "expired" : "ok" };
+}
+function normalizeDoc(p) {
+  const file = (p.file_data ?? "").trim();
+  if (file && !file.startsWith("data:")) throw new Error("Attachment must be a file.");
+  if (file.length > 6e6) throw new Error("Attachment is too large \u2014 use a smaller file.");
+  return {
+    doc_type: DOC_TYPES.includes(p.doc_type) ? p.doc_type : "other",
+    number: (p.number ?? "").trim().toUpperCase(),
+    issue_date: p.issue_date || null,
+    expiry_date: p.expiry_date || null,
+    file_data: file || null
+  };
+}
+async function addAssetDocument(p) {
+  const d = getDb();
+  if (!p.asset_id) return { ok: false, error: "Select a machine." };
+  try {
+    const n = normalizeDoc(p);
+    await d.prepare(
+      `INSERT INTO asset_documents (asset_id, doc_type, number, issue_date, expiry_date, file_data, remarks)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(p.asset_id, n.doc_type, n.number, n.issue_date, n.expiry_date, n.file_data, p.remarks ?? "");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+async function updateAssetDocument(p) {
+  const d = getDb();
+  if (!p.id) return { ok: false, error: "Missing document id." };
+  try {
+    const n = normalizeDoc(p);
+    await d.prepare(
+      `UPDATE asset_documents SET doc_type=?, number=?, issue_date=?, expiry_date=?, file_data=?, remarks=? WHERE id=?`
+    ).run(n.doc_type, n.number, n.issue_date, n.expiry_date, n.file_data, p.remarks ?? "", p.id);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+async function deleteAssetDocument(payload) {
+  await getDb().prepare(`DELETE FROM asset_documents WHERE id = ?`).run(payload.id);
+  return { ok: true };
+}
+async function getDocumentReminders(payload = {}) {
+  const d = getDb();
+  const days = payload.days != null ? Number(payload.days) : await getReminderDays();
+  const rows = await d.prepare(
+    `SELECT ad.id, ad.asset_id, ad.doc_type, ad.number, ad.issue_date, ad.expiry_date, ad.remarks, ad.created_at,
+              a.name AS asset_name
+       FROM asset_documents ad JOIN assets a ON a.id = ad.asset_id
+       WHERE ad.expiry_date IS NOT NULL AND ad.expiry_date <> ''
+       ORDER BY ad.expiry_date`
+  ).all();
+  return rows.map((r) => {
+    const f = reminderFields(r.expiry_date);
+    const status = f.days_left == null ? "ok" : f.days_left < 0 ? "expired" : f.days_left <= days ? "due" : "ok";
+    return { ...r, days_left: f.days_left, reminder_status: status };
+  }).filter((r) => r.reminder_status !== "ok");
+}
+async function putSetting2(key, value) {
+  const sql = dbKind() === "mysql" ? "INSERT INTO settings (`key`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)" : "INSERT INTO settings (`key`, value) VALUES (?, ?) ON CONFLICT(`key`) DO UPDATE SET value = excluded.value";
+  await getDb().prepare(sql).run(key, value);
+}
+async function getReminderDays() {
+  const row = await getDb().prepare("SELECT value FROM settings WHERE `key` = ?").get("reminder_days");
+  const n = Number(row?.value);
+  return Number.isFinite(n) && n > 0 ? n : 30;
+}
+async function getReminderSettings() {
+  return { days: await getReminderDays() };
+}
+async function setReminderDays(payload) {
+  const n = Math.max(1, Math.round(Number(payload.days) || 30));
+  await putSetting2("reminder_days", String(n));
   return { ok: true };
 }
 
 // src/main/services/plantExpenses.ts
-function money3(n) {
+function money4(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 function num(n) {
@@ -5747,15 +6086,15 @@ function resolve(p) {
   if (cat === "electricity") {
     if (meter_open != null && meter_close != null) units = num(meter_close - meter_open);
     if (units != null && units !== 0) {
-      if (amount <= 0 && rate != null) amount = money3(units * rate);
-      else if (amount > 0 && (rate == null || rate === 0)) rate = money3(amount / units);
+      if (amount <= 0 && rate != null) amount = money4(units * rate);
+      else if (amount > 0 && (rate == null || rate === 0)) rate = money4(amount / units);
     }
   } else {
     meter_open = null;
     meter_close = null;
   }
   if (cat === "tipper_rent" || cat === "equipment_rent") {
-    if (amount <= 0 && hours != null && rate != null) amount = money3(hours * rate);
+    if (amount <= 0 && hours != null && rate != null) amount = money4(hours * rate);
   } else {
     hours = null;
   }
@@ -5772,9 +6111,9 @@ function resolve(p) {
     rate,
     hours,
     parts: p.parts ?? "",
-    amount: money3(amount),
+    amount: money4(amount),
     payment_status: derivePaymentStatus(amount, Number(p.paid_amount) || 0),
-    paid_amount: money3(Number(p.paid_amount) || 0),
+    paid_amount: money4(Number(p.paid_amount) || 0),
     date: p.date,
     remarks: p.remarks ?? ""
   };
@@ -5821,7 +6160,7 @@ var HEADS = [
   { head: "diesel", label: "Diesel", source: "diesel" },
   { head: "payroll", label: "Payroll / Wages", source: "payroll" }
 ];
-function money4(n) {
+function money5(n) {
   const v = Number(n);
   return Number.isFinite(v) ? Math.round((v + Number.EPSILON) * 100) / 100 : 0;
 }
@@ -5831,12 +6170,12 @@ async function getBudget(payload) {
   const empty = { plant_id, from, to, items: [], total_budget: 0, total_actual: 0 };
   if (!plant_id || !from || !to) return empty;
   const saved = await d.prepare(`SELECT head, amount FROM budgets WHERE plant_id = ? AND from_date = ? AND to_date = ?`).all(plant_id, from, to);
-  const budgetByHead = new Map(saved.map((r) => [r.head, money4(r.amount)]));
+  const budgetByHead = new Map(saved.map((r) => [r.head, money5(r.amount)]));
   const expRows = await d.prepare(
     `SELECT category, COALESCE(SUM(amount),0) AS amt FROM plant_expenses
        WHERE plant_id = ? AND date >= ? AND date <= ? GROUP BY category`
   ).all(plant_id, from, to);
-  const expByCat = new Map(expRows.map((r) => [r.category, money4(r.amt)]));
+  const expByCat = new Map(expRows.map((r) => [r.category, money5(r.amt)]));
   const diesel = await d.prepare(
     `SELECT COALESCE(SUM(amount),0) AS amt FROM diesel_purchases
        WHERE plant_id = ? AND date >= ? AND date <= ?`
@@ -5857,17 +6196,17 @@ async function getBudget(payload) {
   ).get(plant_id, from, to);
   const items = HEADS.map((h) => {
     const budget = budgetByHead.get(h.head) ?? 0;
-    let actual = h.source === "diesel" ? money4(diesel.amt) : h.source === "payroll" ? money4(payroll.amt) : expByCat.get(h.head) ?? 0;
-    if (h.head === "equipment_rent") actual = money4(actual + money4(machine.amt) + money4(saleMachine.amt));
-    return { head: h.head, label: h.label, budget, actual, variance: money4(budget - actual) };
+    let actual = h.source === "diesel" ? money5(diesel.amt) : h.source === "payroll" ? money5(payroll.amt) : expByCat.get(h.head) ?? 0;
+    if (h.head === "equipment_rent") actual = money5(actual + money5(machine.amt) + money5(saleMachine.amt));
+    return { head: h.head, label: h.label, budget, actual, variance: money5(budget - actual) };
   });
   return {
     plant_id,
     from,
     to,
     items,
-    total_budget: money4(items.reduce((s, i) => s + i.budget, 0)),
-    total_actual: money4(items.reduce((s, i) => s + i.actual, 0))
+    total_budget: money5(items.reduce((s, i) => s + i.budget, 0)),
+    total_actual: money5(items.reduce((s, i) => s + i.actual, 0))
   };
 }
 async function saveBudget(payload) {
@@ -5882,7 +6221,7 @@ async function saveBudget(payload) {
     );
     for (const it of payload.items ?? []) {
       if (!valid.has(it.head)) continue;
-      await stmt.run(payload.plant_id, it.head, payload.from, payload.to, money4(it.amount));
+      await stmt.run(payload.plant_id, it.head, payload.from, payload.to, money5(it.amount));
     }
   });
   return { ok: true };
@@ -6055,7 +6394,7 @@ async function setWorkdaySettings(payload) {
 }
 
 // src/main/services/payroll.ts
-function money5(n) {
+function money6(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 async function workingDaysIn(period) {
@@ -6166,13 +6505,13 @@ async function resolve2(p) {
   if (!p.period) throw new Error("Pay period is required.");
   const workingDays = await workingDaysIn(p.period);
   const daysWorked = Number(p.days_worked) || 0;
-  const earned = emp.wage_type === "monthly" ? workingDays > 0 ? money5(emp.monthly_salary / workingDays * daysWorked) : 0 : money5(emp.daily_wage * daysWorked);
+  const earned = emp.wage_type === "monthly" ? workingDays > 0 ? money6(emp.monthly_salary / workingDays * daysWorked) : 0 : money6(emp.daily_wage * daysWorked);
   const otHours = Number(p.ot_hours) || 0;
   const otRate = p.ot_rate == null || p.ot_rate === "" ? emp.ot_rate : Number(p.ot_rate);
-  const otAmount = money5(otHours * otRate);
-  const deduction = money5(Number(p.deduction) || 0);
-  const gross = money5(earned + otAmount);
-  const amount = money5(gross - deduction);
+  const otAmount = money6(otHours * otRate);
+  const deduction = money6(Number(p.deduction) || 0);
+  const gross = money6(earned + otAmount);
+  const amount = money6(gross - deduction);
   if (!(amount > 0)) throw new Error("Net wage must be greater than 0.");
   return {
     employee_id: p.employee_id,
@@ -6190,7 +6529,7 @@ async function resolve2(p) {
     gross,
     amount,
     payment_status: derivePaymentStatus(amount, Number(p.paid_amount) || 0),
-    paid_amount: money5(Number(p.paid_amount) || 0),
+    paid_amount: money6(Number(p.paid_amount) || 0),
     date: p.date,
     remarks: p.remarks ?? ""
   };
@@ -6372,7 +6711,7 @@ async function listActivity(filter = {}) {
 function num2(row) {
   return Math.round(((row?.q ?? 0) + Number.EPSILON) * 1e3) / 1e3;
 }
-function money6(row) {
+function money7(row) {
   return Math.round(((row?.q ?? 0) + Number.EPSILON) * 100) / 100;
 }
 async function getDashboard(payload = {}) {
@@ -6422,7 +6761,7 @@ async function getDashboard(payload = {}) {
   const totalDispatched = num2(
     await d.prepare(`SELECT COALESCE(SUM(qty_cm),0) AS q FROM dispatches${plWhere}`).get()
   );
-  const pendingSupplierPayment = money6(
+  const pendingSupplierPayment = money7(
     await d.prepare(`SELECT COALESCE(SUM(COALESCE(amount,0) - paid_amount),0) AS q FROM purchases WHERE payment_status <> 'paid'${plAnd}`).get()
   );
   const pendingDeliveries = (await d.prepare(`SELECT COUNT(*) AS q FROM dispatches WHERE delivery_status='pending'${plAnd}`).get()).q;
@@ -6442,31 +6781,31 @@ async function getDashboard(payload = {}) {
     ).get()
   );
   const openRacks = (await d.prepare(`SELECT COUNT(*) AS q FROM racks WHERE status <> 'closed'`).get()).q;
-  const rackSalesAmount = money6(
+  const rackSalesAmount = money7(
     await d.prepare(`SELECT COALESCE(SUM(amount),0) AS q FROM rack_sales`).get()
   );
-  const rackTransportCost = money6(
+  const rackTransportCost = money7(
     await d.prepare(
       `SELECT (SELECT COALESCE(SUM(amount),0) FROM rack_loadings)
             + (SELECT COALESCE(SUM(amount),0) FROM rack_unloadings) AS q`
     ).get()
   );
-  const totalRackExpenses = money6(
+  const totalRackExpenses = money7(
     await d.prepare(`SELECT COALESCE(SUM(amount),0) AS q FROM rack_expenses`).get()
   );
-  const rackProfit = money6({ q: rackSalesAmount - rackTransportCost - totalRackExpenses });
+  const rackProfit = money7({ q: rackSalesAmount - rackTransportCost - totalRackExpenses });
   const custSalesExpr = pid ? `COALESCE((SELECT SUM(amount) FROM dispatches WHERE customer_id=c.id AND plant_id=${pid} AND amount IS NOT NULL),0)` : `COALESCE((SELECT SUM(amount) FROM rack_sales WHERE customer_id=c.id AND amount IS NOT NULL),0) +
        COALESCE((SELECT SUM(amount) FROM dispatches WHERE customer_id=c.id AND amount IS NOT NULL),0)`;
   const topCustomers = (await d.prepare(
     `SELECT c.name AS name, ${custSalesExpr} AS amount
          FROM customers c ORDER BY amount DESC LIMIT 5`
-  ).all()).filter((r) => r.amount > 0).map((r) => ({ name: r.name, amount: money6({ q: r.amount }) }));
+  ).all()).filter((r) => r.amount > 0).map((r) => ({ name: r.name, amount: money7({ q: r.amount }) }));
   const monthlySrc = pid ? `SELECT substr(date,1,7) AS month, COALESCE(amount,0) AS amount FROM dispatches WHERE amount IS NOT NULL AND plant_id=${pid}` : `SELECT substr(date,1,7) AS month, COALESCE(amount,0) AS amount FROM rack_sales WHERE amount IS NOT NULL
        UNION ALL
        SELECT substr(date,1,7) AS month, COALESCE(amount,0) AS amount FROM dispatches WHERE amount IS NOT NULL`;
   const monthlySales = (await d.prepare(
     `SELECT month, SUM(amount) AS amount FROM (${monthlySrc}) AS t GROUP BY month ORDER BY month DESC LIMIT 6`
-  ).all()).map((r) => ({ month: r.month, amount: money6({ q: r.amount }) })).reverse();
+  ).all()).map((r) => ({ month: r.month, amount: money7({ q: r.amount }) })).reverse();
   const custRow = await (pid ? d.prepare(
     `SELECT COALESCE(SUM(COALESCE(amount,0)
              + CASE WHEN transport_billed=1 THEN transport_charge ELSE 0 END
@@ -6482,7 +6821,7 @@ async function getDashboard(payload = {}) {
             (SELECT COALESCE(SUM(amount),0) FROM payments WHERE party_type='customer' AND direction='out') -
             (SELECT COALESCE(SUM(amount),0) FROM payments WHERE party_type='customer' AND direction='in') AS q`
   )).get();
-  const customerReceivable = money6(custRow);
+  const customerReceivable = money7(custRow);
   const transRow = await (pid ? d.prepare(
     `SELECT COALESCE(SUM(COALESCE(amount,0) - COALESCE(diesel_amount,0)),0) AS q FROM rack_loadings WHERE plant_id = ${pid}`
   ) : d.prepare(
@@ -6492,7 +6831,7 @@ async function getDashboard(payload = {}) {
             (SELECT COALESCE(SUM(amount),0) FROM payments WHERE party_type='transporter' AND direction='out') +
             (SELECT COALESCE(SUM(amount),0) FROM payments WHERE party_type='transporter' AND direction='in') AS q`
   )).get();
-  const transporterPayable = money6(transRow);
+  const transporterPayable = money7(transRow);
   const counts = {
     plants: (await d.prepare(`SELECT COUNT(*) AS q FROM plants`).get()).q,
     suppliers: (await d.prepare(`SELECT COUNT(*) AS q FROM suppliers`).get()).q,
@@ -6645,6 +6984,18 @@ var handlers = {
   "assets.update": updateAsset,
   "assets.delete": deleteAsset,
   "assets.report": assetReport,
+  "machinery.logs": listMachineLogs,
+  "machinery.addLog": addMachineLog,
+  "machinery.updateLog": updateMachineLog,
+  "machinery.deleteLog": deleteMachineLog,
+  "machinery.balanceSheet": machineBalanceSheet,
+  "machinery.documents": listAssetDocuments,
+  "machinery.addDocument": addAssetDocument,
+  "machinery.updateDocument": updateAssetDocument,
+  "machinery.deleteDocument": deleteAssetDocument,
+  "machinery.reminders": getDocumentReminders,
+  "machinery.reminderSettings": getReminderSettings,
+  "machinery.setReminderDays": setReminderDays,
   "businesses.list": listBusinesses,
   "businesses.create": createBusiness,
   "businesses.update": updateBusiness,
