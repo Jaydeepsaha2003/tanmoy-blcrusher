@@ -4959,6 +4959,7 @@ async function buildEntries(partyType, partyId) {
     const catLabel = {
       electricity: "Electricity",
       maintenance: "Maintenance",
+      fixed: "Fixed Cost",
       tipper_rent: "Tipper Rent",
       equipment_rent: "Equipment Rent",
       other: "Other Expense"
@@ -6120,13 +6121,14 @@ async function machineBalanceSheet(payload) {
   const exp = await d.prepare(
     `SELECT
         COALESCE(SUM(CASE WHEN category='maintenance' THEN amount ELSE 0 END),0) AS maintenance,
+        COALESCE(SUM(CASE WHEN category='fixed' THEN amount ELSE 0 END),0) AS fixed_cost,
         COALESCE(SUM(CASE WHEN category IN ('tipper_rent','equipment_rent') THEN amount ELSE 0 END),0) AS rent,
-        COALESCE(SUM(CASE WHEN category NOT IN ('maintenance','tipper_rent','equipment_rent') THEN amount ELSE 0 END),0) AS other
+        COALESCE(SUM(CASE WHEN category NOT IN ('maintenance','fixed','tipper_rent','equipment_rent') THEN amount ELSE 0 END),0) AS other
        FROM plant_expenses pe WHERE pe.asset_id = @asset_id${pe.sql}`
   ).get({ asset_id: payload.asset_id, ...pe.params });
   const we = dateClause("we");
   const wages = (await d.prepare(`SELECT COALESCE(SUM(amount),0) AS q FROM wage_entries we WHERE we.asset_id = @asset_id${we.sql}`).get({ asset_id: payload.asset_id, ...we.params })).q;
-  const totalCost = money3(dieselCost + exp.maintenance + exp.other + wages);
+  const totalCost = money3(dieselCost + exp.maintenance + exp.fixed_cost + exp.other + wages);
   const runIncome = money3(logAgg.run_income);
   const totalIncome = money3(exp.rent + runIncome);
   return {
@@ -6145,6 +6147,7 @@ async function machineBalanceSheet(payload) {
     closing_meter: logAgg.max_close,
     diesel_cost: dieselCost,
     maintenance: money3(exp.maintenance),
+    fixed_expense: money3(exp.fixed_cost),
     other_expense: money3(exp.other),
     wages: money3(wages),
     rent_income: money3(exp.rent),
@@ -6348,6 +6351,10 @@ async function listPlantExpenses(filter = {}) {
     where.push("e.category = @category");
     params.category = filter.category;
   }
+  if (filter.asset_id) {
+    where.push("e.asset_id = @asset_id");
+    params.asset_id = filter.asset_id;
+  }
   if (filter.from) {
     where.push("e.date >= @from");
     params.from = filter.from;
@@ -6468,6 +6475,7 @@ async function deletePlantExpense(payload) {
 var HEADS = [
   { head: "electricity", label: "Electricity", source: "expense" },
   { head: "maintenance", label: "Maintenance", source: "expense" },
+  { head: "fixed", label: "Fixed Costs", source: "expense" },
   { head: "tipper_rent", label: "Tipper Rent", source: "expense" },
   { head: "equipment_rent", label: "Equipment Rent", source: "expense" },
   { head: "other", label: "Other", source: "expense" },
@@ -6793,6 +6801,10 @@ async function listWageEntries(filter = {}) {
   if (filter.employee_id) {
     where.push("w.employee_id = @employee_id");
     params.employee_id = filter.employee_id;
+  }
+  if (filter.asset_id) {
+    where.push("w.asset_id = @asset_id");
+    params.asset_id = filter.asset_id;
   }
   if (filter.period) {
     where.push("w.period = @period");
