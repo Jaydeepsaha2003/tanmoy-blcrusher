@@ -35533,7 +35533,7 @@ function SearchSelect({
   const sel = options.find((o) => String(o.value) === String(value ?? ""));
   const ql2 = q2.trim().toLowerCase();
   const filtered = ql2 ? options.filter((o) => o.label.toLowerCase().includes(ql2)) : options;
-  const showSearch = alwaysSearch || options.length > 7;
+  const showSearch = alwaysSearch || options.length > 1;
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { ref, className: cn("relative", className), children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs(
       "button",
