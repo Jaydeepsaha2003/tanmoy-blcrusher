@@ -217,6 +217,28 @@ CREATE TABLE IF NOT EXISTS dispatch_machines (
   outsource_id INT,
   created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS rack_sale_transporters (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  rack_sale_id   INT NOT NULL,
+  transporter_id INT NOT NULL,
+  vehicle_no     VARCHAR(64) NOT NULL DEFAULT '',
+  basis          VARCHAR(8) NOT NULL DEFAULT 'flat',
+  qty            DOUBLE NOT NULL DEFAULT 0,
+  rate           DOUBLE NOT NULL DEFAULT 0,
+  charge         DOUBLE NOT NULL DEFAULT 0,
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS rack_sale_machines (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  rack_sale_id INT NOT NULL,
+  asset_id     INT NOT NULL,
+  basis        VARCHAR(8) NOT NULL DEFAULT 'hour',
+  qty          DOUBLE NOT NULL DEFAULT 0,
+  rate         DOUBLE NOT NULL DEFAULT 0,
+  amount       DOUBLE NOT NULL DEFAULT 0,
+  outsource_id INT,
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS production_settings (
   id                INT AUTO_INCREMENT PRIMARY KEY,
   plant_id          INT NOT NULL,
@@ -708,6 +730,35 @@ ALTER TABLE customers ADD COLUMN plant_ref_id INT;
 CREATE INDEX idx_dtrans_dispatch ON dispatch_transporters(dispatch_id);
 CREATE INDEX idx_dtrans_transporter ON dispatch_transporters(transporter_id);
 CREATE INDEX idx_dmach_dispatch ON dispatch_machines(dispatch_id)`
+  },
+  {
+    // Transporter + machine cost lines on railway rack sales.
+    id: '015_rack_sale_lines',
+    sql: `CREATE TABLE IF NOT EXISTS rack_sale_transporters (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  rack_sale_id   INT NOT NULL,
+  transporter_id INT NOT NULL,
+  vehicle_no     VARCHAR(64) NOT NULL DEFAULT '',
+  basis          VARCHAR(8) NOT NULL DEFAULT 'flat',
+  qty            DOUBLE NOT NULL DEFAULT 0,
+  rate           DOUBLE NOT NULL DEFAULT 0,
+  charge         DOUBLE NOT NULL DEFAULT 0,
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS rack_sale_machines (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  rack_sale_id INT NOT NULL,
+  asset_id     INT NOT NULL,
+  basis        VARCHAR(8) NOT NULL DEFAULT 'hour',
+  qty          DOUBLE NOT NULL DEFAULT 0,
+  rate         DOUBLE NOT NULL DEFAULT 0,
+  amount       DOUBLE NOT NULL DEFAULT 0,
+  outsource_id INT,
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_rstrans_sale ON rack_sale_transporters(rack_sale_id);
+CREATE INDEX idx_rstrans_transporter ON rack_sale_transporters(transporter_id);
+CREATE INDEX idx_rsmach_sale ON rack_sale_machines(rack_sale_id)`
   }
 ]
 

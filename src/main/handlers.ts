@@ -147,6 +147,7 @@ export const handlers: Record<string, (payload: any) => unknown> = {
   'racks.deleteExpense': racks.deleteExpense,
   'racks.listExpenses': racks.listExpenses,
   'racks.addSale': racks.addSale,
+  'racks.saleDetail': racks.getSaleDetail,
   'racks.updateSale': racks.updateSale,
   'racks.deleteSale': racks.deleteSale,
   'racks.listSales': racks.listSales,

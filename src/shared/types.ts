@@ -499,6 +499,39 @@ export interface RackSale {
   date: string
   remarks: string
   created_at: string
+  /** Loaded on detail: transporter and machine cost lines. */
+  transporters?: RackSaleTransporter[]
+  machines?: RackSaleMachine[]
+  // computed
+  transport_total?: number
+  machine_total?: number
+}
+
+/** A transporter cost line on a rack sale (mirrors DispatchTransporter). */
+export interface RackSaleTransporter {
+  id?: number
+  rack_sale_id?: number
+  transporter_id: number
+  transporter_name?: string
+  vehicle_no: string
+  basis: PurchaseTransportBasis
+  qty: number
+  rate: number
+  charge: number
+}
+
+/** A machine-usage cost line on a rack sale (mirrors DispatchMachine). */
+export interface RackSaleMachine {
+  id?: number
+  rack_sale_id?: number
+  asset_id: number
+  asset_name?: string
+  basis: MachineBasis
+  qty: number
+  rate: number
+  amount: number
+  outsource_id: number | null
+  outsource_name?: string
 }
 
 export interface RackProductBalance {

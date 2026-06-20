@@ -11,7 +11,8 @@ import {
   Receipt,
   ShoppingCart,
   BookOpen,
-  AlertTriangle
+  AlertTriangle,
+  X
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { RackLoading, RackUnloading, RackExpense, RackSale, RackStatus, Uom } from '@shared/types'
@@ -65,6 +66,8 @@ export function RackDetail(): React.JSX.Element {
     queryFn: () => api.transporters.list()
   })
   const { data: customers = [] } = useQuery({ queryKey: ['customers'], queryFn: () => api.customers.list() })
+  const { data: assets = [] } = useQuery({ queryKey: ['assets'], queryFn: () => api.assets.list() })
+  const { data: outsourceVendors = [] } = useQuery({ queryKey: ['outsource'], queryFn: () => api.outsource.list() })
   const { data: expenseTypes = [] } = useQuery({
     queryKey: ['expenseTypes'],
     queryFn: api.racks.expenseTypes
@@ -242,9 +245,34 @@ export function RackDetail(): React.JSX.Element {
       rate: '',
       truck_no: '',
       date: today(),
-      remarks: ''
+      remarks: '',
+      transporters: [],
+      machines: []
     })
   }
+
+  async function openEditSale(s: RackSale): Promise<void> {
+    const det = await api.racks.saleDetail(s.id).catch(() => null)
+    const src = det ?? s
+    setSaleForm({
+      ...src,
+      rate: src.rate ?? '',
+      transporters: (src.transporters ?? []).map((t) => ({ transporter_id: t.transporter_id, vehicle_no: t.vehicle_no, basis: t.basis || 'flat', qty: t.qty || '', rate: t.rate || '', charge: t.charge })),
+      machines: (src.machines ?? []).map((m) => ({ asset_id: m.asset_id, basis: m.basis, qty: m.qty, rate: m.rate, outsource_id: m.outsource_id }))
+    })
+  }
+
+  // Sale cost-line helpers
+  const sTLines = saleForm?.transporters ?? []
+  function addSaleTransporter(): void { setSaleForm({ ...saleForm, transporters: [...sTLines, { transporter_id: 0, vehicle_no: '', basis: 'flat', qty: '', rate: '', charge: '' }] }) }
+  function setSaleTransporter(i: number, patch: any): void { setSaleForm({ ...saleForm, transporters: sTLines.map((t: any, idx: number) => (idx === i ? { ...t, ...patch } : t)) }) }
+  function delSaleTransporter(i: number): void { setSaleForm({ ...saleForm, transporters: sTLines.filter((_: any, idx: number) => idx !== i) }) }
+  const sMLines = saleForm?.machines ?? []
+  function addSaleMachine(): void { setSaleForm({ ...saleForm, machines: [...sMLines, { asset_id: 0, basis: 'hour', qty: '', rate: '', outsource_id: null }] }) }
+  function setSaleMachine(i: number, patch: any): void { setSaleForm({ ...saleForm, machines: sMLines.map((m: any, idx: number) => (idx === i ? { ...m, ...patch } : m)) }) }
+  function delSaleMachine(i: number): void { setSaleForm({ ...saleForm, machines: sMLines.filter((_: any, idx: number) => idx !== i) }) }
+  const saleLineCharge = (t: any): number =>
+    t.basis === 'trip' || t.basis === 'uom' ? (Number(t.qty) || 0) * (Number(t.rate) || 0) : Number(t.charge) || 0
 
   const loadingTotal =
     loadingForm ? (Number(loadingForm.trips) || 0) * (Number(loadingForm.per_trip_cm) || 0) : 0
@@ -621,7 +649,15 @@ export function RackDetail(): React.JSX.Element {
                     <TD className="font-mono text-xs">{s.sale_no}</TD>
                     <TD>{fmtDate(s.date)}</TD>
                     <TD className="font-medium">{s.customer_name}</TD>
-                    <TD>{s.product_name}</TD>
+                    <TD>
+                      {s.product_name}
+                      {((s.transport_total ?? 0) > 0 || (s.machine_total ?? 0) > 0) && (
+                        <span className="mt-0.5 flex flex-wrap gap-x-2 text-[11px] text-muted-foreground">
+                          {(s.transport_total ?? 0) > 0 && <span>🚚 {fmtMoney(s.transport_total)}</span>}
+                          {(s.machine_total ?? 0) > 0 && <span>⚙ {fmtMoney(s.machine_total)}</span>}
+                        </span>
+                      )}
+                    </TD>
                     <TD className="text-right">{fmtQty(s.quantity)}</TD>
                     <TD><Badge variant="muted">{s.uom}</Badge></TD>
                     <TD className="text-right text-muted-foreground">{fmtQty(s.qty_cm)}</TD>
@@ -629,7 +665,7 @@ export function RackDetail(): React.JSX.Element {
                     <TD className="text-right font-semibold">{fmtMoney(s.amount)}</TD>
                     <TD className="font-mono text-xs">{s.truck_no || '-'}</TD>
                     <TD className="text-right">
-                      <Button variant="ghost" size="icon" onClick={() => setSaleForm({ ...s, rate: s.rate ?? '' })}>
+                      <Button variant="ghost" size="icon" onClick={() => openEditSale(s)}>
                         <Pencil size={15} />
                       </Button>
                       <Button variant="ghost" size="icon" onClick={() => removeSale(s)}>
@@ -896,7 +932,7 @@ export function RackDetail(): React.JSX.Element {
       {/* ---- Sale modal ---- */}
       {saleForm && (
         <Modal open onClose={() => setSaleForm(null)}
-          title={saleForm.id ? `Edit ${saleForm.sale_no}` : 'New Sale from Rack'} width="max-w-2xl">
+          title={saleForm.id ? `Edit ${saleForm.sale_no}` : 'New Sale from Rack'} width="max-w-3xl">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Customer">
               <SearchSelect
@@ -954,6 +990,98 @@ export function RackDetail(): React.JSX.Element {
               </Field>
             </div>
           </div>
+
+          {/* Transport cost lines */}
+          <div className="mt-5 space-y-3">
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground/80">Transport — cost lines (optional)</span>
+              <span className="h-px flex-1 bg-border" />
+            </div>
+            <div className="space-y-2">
+              {sTLines.length > 0 && (
+                <div className="grid grid-cols-[1fr_92px_96px_64px_76px_90px_32px] gap-2 px-1 text-[11px] font-semibold uppercase text-muted-foreground">
+                  <div>Transporter</div><div>Vehicle</div><div>Basis</div><div>Qty</div><div>Rate ₹</div><div>Charge ₹</div><div></div>
+                </div>
+              )}
+              {sTLines.map((t: any, i: number) => {
+                const computed = t.basis === 'trip' || t.basis === 'uom'
+                return (
+                  <div key={i} className="grid grid-cols-[1fr_92px_96px_64px_76px_90px_32px] items-center gap-2">
+                    <SearchSelect
+                      value={t.transporter_id || ''}
+                      onChange={(v) => setSaleTransporter(i, { transporter_id: Number(v) })}
+                      options={transporters.map((tr) => ({ value: tr.id, label: tr.name }))}
+                      placeholder="Transporter…"
+                    />
+                    <Input value={t.vehicle_no} onChange={(e) => setSaleTransporter(i, { vehicle_no: e.target.value })} placeholder="JH01AB1234" />
+                    <SearchSelect
+                      value={t.basis || 'flat'}
+                      onChange={(v) => setSaleTransporter(i, { basis: v })}
+                      options={[{ value: 'flat', label: 'Flat' }, { value: 'trip', label: 'Per Trip' }, { value: 'uom', label: `Per ${saleForm.uom || 'UOM'}` }]}
+                    />
+                    <Input type="number" step="0.01" value={computed ? t.qty : ''} disabled={!computed}
+                      placeholder={computed ? '' : '—'} onChange={(e) => setSaleTransporter(i, { qty: e.target.value })} />
+                    <Input type="number" step="0.01" value={computed ? t.rate : ''} disabled={!computed}
+                      placeholder={computed ? '' : '—'} onChange={(e) => setSaleTransporter(i, { rate: e.target.value })} />
+                    {computed ? (
+                      <Input type="text" value={fmtMoney(saleLineCharge(t))} disabled className="text-right font-medium" />
+                    ) : (
+                      <Input type="number" step="0.01" value={t.charge} onChange={(e) => setSaleTransporter(i, { charge: e.target.value })} />
+                    )}
+                    <Button variant="ghost" size="icon" onClick={() => delSaleTransporter(i)}><X size={15} className="text-destructive" /></Button>
+                  </div>
+                )
+              })}
+            </div>
+            <Button variant="outline" size="sm" disabled={!transporters.length} onClick={addSaleTransporter}>
+              <Plus size={14} /> Add Transporter
+            </Button>
+            <p className="text-[11px] text-muted-foreground">Posts to the transporter ledger and the rack's profit/loss.</p>
+          </div>
+
+          {/* Machine cost lines */}
+          <div className="mt-5 space-y-3">
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground/80">Machines (optional)</span>
+              <span className="h-px flex-1 bg-border" />
+            </div>
+            <div className="space-y-2">
+              {sMLines.length > 0 && (
+                <div className="grid grid-cols-[1fr_90px_80px_90px_1fr_32px] gap-2 px-1 text-[11px] font-semibold uppercase text-muted-foreground">
+                  <div>Machine</div><div>Basis</div><div>Qty</div><div>Rate ₹</div><div>Vendor (opt)</div><div></div>
+                </div>
+              )}
+              {sMLines.map((m: any, i: number) => (
+                <div key={i} className="grid grid-cols-[1fr_90px_80px_90px_1fr_32px] items-center gap-2">
+                  <SearchSelect
+                    value={m.asset_id || ''}
+                    onChange={(v) => setSaleMachine(i, { asset_id: Number(v) })}
+                    options={assets.map((a) => ({ value: a.id, label: a.name }))}
+                    placeholder="Machine…"
+                  />
+                  <SearchSelect
+                    value={m.basis || 'hour'}
+                    onChange={(v) => setSaleMachine(i, { basis: v })}
+                    options={[{ value: 'hour', label: 'Per Hour' }, { value: 'cm', label: 'Per m³' }]}
+                  />
+                  <Input type="number" step="0.01" value={m.qty} onChange={(e) => setSaleMachine(i, { qty: e.target.value })} />
+                  <Input type="number" step="0.01" value={m.rate} onChange={(e) => setSaleMachine(i, { rate: e.target.value })} />
+                  <SearchSelect
+                    value={m.outsource_id ?? ''}
+                    onChange={(v) => setSaleMachine(i, { outsource_id: v ? Number(v) : null })}
+                    options={[{ value: '', label: '— None —' }, ...outsourceVendors.map((o) => ({ value: o.id, label: o.name }))]}
+                    placeholder="— None —"
+                  />
+                  <Button variant="ghost" size="icon" onClick={() => delSaleMachine(i)}><X size={15} className="text-destructive" /></Button>
+                </div>
+              ))}
+            </div>
+            <Button variant="outline" size="sm" disabled={!assets.length} onClick={addSaleMachine}>
+              <Plus size={14} /> Add Machine
+            </Button>
+            {!assets.length && <p className="text-[11px] text-muted-foreground">Add machines under Machinery &amp; Vehicles first.</p>}
+          </div>
+
           <div className="mt-4 flex items-center justify-between rounded-lg bg-muted/60 px-4 py-2.5 text-sm">
             <span>
               Available in rack: <b>{fmtQty(saleAvailable)} m³</b>
@@ -970,7 +1098,20 @@ export function RackDetail(): React.JSX.Element {
                 saveSale.mutate({
                   ...saleForm,
                   quantity: Number(saleForm.quantity),
-                  rate: saleForm.rate === '' ? null : Number(saleForm.rate)
+                  rate: saleForm.rate === '' ? null : Number(saleForm.rate),
+                  transporters: (saleForm.transporters ?? [])
+                    .filter((t: any) => t.transporter_id)
+                    .map((t: any) => ({
+                      transporter_id: Number(t.transporter_id),
+                      vehicle_no: t.vehicle_no || '',
+                      basis: t.basis || 'flat',
+                      qty: Number(t.qty) || 0,
+                      rate: Number(t.rate) || 0,
+                      charge: Number(t.charge) || 0
+                    })),
+                  machines: (saleForm.machines ?? [])
+                    .filter((m: any) => m.asset_id)
+                    .map((m: any) => ({ asset_id: Number(m.asset_id), basis: m.basis || 'hour', qty: Number(m.qty) || 0, rate: Number(m.rate) || 0, outsource_id: m.outsource_id ? Number(m.outsource_id) : null }))
                 })
               }
               disabled={!saleForm.customer_id || !saleForm.product_name || !(Number(saleForm.quantity) > 0) || saleQtyCm > saleAvailable}

@@ -194,6 +194,30 @@ CREATE TABLE IF NOT EXISTS dispatch_machines (
   created_at   TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
+CREATE TABLE IF NOT EXISTS rack_sale_transporters (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  rack_sale_id   INTEGER NOT NULL REFERENCES rack_sales(id),
+  transporter_id INTEGER NOT NULL REFERENCES transporters(id),
+  vehicle_no     TEXT NOT NULL DEFAULT '',
+  basis          TEXT NOT NULL DEFAULT 'flat',
+  qty            REAL NOT NULL DEFAULT 0,
+  rate           REAL NOT NULL DEFAULT 0,
+  charge         REAL NOT NULL DEFAULT 0,
+  created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS rack_sale_machines (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  rack_sale_id INTEGER NOT NULL REFERENCES rack_sales(id),
+  asset_id     INTEGER NOT NULL REFERENCES assets(id),
+  basis        TEXT NOT NULL DEFAULT 'hour',
+  qty          REAL NOT NULL DEFAULT 0,
+  rate         REAL NOT NULL DEFAULT 0,
+  amount       REAL NOT NULL DEFAULT 0,
+  outsource_id INTEGER,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS production_settings (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
   plant_id          INTEGER NOT NULL REFERENCES plants(id),
@@ -559,4 +583,7 @@ CREATE INDEX IF NOT EXISTS idx_pmach_purchase ON purchase_machines(purchase_id);
 CREATE INDEX IF NOT EXISTS idx_dtrans_dispatch ON dispatch_transporters(dispatch_id);
 CREATE INDEX IF NOT EXISTS idx_dtrans_transporter ON dispatch_transporters(transporter_id);
 CREATE INDEX IF NOT EXISTS idx_dmach_dispatch ON dispatch_machines(dispatch_id);
+CREATE INDEX IF NOT EXISTS idx_rstrans_sale ON rack_sale_transporters(rack_sale_id);
+CREATE INDEX IF NOT EXISTS idx_rstrans_transporter ON rack_sale_transporters(transporter_id);
+CREATE INDEX IF NOT EXISTS idx_rsmach_sale ON rack_sale_machines(rack_sale_id);
 `

@@ -287,6 +287,41 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
           debit: 0,
           credit: x.amount
         })
+    // Transporter + machine cost lines on this rack's sales (rack costs → debit).
+    const saleTrans = (await d
+      .prepare(
+        `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rst.charge,0) AS charge, t.name AS tname
+         FROM rack_sale_transporters rst JOIN rack_sales rs ON rs.id = rst.rack_sale_id
+         JOIN transporters t ON t.id = rst.transporter_id WHERE rs.rack_id = ?`
+      )
+      .all(partyId)) as { sale_no: string; date: string; created_at: string; charge: number; tname: string }[]
+    for (const x of saleTrans)
+      if (x.charge > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Sale transport — ${x.tname}`,
+          ref: x.sale_no,
+          debit: x.charge,
+          credit: 0
+        })
+    const saleMach = (await d
+      .prepare(
+        `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rsm.amount,0) AS amount, a.name AS aname
+         FROM rack_sale_machines rsm JOIN rack_sales rs ON rs.id = rsm.rack_sale_id
+         JOIN assets a ON a.id = rsm.asset_id WHERE rs.rack_id = ?`
+      )
+      .all(partyId)) as { sale_no: string; date: string; created_at: string; amount: number; aname: string }[]
+    for (const x of saleMach)
+      if (x.amount > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Machine — ${x.aname}`,
+          ref: x.sale_no,
+          debit: x.amount,
+          credit: 0
+        })
     entries.sort((a, b) =>
       a.date === b.date ? a.created_at.localeCompare(b.created_at) : a.date.localeCompare(b.date)
     )
@@ -742,6 +777,24 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
           debit: 0,
           credit: x.amount
         })
+    // Machine-usage lines on rack sales hired from this vendor — payable.
+    const rsmach = (await d
+      .prepare(
+        `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rsm.amount,0) AS amount, a.name AS aname
+         FROM rack_sale_machines rsm JOIN rack_sales rs ON rs.id = rsm.rack_sale_id
+         JOIN assets a ON a.id = rsm.asset_id WHERE rsm.outsource_id = ?`
+      )
+      .all(partyId)) as { sale_no: string; date: string; created_at: string; amount: number; aname: string }[]
+    for (const x of rsmach)
+      if (x.amount > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Machine hire — ${x.aname}`,
+          ref: x.sale_no,
+          debit: 0,
+          credit: x.amount
+        })
   }
 
   if (partyType === 'customer') {
@@ -1011,6 +1064,24 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
           created_at: x.created_at,
           particulars: `Transport — direct sale${x.vno ? ` (${x.vno})` : ''}`,
           ref: x.dispatch_no,
+          debit: 0,
+          credit: x.charge
+        })
+    // Transporter cost lines on rack sales — payable.
+    const rstin = (await d
+      .prepare(
+        `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rst.charge,0) AS charge, COALESCE(rst.vehicle_no,'') AS vno
+         FROM rack_sale_transporters rst JOIN rack_sales rs ON rs.id = rst.rack_sale_id
+         WHERE rst.transporter_id = ?`
+      )
+      .all(partyId)) as { sale_no: string; date: string; created_at: string; charge: number; vno: string }[]
+    for (const x of rstin)
+      if (x.charge > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Transport — rack sale${x.vno ? ` (${x.vno})` : ''}`,
+          ref: x.sale_no,
           debit: 0,
           credit: x.charge
         })

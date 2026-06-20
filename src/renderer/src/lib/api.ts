@@ -246,6 +246,7 @@ export const api = {
     listExpenses: (filter?: Record<string, unknown>) =>
       call<RackExpense[]>('racks.listExpenses', filter),
     addSale: (p: unknown) => call<RackSale>('racks.addSale', p),
+    saleDetail: (id: number) => call<RackSale | null>('racks.saleDetail', { id }),
     updateSale: (p: unknown) => call<RackSale>('racks.updateSale', p),
     deleteSale: (id: number) => call<{ ok: boolean }>('racks.deleteSale', { id }),
     listSales: (filter?: Record<string, unknown>) => call<RackSale[]>('racks.listSales', filter)

@@ -6,10 +6,14 @@ import type {
   RackUnloading,
   RackExpense,
   RackSale,
+  RackSaleTransporter,
+  RackSaleMachine,
   RackDetailData,
   RackProductBalance,
   Uom,
-  UomFactors
+  UomFactors,
+  MachineBasis,
+  PurchaseTransportBasis
 } from '@shared/types'
 import { toCm, properCase } from '@shared/types'
 import { addMovement, finishedBalance } from './movements'
@@ -208,7 +212,9 @@ export async function getRackDetail(payload: { id: number }): Promise<RackDetail
     .all(payload.id)) as RackExpense[]
   const sales = (await d
     .prepare(
-      `SELECT rs.*, c.name AS customer_name, r.rack_no
+      `SELECT rs.*, c.name AS customer_name, r.rack_no,
+        (SELECT COALESCE(SUM(charge),0) FROM rack_sale_transporters rst WHERE rst.rack_sale_id = rs.id) AS transport_total,
+        (SELECT COALESCE(SUM(amount),0) FROM rack_sale_machines rsm WHERE rsm.rack_sale_id = rs.id) AS machine_total
        FROM rack_sales rs
        JOIN customers c ON c.id = rs.customer_id
        JOIN racks r ON r.id = rs.rack_id
@@ -230,7 +236,7 @@ export async function getRackDetail(payload: { id: number }): Promise<RackDetail
          SELECT product_name, 0 AS loaded, qty_cm AS unloaded, 0 AS sold FROM rack_unloadings WHERE rack_id = @id
          UNION ALL
          SELECT product_name, 0 AS loaded, 0 AS unloaded, qty_cm AS sold FROM rack_sales WHERE rack_id = @id
-       )
+       ) AS m
        GROUP BY product_name ORDER BY product_name`
     )
     .all({ id: payload.id })) as RackProductBalance[]
@@ -724,6 +730,75 @@ export async function listExpenses(filter: ExpenseFilter = {}): Promise<RackExpe
 
 /* ---------------- Sales (rack -> customer, any UOM) ---------------- */
 
+interface RackSaleTransporterInput {
+  transporter_id: number
+  vehicle_no?: string
+  basis?: PurchaseTransportBasis
+  qty?: number
+  rate?: number
+  charge?: number
+}
+interface RackSaleMachineInput {
+  asset_id: number
+  basis?: MachineBasis
+  qty?: number
+  rate?: number
+  outsource_id?: number | null
+}
+
+/** Replace the transporter + machine cost lines for a rack sale. */
+async function writeRackSaleChildLines(
+  d: Db,
+  saleId: number,
+  transporters?: RackSaleTransporterInput[],
+  machines?: RackSaleMachineInput[]
+): Promise<void> {
+  await d.prepare(`DELETE FROM rack_sale_transporters WHERE rack_sale_id = ?`).run(saleId)
+  await d.prepare(`DELETE FROM rack_sale_machines WHERE rack_sale_id = ?`).run(saleId)
+  const tStmt = d.prepare(
+    `INSERT INTO rack_sale_transporters (rack_sale_id, transporter_id, vehicle_no, basis, qty, rate, charge) VALUES (?, ?, ?, ?, ?, ?, ?)`
+  )
+  for (const t of transporters ?? []) {
+    if (!t.transporter_id) continue
+    const basis: PurchaseTransportBasis = t.basis === 'trip' || t.basis === 'uom' ? t.basis : 'flat'
+    const qty = basis === 'flat' ? 0 : Number(t.qty) || 0
+    const rate = basis === 'flat' ? 0 : Number(t.rate) || 0
+    const charge = basis === 'flat' ? roundMoney(Number(t.charge) || 0) : roundMoney(qty * rate)
+    await tStmt.run(saleId, t.transporter_id, properCase(t.vehicle_no || ''), basis, qty, rate, charge)
+  }
+  const mStmt = d.prepare(
+    `INSERT INTO rack_sale_machines (rack_sale_id, asset_id, basis, qty, rate, amount, outsource_id) VALUES (?, ?, ?, ?, ?, ?, ?)`
+  )
+  for (const m of machines ?? []) {
+    if (!m.asset_id) continue
+    const basis: MachineBasis = m.basis === 'cm' ? 'cm' : 'hour'
+    const qty = Number(m.qty) || 0
+    const rate = Number(m.rate) || 0
+    await mStmt.run(saleId, m.asset_id, basis, qty, rate, roundMoney(qty * rate), m.outsource_id ?? null)
+  }
+}
+
+/** Full rack sale with its transporter + machine cost lines (for the edit modal). */
+export async function getSaleDetail(payload: { id: number }): Promise<RackSale | null> {
+  const d = getDb()
+  const sale = (await d.prepare(`SELECT * FROM rack_sales WHERE id = ?`).get(payload.id)) as RackSale | undefined
+  if (!sale) return null
+  sale.transporters = (await d
+    .prepare(
+      `SELECT rst.*, t.name AS transporter_name FROM rack_sale_transporters rst
+       JOIN transporters t ON t.id = rst.transporter_id WHERE rst.rack_sale_id = ? ORDER BY rst.id`
+    )
+    .all(payload.id)) as RackSaleTransporter[]
+  sale.machines = (await d
+    .prepare(
+      `SELECT rsm.*, a.name AS asset_name, o.name AS outsource_name FROM rack_sale_machines rsm
+       JOIN assets a ON a.id = rsm.asset_id
+       LEFT JOIN outsource o ON o.id = rsm.outsource_id WHERE rsm.rack_sale_id = ? ORDER BY rsm.id`
+    )
+    .all(payload.id)) as RackSaleMachine[]
+  return sale
+}
+
 export interface SaleInput {
   id?: number
   rack_id: number
@@ -733,6 +808,10 @@ export interface SaleInput {
   quantity: number
   rate: number | null
   truck_no?: string
+  /** Transporter cost lines (post to the transporter ledger + the rack). */
+  transporters?: RackSaleTransporterInput[]
+  /** Machine-usage cost lines (post to the rack; optional vendor payable). */
+  machines?: RackSaleMachineInput[]
   date: string
   remarks: string
 }
@@ -780,7 +859,9 @@ export async function addSale(p: SaleInput): Promise<RackSale> {
         date: p.date,
         remarks: p.remarks ?? ''
       })
-    return Number(info.lastInsertRowid)
+    const saleId = Number(info.lastInsertRowid)
+    await writeRackSaleChildLines(d, saleId, p.transporters, p.machines)
+    return saleId
   })
   return (await d.prepare(`SELECT * FROM rack_sales WHERE id = ?`).get(id)) as RackSale
 }
@@ -796,29 +877,36 @@ export async function updateSale(p: SaleInput): Promise<RackSale> {
     throw new Error(
       `Not enough unloaded material at destination. Available ${p.product_name}: ${available} m³, requested: ${qtyCm} m³.`
     )
-  await d.prepare(
-    `UPDATE rack_sales SET customer_id=@customer_id, product_name=@product_name, uom=@uom,
-       quantity=@quantity, qty_cm=@qty_cm, rate=@rate, amount=@amount, truck_no=@truck_no, date=@date, remarks=@remarks
-     WHERE id=@id`
-  ).run({
-    id: p.id,
-    customer_id: p.customer_id,
-    product_name: p.product_name.trim(),
-    uom: p.uom,
-    quantity: Number(p.quantity),
-    qty_cm: qtyCm,
-    rate: p.rate,
-    amount,
-    truck_no: (p.truck_no ?? '').trim(),
-    date: p.date,
-    remarks: p.remarks ?? ''
+  await d.transaction(async () => {
+    await d.prepare(
+      `UPDATE rack_sales SET customer_id=@customer_id, product_name=@product_name, uom=@uom,
+         quantity=@quantity, qty_cm=@qty_cm, rate=@rate, amount=@amount, truck_no=@truck_no, date=@date, remarks=@remarks
+       WHERE id=@id`
+    ).run({
+      id: p.id,
+      customer_id: p.customer_id,
+      product_name: p.product_name.trim(),
+      uom: p.uom,
+      quantity: Number(p.quantity),
+      qty_cm: qtyCm,
+      rate: p.rate,
+      amount,
+      truck_no: (p.truck_no ?? '').trim(),
+      date: p.date,
+      remarks: p.remarks ?? ''
+    })
+    await writeRackSaleChildLines(d, p.id!, p.transporters, p.machines)
   })
   return (await d.prepare(`SELECT * FROM rack_sales WHERE id = ?`).get(p.id)) as RackSale
 }
 
 export async function deleteSale(payload: { id: number }): Promise<{ ok: boolean }> {
   const d = getDb()
-  await d.prepare(`DELETE FROM rack_sales WHERE id = ?`).run(payload.id)
+  await d.transaction(async () => {
+    await d.prepare(`DELETE FROM rack_sale_transporters WHERE rack_sale_id = ?`).run(payload.id)
+    await d.prepare(`DELETE FROM rack_sale_machines WHERE rack_sale_id = ?`).run(payload.id)
+    await d.prepare(`DELETE FROM rack_sales WHERE id = ?`).run(payload.id)
+  })
   return { ok: true }
 }
 
