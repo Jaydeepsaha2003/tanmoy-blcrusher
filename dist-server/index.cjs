@@ -596,6 +596,8 @@ CREATE TABLE IF NOT EXISTS machine_logs (
   closing_meter REAL NOT NULL DEFAULT 0,
   usage_qty     REAL NOT NULL DEFAULT 0,
   fuel_litres   REAL,
+  rate          REAL,
+  amount        REAL,
   remarks       TEXT NOT NULL DEFAULT '',
   created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
@@ -610,6 +612,22 @@ CREATE TABLE IF NOT EXISTS asset_documents (
   file_data   TEXT,
   remarks     TEXT NOT NULL DEFAULT '',
   created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS asset_plants (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  asset_id  INTEGER NOT NULL REFERENCES assets(id),
+  plant_id  INTEGER NOT NULL REFERENCES plants(id)
+);
+
+CREATE TABLE IF NOT EXISTS asset_plant_moves (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  asset_id      INTEGER NOT NULL REFERENCES assets(id),
+  from_plant_id INTEGER,
+  to_plant_id   INTEGER,
+  date          TEXT NOT NULL,
+  remarks       TEXT NOT NULL DEFAULT '',
+  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS plant_expenses (
@@ -773,6 +791,9 @@ CREATE INDEX IF NOT EXISTS idx_rsmach_sale ON rack_sale_machines(rack_sale_id);
 CREATE INDEX IF NOT EXISTS idx_mlog_asset ON machine_logs(asset_id);
 CREATE INDEX IF NOT EXISTS idx_adoc_asset ON asset_documents(asset_id);
 CREATE INDEX IF NOT EXISTS idx_adoc_expiry ON asset_documents(expiry_date);
+CREATE INDEX IF NOT EXISTS idx_aplants_asset ON asset_plants(asset_id);
+CREATE INDEX IF NOT EXISTS idx_aplants_plant ON asset_plants(plant_id);
+CREATE INDEX IF NOT EXISTS idx_amoves_asset ON asset_plant_moves(asset_id);
 `;
 
 // src/main/crypto.ts
@@ -1206,6 +1227,8 @@ CREATE TABLE IF NOT EXISTS machine_logs (
   closing_meter DOUBLE NOT NULL DEFAULT 0,
   usage_qty     DOUBLE NOT NULL DEFAULT 0,
   fuel_litres   DOUBLE,
+  rate          DOUBLE,
+  amount        DOUBLE,
   remarks       TEXT,
   created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -1219,6 +1242,20 @@ CREATE TABLE IF NOT EXISTS asset_documents (
   file_data   MEDIUMTEXT,
   remarks     TEXT,
   created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS asset_plants (
+  id        INT AUTO_INCREMENT PRIMARY KEY,
+  asset_id  INT NOT NULL,
+  plant_id  INT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS asset_plant_moves (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  asset_id      INT NOT NULL,
+  from_plant_id INT,
+  to_plant_id   INT,
+  date          VARCHAR(32) NOT NULL,
+  remarks       TEXT,
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS plant_expenses (
   id             INT AUTO_INCREMENT PRIMARY KEY,
@@ -1575,6 +1612,29 @@ CREATE INDEX idx_rsmach_sale ON rack_sale_machines(rack_sale_id)`
     sql: "ALTER TABLE settings MODIFY value MEDIUMTEXT"
   },
   {
+    // Multi-plant assets, plant-move log, and logbook rate→income.
+    id: "018_machines_multiplant_lograte",
+    sql: `ALTER TABLE machine_logs ADD COLUMN rate DOUBLE;
+ALTER TABLE machine_logs ADD COLUMN amount DOUBLE;
+CREATE TABLE IF NOT EXISTS asset_plants (
+  id        INT AUTO_INCREMENT PRIMARY KEY,
+  asset_id  INT NOT NULL,
+  plant_id  INT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS asset_plant_moves (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  asset_id      INT NOT NULL,
+  from_plant_id INT,
+  to_plant_id   INT,
+  date          VARCHAR(32) NOT NULL,
+  remarks       TEXT,
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_aplants_asset ON asset_plants(asset_id);
+CREATE INDEX idx_aplants_plant ON asset_plants(plant_id);
+CREATE INDEX idx_amoves_asset ON asset_plant_moves(asset_id)`
+  },
+  {
     // Machine logbook, balance-sheet inputs and document/insurance tracking.
     id: "017_machinery_logs_documents",
     sql: `ALTER TABLE assets ADD COLUMN meter_type VARCHAR(8) NOT NULL DEFAULT 'hour';
@@ -1673,6 +1733,8 @@ async function sqliteLegacyMigrate(adapter2) {
   await addColumn("customers", "plant_ref_id", "INTEGER");
   await addColumn("assets", "meter_type", `TEXT NOT NULL DEFAULT 'hour'`);
   await addColumn("assets", "standard_consumption", "REAL");
+  await addColumn("machine_logs", "rate", "REAL");
+  await addColumn("machine_logs", "amount", "REAL");
 }
 async function importProductsFromSettings(adapter2) {
   const all = (await adapter2.exec(`SELECT id, name FROM products ORDER BY id`, void 0, null)).rows;
@@ -1742,6 +1804,24 @@ async function uppercaseExistingNames(adapter2, kind) {
   const ins = kind === "mysql" ? "INSERT INTO settings (`key`, value) VALUES (?, '1') ON DUPLICATE KEY UPDATE value = '1'" : "INSERT INTO settings (`key`, value) VALUES (?, '1') ON CONFLICT(`key`) DO UPDATE SET value = '1'";
   await adapter2.exec(ins, [flag], null);
 }
+async function backfillAssetPlants(adapter2, kind) {
+  const flag = "asset_plants_backfill_v1";
+  const done = (await adapter2.exec("SELECT value FROM settings WHERE `key` = ?", [flag], null)).rows;
+  if (done.length > 0) return;
+  try {
+    await adapter2.exec(
+      `INSERT INTO asset_plants (asset_id, plant_id)
+       SELECT a.id, a.plant_id FROM assets a
+       WHERE a.plant_id IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM asset_plants ap WHERE ap.asset_id = a.id)`,
+      void 0,
+      null
+    );
+  } catch {
+  }
+  const ins = kind === "mysql" ? "INSERT INTO settings (`key`, value) VALUES (?, '1') ON DUPLICATE KEY UPDATE value = '1'" : "INSERT INTO settings (`key`, value) VALUES (?, '1') ON CONFLICT(`key`) DO UPDATE SET value = '1'";
+  await adapter2.exec(ins, [flag], null);
+}
 async function seedDefaults(adapter2) {
   const pwRow = (await adapter2.exec("SELECT value FROM settings WHERE `key` = 'admin_password'", void 0, null)).rows[0];
   if (!pwRow) {
@@ -1789,6 +1869,7 @@ async function runMigrations(adapter2, kind) {
   await seedDefaults(adapter2);
   await importProductsFromSettings(adapter2);
   await uppercaseExistingNames(adapter2, kind);
+  await backfillAssetPlants(adapter2, kind);
 }
 
 // src/main/db/index.ts
@@ -4626,6 +4707,11 @@ async function partyName(partyType, partyId) {
     if (!row2) throw new Error("Business not found.");
     return row2.name;
   }
+  if (partyType === "machine") {
+    const row2 = await d.prepare(`SELECT name FROM assets WHERE id = ?`).get(partyId);
+    if (!row2) throw new Error("Machine not found.");
+    return row2.name;
+  }
   const table = PARTY_TABLE[partyType];
   if (!table) throw new Error("Invalid party type.");
   const row = await d.prepare(`SELECT name FROM ${table} WHERE id = ?`).get(partyId);
@@ -5056,6 +5142,75 @@ async function buildEntries(partyType, partyId) {
     );
     return entries;
   }
+  if (partyType === "machine") {
+    const mcatLabel = {
+      electricity: "Electricity",
+      maintenance: "Maintenance",
+      fixed: "Fixed Expense",
+      other: "Other Expense"
+    };
+    const logs = await d.prepare(
+      `SELECT date, created_at, work_type, usage_qty, COALESCE(amount,0) AS amount
+         FROM machine_logs WHERE asset_id = ? AND amount IS NOT NULL`
+    ).all(partyId);
+    for (const x of logs)
+      if (x.amount > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Run income \u2014 ${x.work_type || "usage"} (${x.usage_qty})`,
+          ref: "",
+          debit: 0,
+          credit: x.amount
+        });
+    const pexp = await d.prepare(
+      `SELECT expense_no, date, created_at, COALESCE(amount,0) AS amount, category
+         FROM plant_expenses WHERE asset_id = ?`
+    ).all(partyId);
+    for (const x of pexp) {
+      if (!(x.amount > 0)) continue;
+      const isRent = x.category === "tipper_rent" || x.category === "equipment_rent";
+      entries.push({
+        date: x.date,
+        created_at: x.created_at,
+        particulars: isRent ? "Rent earned" : mcatLabel[x.category] ?? "Expense",
+        ref: x.expense_no,
+        debit: isRent ? 0 : x.amount,
+        credit: isRent ? x.amount : 0
+      });
+    }
+    const wages = await d.prepare(
+      `SELECT w.entry_no, w.date, w.created_at, COALESCE(w.amount,0) AS amount, e.name AS emp, w.period
+         FROM wage_entries w JOIN employees e ON e.id = w.employee_id WHERE w.asset_id = ?`
+    ).all(partyId);
+    for (const x of wages)
+      if (x.amount > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Operator wages \u2014 ${x.emp} (${x.period})`,
+          ref: x.entry_no,
+          debit: x.amount,
+          credit: 0
+        });
+    const avgRow = await d.prepare(`SELECT COALESCE(SUM(amount),0) AS a, COALESCE(SUM(litres),0) AS l FROM diesel_purchases WHERE amount IS NOT NULL`).get();
+    const avg = avgRow.l > 0 ? avgRow.a / avgRow.l : 0;
+    const diesel = await d.prepare(`SELECT issue_no, date, created_at, litres FROM diesel_issues WHERE asset_id = ?`).all(partyId);
+    for (const x of diesel)
+      if (x.litres > 0 && avg > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Diesel ${x.litres} L`,
+          ref: x.issue_no,
+          debit: roundMoney2(x.litres * avg),
+          credit: 0
+        });
+    entries.sort(
+      (a, b) => a.date === b.date ? a.created_at.localeCompare(b.created_at) : a.date.localeCompare(b.date)
+    );
+    return entries;
+  }
   if (partyType === "outsource") {
     const exp = await d.prepare(
       `SELECT expense_no, date, created_at, category, amount, paid_amount
@@ -5418,6 +5573,10 @@ async function getPartyBalances(payload) {
     parties = await d.prepare(`SELECT id, name FROM businesses ORDER BY name`).all();
   } else if (payload.party_type === "outsource") {
     parties = await d.prepare(`SELECT id, name FROM outsource ORDER BY name`).all();
+  } else if (payload.party_type === "machine") {
+    const clause = payload.plant_id ? `WHERE EXISTS (SELECT 1 FROM asset_plants ap WHERE ap.asset_id = a.id AND ap.plant_id = @plant_id)
+           OR NOT EXISTS (SELECT 1 FROM asset_plants ap2 WHERE ap2.asset_id = a.id)` : "";
+    parties = await d.prepare(`SELECT a.id, a.name FROM assets a ${clause} ORDER BY a.asset_type, a.name`).all(payload.plant_id ? { plant_id: payload.plant_id } : {});
   } else {
     const table = PARTY_TABLE[payload.party_type];
     if (!table) throw new Error("Invalid party type.");
@@ -5675,17 +5834,47 @@ async function issuesByAsset(payload = {}) {
 }
 
 // src/main/services/assets.ts
+async function attachPlants(d, assets) {
+  if (assets.length === 0) return assets;
+  const rows = await d.prepare(
+    `SELECT ap.asset_id, ap.plant_id, p.name AS plant_name
+       FROM asset_plants ap JOIN plants p ON p.id = ap.plant_id ORDER BY p.name`
+  ).all();
+  const byAsset = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    const e = byAsset.get(r.asset_id) ?? { ids: [], names: [] };
+    e.ids.push(r.plant_id);
+    e.names.push(r.plant_name);
+    byAsset.set(r.asset_id, e);
+  }
+  for (const a of assets) {
+    const e = byAsset.get(a.id);
+    a.plant_ids = e?.ids ?? [];
+    a.plant_names = e?.names ?? [];
+  }
+  return assets;
+}
 async function listAssets(payload = {}) {
   const d = getDb();
-  const clause = payload.plant_id ? `WHERE (a.plant_id IS NULL OR a.plant_id = @plant_id)` : "";
-  return await d.prepare(
-    `SELECT a.*, p.name AS plant_name, b.name AS business_name
+  const clause = payload.plant_id ? `WHERE EXISTS (SELECT 1 FROM asset_plants ap WHERE ap.asset_id = a.id AND ap.plant_id = @plant_id)
+         OR NOT EXISTS (SELECT 1 FROM asset_plants ap2 WHERE ap2.asset_id = a.id)` : "";
+  const assets = await d.prepare(
+    `SELECT a.*, b.name AS business_name
        FROM assets a
-       LEFT JOIN plants p ON p.id = a.plant_id
        LEFT JOIN businesses b ON b.id = a.business_id
        ${clause}
        ORDER BY a.asset_type, a.name`
   ).all(payload);
+  return attachPlants(d, assets);
+}
+function plantSet(p) {
+  if (Array.isArray(p.plant_ids)) return [...new Set(p.plant_ids.map(Number).filter((n) => n > 0))];
+  return p.plant_id ? [Number(p.plant_id)] : [];
+}
+async function writeAssetPlants(d, assetId, plantIds) {
+  await d.prepare(`DELETE FROM asset_plants WHERE asset_id = ?`).run(assetId);
+  const stmt = d.prepare(`INSERT INTO asset_plants (asset_id, plant_id) VALUES (?, ?)`);
+  for (const pid of plantIds) await stmt.run(assetId, pid);
 }
 function meterTypeOf(p) {
   if (p.meter_type === "hour" || p.meter_type === "km") return p.meter_type;
@@ -5697,41 +5886,74 @@ function stdConsumption(p) {
 async function createAsset(p) {
   const d = getDb();
   if (!p.name?.trim()) throw new Error("Name is required.");
-  const info = await d.prepare(
-    `INSERT INTO assets (name, asset_type, category, identifier, plant_id, business_id, meter_type, standard_consumption, status, remarks)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    properCase(p.name),
-    p.asset_type || "machine",
-    properCase(p.category),
-    (p.identifier ?? "").trim().toUpperCase(),
-    p.plant_id ?? null,
-    p.business_id ?? null,
-    meterTypeOf(p),
-    stdConsumption(p),
-    p.status || "active",
-    p.remarks ?? ""
-  );
-  return await d.prepare(`SELECT * FROM assets WHERE id = ?`).get(info.lastInsertRowid);
+  const plants = plantSet(p);
+  const id = await d.transaction(async () => {
+    const info = await d.prepare(
+      `INSERT INTO assets (name, asset_type, category, identifier, plant_id, business_id, meter_type, standard_consumption, status, remarks)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      properCase(p.name),
+      p.asset_type || "machine",
+      properCase(p.category),
+      (p.identifier ?? "").trim().toUpperCase(),
+      plants[0] ?? null,
+      p.business_id ?? null,
+      meterTypeOf(p),
+      stdConsumption(p),
+      p.status || "active",
+      p.remarks ?? ""
+    );
+    const assetId = Number(info.lastInsertRowid);
+    await writeAssetPlants(d, assetId, plants);
+    return assetId;
+  });
+  return await d.prepare(`SELECT * FROM assets WHERE id = ?`).get(id);
 }
 async function updateAsset(p) {
   const d = getDb();
-  await d.prepare(
-    `UPDATE assets SET name=?, asset_type=?, category=?, identifier=?, plant_id=?, business_id=?, meter_type=?, standard_consumption=?, status=?, remarks=? WHERE id=?`
-  ).run(
-    properCase(p.name),
-    p.asset_type || "machine",
-    properCase(p.category),
-    (p.identifier ?? "").trim().toUpperCase(),
-    p.plant_id ?? null,
-    p.business_id ?? null,
-    meterTypeOf(p),
-    stdConsumption(p),
-    p.status || "active",
-    p.remarks ?? "",
-    p.id
-  );
+  const plants = plantSet(p);
+  await d.transaction(async () => {
+    await d.prepare(
+      `UPDATE assets SET name=?, asset_type=?, category=?, identifier=?, plant_id=?, business_id=?, meter_type=?, standard_consumption=?, status=?, remarks=? WHERE id=?`
+    ).run(
+      properCase(p.name),
+      p.asset_type || "machine",
+      properCase(p.category),
+      (p.identifier ?? "").trim().toUpperCase(),
+      plants[0] ?? null,
+      p.business_id ?? null,
+      meterTypeOf(p),
+      stdConsumption(p),
+      p.status || "active",
+      p.remarks ?? "",
+      p.id
+    );
+    await writeAssetPlants(d, p.id, plants);
+  });
   return await d.prepare(`SELECT * FROM assets WHERE id = ?`).get(p.id);
+}
+async function moveAsset(p) {
+  const d = getDb();
+  const old = await d.prepare(`SELECT plant_id FROM assets WHERE id = ?`).get(p.id);
+  if (!old) throw new Error("Machine not found.");
+  const plants = [...new Set((p.plant_ids ?? []).map(Number).filter((n) => n > 0))];
+  await d.transaction(async () => {
+    await d.prepare(
+      `INSERT INTO asset_plant_moves (asset_id, from_plant_id, to_plant_id, date, remarks) VALUES (?, ?, ?, ?, ?)`
+    ).run(p.id, old.plant_id ?? null, plants[0] ?? null, p.date || (/* @__PURE__ */ new Date()).toISOString().slice(0, 10), p.remarks ?? "");
+    await d.prepare(`UPDATE assets SET plant_id = ? WHERE id = ?`).run(plants[0] ?? null, p.id);
+    await writeAssetPlants(d, p.id, plants);
+  });
+  return await d.prepare(`SELECT * FROM assets WHERE id = ?`).get(p.id);
+}
+async function assetMoves(payload) {
+  return await getDb().prepare(
+    `SELECT m.id, m.date, m.remarks, fp.name AS from_plant_name, tp.name AS to_plant_name
+       FROM asset_plant_moves m
+       LEFT JOIN plants fp ON fp.id = m.from_plant_id
+       LEFT JOIN plants tp ON tp.id = m.to_plant_id
+       WHERE m.asset_id = ? ORDER BY m.date DESC, m.id DESC`
+  ).all(payload.id);
 }
 async function assetReport(payload) {
   const d = getDb();
@@ -5811,12 +6033,17 @@ function normalizeLog(p) {
   if (closing < opening) throw new Error("Closing meter cannot be less than the opening meter.");
   const fuel = p.fuel_litres == null || p.fuel_litres === "" ? null : Number(p.fuel_litres);
   if (fuel != null && fuel < 0) throw new Error("Fuel cannot be negative.");
+  const rate = p.rate == null || p.rate === "" ? null : Number(p.rate);
+  if (rate != null && rate < 0) throw new Error("Rate cannot be negative.");
+  const usage = round32(closing - opening);
   return {
     work_type: properCase(p.work_type || ""),
     opening: round32(opening),
     closing: round32(closing),
-    usage: round32(closing - opening),
-    fuel: fuel == null ? null : round32(fuel)
+    usage,
+    fuel: fuel == null ? null : round32(fuel),
+    rate: rate == null ? null : round32(rate),
+    amount: rate == null ? null : money3(usage * rate)
   };
 }
 async function addMachineLog(p) {
@@ -5825,9 +6052,9 @@ async function addMachineLog(p) {
   if (!p.date) throw new Error("Date is required.");
   const n = normalizeLog(p);
   const info = await d.prepare(
-    `INSERT INTO machine_logs (asset_id, date, work_type, opening_meter, closing_meter, usage_qty, fuel_litres, remarks)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(p.asset_id, p.date, n.work_type, n.opening, n.closing, n.usage, n.fuel, p.remarks ?? "");
+    `INSERT INTO machine_logs (asset_id, date, work_type, opening_meter, closing_meter, usage_qty, fuel_litres, rate, amount, remarks)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(p.asset_id, p.date, n.work_type, n.opening, n.closing, n.usage, n.fuel, n.rate, n.amount, p.remarks ?? "");
   return await d.prepare(`SELECT * FROM machine_logs WHERE id = ?`).get(info.lastInsertRowid);
 }
 async function updateMachineLog(p) {
@@ -5836,8 +6063,8 @@ async function updateMachineLog(p) {
   if (!p.date) throw new Error("Date is required.");
   const n = normalizeLog(p);
   await d.prepare(
-    `UPDATE machine_logs SET date=?, work_type=?, opening_meter=?, closing_meter=?, usage_qty=?, fuel_litres=?, remarks=? WHERE id=?`
-  ).run(p.date, n.work_type, n.opening, n.closing, n.usage, n.fuel, p.remarks ?? "", p.id);
+    `UPDATE machine_logs SET date=?, work_type=?, opening_meter=?, closing_meter=?, usage_qty=?, fuel_litres=?, rate=?, amount=?, remarks=? WHERE id=?`
+  ).run(p.date, n.work_type, n.opening, n.closing, n.usage, n.fuel, n.rate, n.amount, p.remarks ?? "", p.id);
   return await d.prepare(`SELECT * FROM machine_logs WHERE id = ?`).get(p.id);
 }
 async function deleteMachineLog(payload) {
@@ -5869,6 +6096,7 @@ async function machineBalanceSheet(payload) {
     `SELECT COALESCE(SUM(usage_qty),0) AS usage_qty,
               COALESCE(SUM(CASE WHEN fuel_litres IS NOT NULL THEN fuel_litres ELSE 0 END),0) AS log_fuel,
               SUM(CASE WHEN fuel_litres IS NOT NULL THEN 1 ELSE 0 END) AS fuel_rows,
+              COALESCE(SUM(CASE WHEN amount IS NOT NULL THEN amount ELSE 0 END),0) AS run_income,
               MIN(opening_meter) AS min_open, MAX(closing_meter) AS max_close
        FROM machine_logs ml WHERE ml.asset_id = @asset_id${dl.sql}`
   ).get({ asset_id: payload.asset_id, ...dl.params });
@@ -5887,7 +6115,7 @@ async function machineBalanceSheet(payload) {
   }
   const usage = round32(logAgg.usage_qty);
   const rate = await avgDieselRate();
-  const dieselCost = money3(fuel * rate);
+  const dieselCost = money3(dieselLitres * rate);
   const pe = dateClause("pe");
   const exp = await d.prepare(
     `SELECT
@@ -5899,6 +6127,8 @@ async function machineBalanceSheet(payload) {
   const we = dateClause("we");
   const wages = (await d.prepare(`SELECT COALESCE(SUM(amount),0) AS q FROM wage_entries we WHERE we.asset_id = @asset_id${we.sql}`).get({ asset_id: payload.asset_id, ...we.params })).q;
   const totalCost = money3(dieselCost + exp.maintenance + exp.other + wages);
+  const runIncome = money3(logAgg.run_income);
+  const totalIncome = money3(exp.rent + runIncome);
   return {
     asset_id: payload.asset_id,
     asset_name: a.name,
@@ -5918,10 +6148,60 @@ async function machineBalanceSheet(payload) {
     other_expense: money3(exp.other),
     wages: money3(wages),
     rent_income: money3(exp.rent),
+    run_income: runIncome,
+    total_income: totalIncome,
     total_cost: totalCost,
-    net: money3(exp.rent - totalCost),
+    net: money3(totalIncome - totalCost),
     cost_per_unit: usage > 0 ? money3(totalCost / usage) : null
   };
+}
+async function mileageReport(payload) {
+  const d = getDb();
+  const typeClause = payload.asset_type === "machine" || payload.asset_type === "vehicle" ? " AND a.asset_type = @atype" : "";
+  const assets = await d.prepare(
+    `SELECT a.id, a.name, a.asset_type, a.meter_type, a.standard_consumption
+       FROM assets a WHERE a.status = 'active'${typeClause} ORDER BY a.asset_type, a.name`
+  ).all(payload.asset_type ? { atype: payload.asset_type } : {});
+  const rows = [];
+  for (const a of assets) {
+    const bs = await machineBalanceSheet({ asset_id: a.id, from: payload.from, to: payload.to });
+    if (bs.usage_qty <= 0 && bs.fuel_litres <= 0) continue;
+    rows.push({
+      asset_id: a.id,
+      asset_name: a.name,
+      asset_type: a.asset_type,
+      meter_type: a.meter_type === "km" ? "km" : "hour",
+      usage_qty: bs.usage_qty,
+      fuel_litres: bs.fuel_litres,
+      actual_consumption: bs.actual_consumption,
+      standard_consumption: bs.standard_consumption,
+      over: bs.actual_consumption != null && bs.standard_consumption != null && bs.actual_consumption > bs.standard_consumption
+    });
+  }
+  return rows;
+}
+async function listAllLogs(payload = {}) {
+  const d = getDb();
+  const where = [];
+  const params = {};
+  if (payload.asset_id) {
+    where.push("ml.asset_id = @asset_id");
+    params.asset_id = payload.asset_id;
+  }
+  if (payload.from) {
+    where.push("ml.date >= @from");
+    params.from = payload.from;
+  }
+  if (payload.to) {
+    where.push("ml.date <= @to");
+    params.to = payload.to;
+  }
+  const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  return await d.prepare(
+    `SELECT ml.*, a.name AS asset_name FROM machine_logs ml
+       JOIN assets a ON a.id = ml.asset_id ${clause}
+       ORDER BY ml.date DESC, ml.id DESC`
+  ).all(params);
 }
 var DOC_TYPES = ["insurance", "permit", "fitness", "puc", "rc", "tax", "other"];
 async function listAssetDocuments(payload) {
@@ -6984,7 +7264,11 @@ var handlers = {
   "assets.update": updateAsset,
   "assets.delete": deleteAsset,
   "assets.report": assetReport,
+  "assets.move": moveAsset,
+  "assets.moves": assetMoves,
   "machinery.logs": listMachineLogs,
+  "machinery.allLogs": listAllLogs,
+  "machinery.mileage": mileageReport,
   "machinery.addLog": addMachineLog,
   "machinery.updateLog": updateMachineLog,
   "machinery.deleteLog": deleteMachineLog,
