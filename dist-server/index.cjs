@@ -6487,8 +6487,8 @@ async function createPart(p) {
         asset_id: null,
         movement_type: "opening",
         quantity: opening,
-        date: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10),
-        note: "Opening stock"
+        date: p.opening_date || (/* @__PURE__ */ new Date()).toISOString().slice(0, 10),
+        note: p.opening_note || "Opening stock"
       });
     }
     return partId;

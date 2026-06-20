@@ -63185,6 +63185,7 @@ const TYPES = [
   { value: "repairable", label: "Repairable Part" },
   { value: "scrap", label: "Scrap Part" }
 ];
+const UNITS = ["PCS", "SET", "PAIR", "BOX", "KG", "LTR", "MTR"];
 const tone = {
   new: "success",
   repairable: "warning",
@@ -63201,6 +63202,10 @@ function SpareParts() {
   const { data: parts = [] } = useQuery({
     queryKey: ["spareParts", plantId, type],
     queryFn: () => api.parts.list({ plant_id: plantId, part_type: type || void 0 })
+  });
+  const { data: allParts = [] } = useQuery({
+    queryKey: ["spareParts", plantId, "all"],
+    queryFn: () => api.parts.list({ plant_id: plantId })
   });
   const { data: movements = [] } = useQuery({
     queryKey: ["partMovements", selected],
@@ -63223,18 +63228,41 @@ function SpareParts() {
     onError: (e3) => toast.error(e3.message)
   });
   const moveStock = useMutation({
-    mutationFn: (p2) => p2.mode === "out" ? api.parts.stockOut({
-      part_id: p2.part_id,
-      asset_id: Number(p2.asset_id),
-      quantity: Number(p2.quantity),
-      date: p2.date,
-      note: p2.note
-    }) : api.parts.stockIn({
-      part_id: p2.part_id,
-      quantity: Number(p2.quantity),
-      date: p2.date,
-      note: p2.note
-    }),
+    mutationFn: async (p2) => {
+      if (p2.mode === "out") {
+        return api.parts.stockOut({
+          part_id: p2.part_id,
+          asset_id: Number(p2.asset_id),
+          quantity: Number(p2.quantity),
+          date: p2.date,
+          note: p2.note
+        });
+      }
+      if (p2.part_id === "__new__") {
+        await api.parts.create({
+          name: p2.new_name,
+          part_type: p2.part_type,
+          unit: p2.unit,
+          plant_id: p2.plant_id ?? null,
+          min_qty: Number(p2.min_qty) || 0,
+          remarks: p2.remarks || "",
+          opening_qty: Number(p2.quantity),
+          opening_date: p2.date,
+          opening_note: p2.note || "Stock received"
+        });
+        return { ok: true };
+      }
+      const existing = allParts.find((x2) => x2.id === Number(p2.part_id));
+      if (existing && existing.unit !== p2.unit) {
+        await api.parts.update({ ...existing, unit: p2.unit });
+      }
+      return api.parts.stockIn({
+        part_id: p2.part_id,
+        quantity: Number(p2.quantity),
+        date: p2.date,
+        note: p2.note
+      });
+    },
     onSuccess: (_res, p2) => {
       refresh();
       setStockMove(null);
@@ -63278,6 +63306,10 @@ function SpareParts() {
             /* @__PURE__ */ jsxRuntimeExports.jsx(FileSpreadsheet, { size: 16 }),
             " Excel"
           ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", onClick: () => setStockMove({ mode: "in", part_id: "", unit: "PCS", quantity: "", date: today(), note: "", part_type: "new", plant_id: plantId ?? null, min_qty: 0, remarks: "" }), children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowDownToLine, { size: 16 }),
+            " Stock In"
+          ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { onClick: () => setForm({ part_type: "new", unit: "PCS", plant_id: plantId ?? null, opening_qty: "", min_qty: 0, remarks: "" }), children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 16 }),
             " New Part"
@@ -63318,7 +63350,7 @@ function SpareParts() {
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: p2.balance_qty <= p2.min_qty ? /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "destructive", children: "Low stock" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "success", children: "In stock" }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", onClick: (e3) => e3.stopPropagation(), children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Stock In", onClick: () => setStockMove({ mode: "in", part_id: p2.id, name: p2.name, quantity: "", date: today(), note: "" }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowDownToLine, { size: 15, className: "text-success" }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Stock In", onClick: () => setStockMove({ mode: "in", part_id: p2.id, name: p2.name, unit: p2.unit, quantity: "", date: today(), note: "" }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowDownToLine, { size: 15, className: "text-success" }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Stock Out to machine / vehicle", onClick: () => setStockMove({ mode: "out", part_id: p2.id, name: p2.name, quantity: "", date: today(), asset_id: "", note: "" }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowUpFromLine, { size: 15, className: "text-warning" }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => setForm({ ...p2 }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => remove(p2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
@@ -63357,7 +63389,7 @@ function SpareParts() {
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Part Name", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.name || "", onChange: (e3) => setForm({ ...form, name: e3.target.value }), placeholder: "Bearing 22220, fan belt..." }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Stock Type", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.part_type, onChange: (v2) => setForm({ ...form, part_type: v2 }), options: TYPES }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Unit", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.unit || "PCS", onChange: (e3) => setForm({ ...form, unit: e3.target.value }), placeholder: "PCS, SET, LTR..." }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "UOM", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.unit || "PCS", onChange: (v2) => setForm({ ...form, unit: v2 }), options: UNITS.map((u2) => ({ value: u2, label: u2 })) }) }),
         !form.id && /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Opening Stock", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.opening_qty, onChange: (e3) => setForm({ ...form, opening_qty: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Low-stock Level", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.min_qty, onChange: (e3) => setForm({ ...form, min_qty: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.plant_id ?? "", onChange: (v2) => setForm({ ...form, plant_id: v2 ? Number(v2) : null }), options: [{ value: "", label: "All plants" }, ...plants.map((p2) => ({ value: p2.id, label: p2.name }))] }) }),
@@ -63368,8 +63400,36 @@ function SpareParts() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: () => save.mutate(form), disabled: !form.name?.trim(), children: "Save" })
       ] })
     ] }),
-    stockMove && /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { open: true, onClose: () => setStockMove(null), title: `${stockMove.mode === "out" ? "Stock Out" : "Stock In"} — ${stockMove.name}`, width: "max-w-md", children: [
+    stockMove && /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { open: true, onClose: () => setStockMove(null), title: `${stockMove.mode === "out" ? "Stock Out" : "Stock In"}${stockMove.name ? ` — ${stockMove.name}` : ""}`, width: "max-w-md", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
+        stockMove.mode === "in" && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Part", required: true, hint: "Select an existing part, or choose Add New Part to type a new name.", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SearchSelect,
+            {
+              value: stockMove.part_id,
+              onChange: (v2) => {
+                const existing = allParts.find((p2) => p2.id === Number(v2));
+                setStockMove({
+                  ...stockMove,
+                  part_id: v2,
+                  name: existing?.name || "",
+                  unit: existing?.unit || stockMove.unit || "PCS"
+                });
+              },
+              options: [
+                { value: "__new__", label: "+ Add New Part" },
+                ...allParts.map((p2) => ({ value: p2.id, label: `${p2.name} — ${p2.part_type} (${fmtQty(p2.balance_qty)} ${p2.unit})` }))
+              ],
+              placeholder: "Select part…"
+            }
+          ) }),
+          stockMove.part_id === "__new__" && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "New Part Name", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: stockMove.new_name || "", onChange: (e3) => setStockMove({ ...stockMove, new_name: e3.target.value }), placeholder: "Type the new part name" }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Stock Type", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: stockMove.part_type || "new", onChange: (v2) => setStockMove({ ...stockMove, part_type: v2 }), options: TYPES }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: stockMove.plant_id ?? "", onChange: (v2) => setStockMove({ ...stockMove, plant_id: v2 ? Number(v2) : null }), options: [{ value: "", label: "All plants" }, ...plants.map((p2) => ({ value: p2.id, label: p2.name }))] }) })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "UOM", required: true, hint: "Switch the unit used for this part.", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: stockMove.unit || "PCS", onChange: (v2) => setStockMove({ ...stockMove, unit: v2 }), options: UNITS.map((u2) => ({ value: u2, label: u2 })) }) })
+        ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Quantity", hint: stockMove.mode === "out" ? "Quantity issued for use" : "Quantity received into stock", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { autoFocus: true, type: "number", min: "0", step: "0.001", value: stockMove.quantity, onChange: (e3) => setStockMove({ ...stockMove, quantity: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: stockMove.date, onChange: (e3) => setStockMove({ ...stockMove, date: e3.target.value }) }) }),
         stockMove.mode === "out" && /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Used For Machine / Vehicle", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: stockMove.asset_id ?? "", onChange: (v2) => setStockMove({ ...stockMove, asset_id: Number(v2) }), options: assets.map((a2) => ({ value: a2.id, label: a2.name })), placeholder: "Select machine / vehicle…" }) }),
@@ -63377,7 +63437,14 @@ function SpareParts() {
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 flex justify-end gap-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setStockMove(null), children: "Cancel" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: () => moveStock.mutate(stockMove), disabled: !(Number(stockMove.quantity) > 0) || !stockMove.date || stockMove.mode === "out" && !stockMove.asset_id, children: stockMove.mode === "out" ? "Issue Part" : "Add Stock" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Button,
+          {
+            onClick: () => moveStock.mutate(stockMove),
+            disabled: !(Number(stockMove.quantity) > 0) || !stockMove.date || stockMove.mode === "out" && !stockMove.asset_id || stockMove.mode === "in" && !stockMove.part_id || stockMove.part_id === "__new__" && !stockMove.new_name?.trim(),
+            children: stockMove.mode === "out" ? "Issue Part" : "Add Stock"
+          }
+        )
       ] })
     ] })
   ] });
