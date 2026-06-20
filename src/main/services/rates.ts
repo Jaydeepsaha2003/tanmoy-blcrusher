@@ -94,12 +94,38 @@ export async function getBusinessName(): Promise<{ business_name: string }> {
 }
 
 export async function setBusinessName(payload: { business_name: string }): Promise<{ ok: boolean }> {
-  const value = (payload.business_name ?? '').trim()
+  await putSetting('business_name', (payload.business_name ?? '').trim())
+  return { ok: true }
+}
+
+/** Upsert a single settings key/value (works on both SQLite and MySQL). */
+async function putSetting(key: string, value: string): Promise<void> {
   const sql =
     dbKind() === 'mysql'
       ? 'INSERT INTO settings (`key`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)'
       : 'INSERT INTO settings (`key`, value) VALUES (?, ?) ON CONFLICT(`key`) DO UPDATE SET value = excluded.value'
-  await getDb().prepare(sql).run('business_name', value)
+  await getDb().prepare(sql).run(key, value)
+}
+
+async function getSettingValue(key: string): Promise<string> {
+  const row = (await getDb()
+    .prepare('SELECT value FROM settings WHERE `key` = ?')
+    .get(key)) as { value: string } | undefined
+  return row?.value || ''
+}
+
+/** Branding shown in the sidebar (and shared pages): business name + optional logo (data URL). */
+export async function getBranding(): Promise<{ business_name: string; logo: string }> {
+  return { business_name: await getBusinessNameInternal(), logo: await getSettingValue('logo_data') }
+}
+
+/** Save the logo as a data URL (or clear it with an empty string). */
+export async function setLogo(payload: { logo: string }): Promise<{ ok: boolean; error?: string }> {
+  const logo = (payload.logo ?? '').trim()
+  if (logo && !logo.startsWith('data:image/')) return { ok: false, error: 'Logo must be an image.' }
+  // Guard against oversized payloads (kept well within MEDIUMTEXT).
+  if (logo.length > 4_000_000) return { ok: false, error: 'Logo is too large — use a smaller image.' }
+  await putSetting('logo_data', logo)
   return { ok: true }
 }
 

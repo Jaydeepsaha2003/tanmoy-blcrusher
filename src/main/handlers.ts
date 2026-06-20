@@ -74,6 +74,8 @@ export const handlers: Record<string, (payload: any) => unknown> = {
   'rates.removeShareLink': rates.revokeShareLink,
   'rates.getBusinessName': rates.getBusinessName,
   'rates.setBusinessName': rates.setBusinessName,
+  'rates.getBranding': rates.getBranding,
+  'rates.setLogo': rates.setLogo,
 
   'rateChart.list': rateChart.listRateChart,
   'rateChart.create': rateChart.createRateChart,

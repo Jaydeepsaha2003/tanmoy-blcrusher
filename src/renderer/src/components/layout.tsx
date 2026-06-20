@@ -157,6 +157,7 @@ export function AppShell({
 }): React.JSX.Element {
   const { user } = usePerms()
   const groups = useVisibleNav()
+  const { data: branding } = useQuery({ queryKey: ['branding'], queryFn: api.rates.getBranding })
   const [navOpen, setNavOpen] = React.useState(false)
   const loc = useLocation()
 
@@ -181,12 +182,20 @@ export function AppShell({
         )}
       >
         <div className="flex items-center gap-3 border-b px-5 py-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-sm">
-            <Mountain size={21} />
-          </div>
-          <div>
-            <div className="text-sm font-bold leading-tight">BL Crushing</div>
-            <div className="text-[11px] text-muted-foreground">Stone Crusher Manager</div>
+          {branding?.logo ? (
+            <img
+              src={branding.logo}
+              alt="Logo"
+              className="h-10 w-10 shrink-0 rounded-xl object-cover shadow-sm ring-1 ring-black/5"
+            />
+          ) : (
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-sm">
+              <Mountain size={21} />
+            </div>
+          )}
+          <div className="min-w-0">
+            <div className="truncate text-sm font-bold leading-tight">{branding?.business_name || 'BL Crushing'}</div>
+            <div className="text-[11px] text-muted-foreground">Stone Crusher</div>
           </div>
         </div>
         <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">

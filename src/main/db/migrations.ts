@@ -9,7 +9,7 @@ import type { Adapter, DbKind } from './adapters'
 const MYSQL_DDL = `
 CREATE TABLE IF NOT EXISTS settings (
   \`key\`  VARCHAR(191) NOT NULL PRIMARY KEY,
-  value TEXT
+  value MEDIUMTEXT
 );
 CREATE TABLE IF NOT EXISTS counters (
   name    VARCHAR(191) NOT NULL PRIMARY KEY,
@@ -759,6 +759,11 @@ CREATE TABLE IF NOT EXISTS rack_sale_machines (
 CREATE INDEX idx_rstrans_sale ON rack_sale_transporters(rack_sale_id);
 CREATE INDEX idx_rstrans_transporter ON rack_sale_transporters(transporter_id);
 CREATE INDEX idx_rsmach_sale ON rack_sale_machines(rack_sale_id)`
+  },
+  {
+    // Logo is stored as a data URL in settings — widen the value column to hold it.
+    id: '016_settings_value_mediumtext',
+    sql: 'ALTER TABLE settings MODIFY value MEDIUMTEXT'
   }
 ]
 

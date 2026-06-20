@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { KeyRound, Trash2, AlertTriangle, Receipt, Plus, X, Factory, Pencil, Scale, Building2 } from 'lucide-react'
+import { KeyRound, Trash2, AlertTriangle, Receipt, Plus, X, Factory, Pencil, Scale, Building2, Image as ImageIcon } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { Plant } from '@shared/types'
 import { PageHeader, Page } from '@/components/layout'
@@ -47,19 +47,64 @@ export function SettingsPage(): React.JSX.Element {
   const { data: delStatus } = useQuery({ queryKey: ['deleteStatus'], queryFn: api.system.deleteStatus })
   const [plantForm, setPlantForm] = React.useState<Partial<Plant>>({ status: 'active' })
 
-  const { data: bizNameData } = useQuery({ queryKey: ['businessName'], queryFn: api.rates.getBusinessName })
+  const { data: branding } = useQuery({ queryKey: ['branding'], queryFn: api.rates.getBranding })
   const [businessName, setBusinessName] = React.useState('')
   React.useEffect(() => {
-    if (bizNameData?.business_name != null) setBusinessName(bizNameData.business_name)
-  }, [bizNameData])
+    if (branding?.business_name != null) setBusinessName(branding.business_name)
+  }, [branding])
   const saveBusinessName = useMutation({
     mutationFn: (name: string) => api.rates.setBusinessName(name),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['branding'] })
       qc.invalidateQueries({ queryKey: ['businessName'] })
-      toast.success('Business name saved.')
+      toast.success('Business name saved — updated on the sidebar.')
     },
     onError: (e: Error) => toast.error(e.message)
   })
+  const logoInputRef = React.useRef<HTMLInputElement>(null)
+  const saveLogo = useMutation({
+    mutationFn: (logo: string) => api.rates.setLogo(logo),
+    onSuccess: (res) => {
+      if (res.ok) {
+        qc.invalidateQueries({ queryKey: ['branding'] })
+        toast.success('Logo updated.')
+      } else toast.error(res.error || 'Could not save logo.')
+    },
+    onError: (e: Error) => toast.error(e.message)
+  })
+
+  // Downscale the chosen image to a small square data URL so it stays light.
+  async function onLogoFile(file: File): Promise<void> {
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please choose an image file.')
+      return
+    }
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const r = new FileReader()
+      r.onload = () => resolve(String(r.result))
+      r.onerror = () => reject(new Error('Could not read the file.'))
+      r.readAsDataURL(file)
+    })
+    const img = new window.Image()
+    img.onload = () => {
+      const max = 256
+      const scale = Math.min(1, max / Math.max(img.width, img.height))
+      const w = Math.max(1, Math.round(img.width * scale))
+      const h = Math.max(1, Math.round(img.height * scale))
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        saveLogo.mutate(dataUrl)
+        return
+      }
+      ctx.drawImage(img, 0, 0, w, h)
+      saveLogo.mutate(canvas.toDataURL('image/png'))
+    }
+    img.onerror = () => toast.error('That image could not be loaded.')
+    img.src = dataUrl
+  }
 
   const { data: workdays } = useQuery({ queryKey: ['workdays'], queryFn: api.system.getWorkdays })
   const offDays = new Set(workdays?.weekly_offs ?? [0])
@@ -285,20 +330,20 @@ export function SettingsPage(): React.JSX.Element {
               </p>
             </CardContent>
           </Card>
-          {/* Business name (public rate page header) */}
+          {/* Branding — name + logo (sidebar and shared rate pages) */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Building2 size={18} /> Business Name
+                <Building2 size={18} /> Branding
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-4">
               <p className="text-xs text-muted-foreground">
-                Shown as the heading on the public rate pages you share with customers.
+                Your business name shows at the top of the sidebar and on the public rate pages you share. The logo shows in the sidebar.
               </p>
               <div className="flex items-end gap-2">
                 <div className="flex-1">
-                  <Field label="Name on shared rate pages">
+                  <Field label="Business name">
                     <Input
                       value={businessName}
                       onChange={(e) => setBusinessName(e.target.value)}
@@ -310,6 +355,36 @@ export function SettingsPage(): React.JSX.Element {
                   Save
                 </Button>
               </div>
+              <Field label="Logo" hint="Square images look best — it's resized automatically.">
+                <div className="flex items-center gap-3">
+                  {branding?.logo ? (
+                    <img src={branding.logo} alt="Current logo" className="h-12 w-12 rounded-xl object-cover ring-1 ring-black/5" />
+                  ) : (
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-dashed text-muted-foreground">
+                      <ImageIcon size={18} />
+                    </div>
+                  )}
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0]
+                      if (f) onLogoFile(f)
+                      e.target.value = ''
+                    }}
+                  />
+                  <Button variant="outline" onClick={() => logoInputRef.current?.click()} disabled={saveLogo.isPending}>
+                    {branding?.logo ? 'Change Logo' : 'Upload Logo'}
+                  </Button>
+                  {branding?.logo && (
+                    <Button variant="ghost" onClick={() => saveLogo.mutate('')} disabled={saveLogo.isPending}>
+                      Remove
+                    </Button>
+                  )}
+                </div>
+              </Field>
             </CardContent>
           </Card>
         </div>
@@ -474,7 +549,7 @@ export function SettingsPage(): React.JSX.Element {
         </Card>
 
         <p className="mt-6 text-xs text-muted-foreground">
-          BL Crushing — Stone Crusher Manager. All data is stored locally on this computer. Keep
+          {businessName || 'BL Crushing'} — Stone Crusher. All data is stored locally on this computer. Keep
           regular backups of your data file.
         </p>
       </Page>

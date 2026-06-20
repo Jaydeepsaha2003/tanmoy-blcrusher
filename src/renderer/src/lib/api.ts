@@ -147,7 +147,9 @@ export const api = {
       call<{ ok: boolean }>('rates.removeShareLink', { customer_id }),
     getBusinessName: () => call<{ business_name: string }>('rates.getBusinessName'),
     setBusinessName: (business_name: string) =>
-      call<{ ok: boolean }>('rates.setBusinessName', { business_name })
+      call<{ ok: boolean }>('rates.setBusinessName', { business_name }),
+    getBranding: () => call<{ business_name: string; logo: string }>('rates.getBranding'),
+    setLogo: (logo: string) => call<{ ok: boolean; error?: string }>('rates.setLogo', { logo })
   },
   purchases: {
     list: (filter?: Record<string, unknown>) => call<Purchase[]>('purchases.list', filter),
