@@ -389,6 +389,8 @@ CREATE TABLE IF NOT EXISTS productions (
   production_no     TEXT NOT NULL UNIQUE,
   plant_id          INTEGER NOT NULL REFERENCES plants(id),
   stock_location_id INTEGER NOT NULL REFERENCES stock_locations(id),
+  uom               TEXT NOT NULL DEFAULT 'CM',
+  quantity          REAL NOT NULL DEFAULT 0,
   raw_qty           REAL NOT NULL,
   date              TEXT NOT NULL,
   remarks           TEXT NOT NULL DEFAULT '',
@@ -1087,6 +1089,8 @@ CREATE TABLE IF NOT EXISTS productions (
   production_no     VARCHAR(191) NOT NULL UNIQUE,
   plant_id          INT NOT NULL,
   stock_location_id INT NOT NULL,
+  uom               VARCHAR(8) NOT NULL DEFAULT 'CM',
+  quantity          DOUBLE NOT NULL DEFAULT 0,
   raw_qty           DOUBLE NOT NULL,
   date              VARCHAR(32) NOT NULL,
   remarks           TEXT,
@@ -1719,6 +1723,13 @@ CREATE TABLE IF NOT EXISTS spare_part_movements (
 CREATE INDEX idx_spare_parts_plant ON spare_parts(plant_id);
 CREATE INDEX idx_part_moves_part ON spare_part_movements(part_id);
 CREATE INDEX idx_part_moves_asset ON spare_part_movements(asset_id)`
+  },
+  {
+    // Preserve the entered UOM while raw_qty remains normalized to cubic metres.
+    id: "020_production_uom",
+    sql: `ALTER TABLE productions ADD COLUMN uom VARCHAR(8) NOT NULL DEFAULT 'CM';
+ALTER TABLE productions ADD COLUMN quantity DOUBLE NOT NULL DEFAULT 0;
+UPDATE productions SET quantity = raw_qty WHERE quantity = 0`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -1789,6 +1800,9 @@ async function sqliteLegacyMigrate(adapter2) {
   await addColumn("assets", "standard_consumption", "REAL");
   await addColumn("machine_logs", "rate", "REAL");
   await addColumn("machine_logs", "amount", "REAL");
+  await addColumn("productions", "uom", `TEXT NOT NULL DEFAULT 'CM'`);
+  await addColumn("productions", "quantity", "REAL NOT NULL DEFAULT 0");
+  await adapter2.execRaw(`UPDATE productions SET quantity = raw_qty WHERE quantity = 0`);
 }
 async function importProductsFromSettings(adapter2) {
   const all = (await adapter2.exec(`SELECT id, name FROM products ORDER BY id`, void 0, null)).rows;
@@ -3367,22 +3381,25 @@ async function previewProduction(payload) {
 }
 async function createProduction(p) {
   const d = getDb();
-  if (!(p.raw_qty > 0)) throw new Error("Raw material quantity must be greater than 0.");
+  const uom = ["CM", "TON", "CFT"].includes(p.uom) ? p.uom : "CM";
+  const quantity = Number(p.quantity ?? p.raw_qty) || 0;
+  if (!(quantity > 0)) throw new Error("Raw material quantity must be greater than 0.");
+  const rawQty = round5(toCm(quantity, uom, await plantUomFactors(p.plant_id)));
   const locId = p.stock_location_id || await ensureDefaultLocation(p.plant_id);
   const settings = await d.prepare(`SELECT * FROM production_settings WHERE plant_id = ? ORDER BY id`).all(p.plant_id);
   if (settings.length === 0)
     throw new Error("No production settings defined for this plant. Set them up first.");
   const available = await rawLocationBalance(d, locId);
-  if (p.raw_qty > available)
+  if (rawQty > available)
     throw new Error(
-      `Not enough raw material. Available: ${available} m\xB3, requested: ${p.raw_qty} m\xB3.`
+      `Not enough raw material. Available: ${available} m\xB3, requested: ${rawQty} m\xB3.`
     );
   const id = await d.transaction(async () => {
     const no = await nextNumber("PROD", "production");
     const info = await d.prepare(
-      `INSERT INTO productions (production_no, plant_id, stock_location_id, raw_qty, date, remarks)
-         VALUES (?, ?, ?, ?, ?, ?)`
-    ).run(no, p.plant_id, locId, p.raw_qty, p.date, p.remarks ?? "");
+      `INSERT INTO productions (production_no, plant_id, stock_location_id, uom, quantity, raw_qty, date, remarks)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(no, p.plant_id, locId, uom, quantity, rawQty, p.date, p.remarks ?? "");
     const productionId = Number(info.lastInsertRowid);
     await addMovement(d, {
       type: "production_consume",
@@ -3390,7 +3407,7 @@ async function createProduction(p) {
       ref_no: no,
       plant_id: p.plant_id,
       stock_location_id: locId,
-      change_qty: -p.raw_qty,
+      change_qty: -rawQty,
       date: p.date,
       note: "Raw material consumed in production"
     });
@@ -3399,7 +3416,7 @@ async function createProduction(p) {
        VALUES (?, ?, ?, ?)`
     );
     for (const s of settings) {
-      const qty = round5(p.raw_qty * s.output_percentage / 100);
+      const qty = round5(rawQty * s.output_percentage / 100);
       await outStmt.run(productionId, s.product_name, s.output_percentage, qty);
       if (qty > 0) {
         await addMovement(d, {

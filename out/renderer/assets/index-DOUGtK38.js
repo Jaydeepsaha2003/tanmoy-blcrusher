@@ -60153,17 +60153,19 @@ function ProductionEntry() {
   const [preview, setPreview] = reactExports.useState([]);
   const formLocations = locations.filter((l2) => l2.plant_id === form?.plant_id);
   const selectedLoc = locations.find((l2) => l2.id === form?.stock_location_id);
+  plants.find((p2) => p2.id === form?.plant_id);
+  const rawQtyCm = form ? toCm(Number(form.quantity) || 0, form.uom || "CM") : 0;
   reactExports.useEffect(() => {
     let active = true;
-    if (form?.plant_id && Number(form.raw_qty) > 0) {
-      api.productions.preview(form.plant_id, Number(form.raw_qty)).then((p2) => {
+    if (form?.plant_id && rawQtyCm > 0) {
+      api.productions.preview(form.plant_id, rawQtyCm).then((p2) => {
         if (active) setPreview(p2);
       });
     } else setPreview([]);
     return () => {
       active = false;
     };
-  }, [form?.plant_id, form?.raw_qty]);
+  }, [form?.plant_id, rawQtyCm]);
   const save = useMutation({
     mutationFn: (p2) => api.productions.create(p2),
     onSuccess: () => {
@@ -60174,7 +60176,7 @@ function ProductionEntry() {
     onError: (e3) => toast.error(e3.message)
   });
   function openNew() {
-    setForm({ plant_id: plantId ?? plants[0]?.id, stock_location_id: void 0, raw_qty: "", date: today(), remarks: "" });
+    setForm({ plant_id: plantId ?? plants[0]?.id, stock_location_id: void 0, uom: "CM", quantity: "", date: today(), remarks: "" });
     setOpen(true);
   }
   async function remove(p2) {
@@ -60204,7 +60206,7 @@ function ProductionEntry() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Date" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plant" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Location" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Raw Used (m³)" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Raw Used" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Outputs" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
       ] }) }),
@@ -60213,7 +60215,15 @@ function ProductionEntry() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: fmtDate(p2.date) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: p2.plant_name }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: p2.stock_location_name }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtQty(p2.raw_qty) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "whitespace-nowrap text-right", children: [
+          fmtQty(p2.quantity || p2.raw_qty),
+          " ",
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11px] text-muted-foreground", children: p2.uom || "CM" }),
+          (p2.uom || "CM") !== "CM" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-[11px] text-muted-foreground", children: [
+            fmtQty(p2.raw_qty),
+            " m³"
+          ] })
+        ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-wrap gap-1", children: p2.outputs?.map((o) => /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "rounded bg-muted px-1.5 py-0.5 text-xs", children: [
           o.product_name,
           ": ",
@@ -60249,7 +60259,22 @@ function ProductionEntry() {
             )
           }
         ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Raw Material Qty (m³)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.raw_qty, onChange: (e3) => setForm({ ...form, raw_qty: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Raw Material Unit", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            value: form.uom || "CM",
+            onChange: (v2) => setForm({ ...form, uom: v2 }),
+            options: UOMS.map((u2) => ({ value: u2, label: u2 }))
+          }
+        ) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Field,
+          {
+            label: `Raw Material Qty (${form.uom || "CM"})`,
+            hint: (form.uom || "CM") === "CM" ? "Stored as cubic metres" : `= ${fmtQty(rawQtyCm)} m³`,
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.quantity, onChange: (e3) => setForm({ ...form, quantity: e3.target.value }) })
+          }
+        ),
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.remarks || "", onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) }) })
       ] }),
       preview.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { className: "mt-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "pt-4", children: [
@@ -60270,14 +60295,14 @@ function ProductionEntry() {
           ] })
         ] }, o.product_name)) })
       ] }) }),
-      form.plant_id && preview.length === 0 && Number(form.raw_qty) > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-3 text-sm text-destructive", children: "No production settings for this plant. Set them up in Production Settings first." }),
+      form.plant_id && preview.length === 0 && rawQtyCm > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-3 text-sm text-destructive", children: "No production settings for this plant. Set them up in Production Settings first." }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 flex justify-end gap-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setOpen(false), children: "Cancel" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           Button,
           {
-            onClick: () => save.mutate({ ...form, raw_qty: Number(form.raw_qty) }),
-            disabled: !(Number(form.raw_qty) > 0) || preview.length === 0,
+            onClick: () => save.mutate({ ...form, quantity: Number(form.quantity), uom: form.uom || "CM" }),
+            disabled: !(Number(form.quantity) > 0) || preview.length === 0,
             children: "Submit Production"
           }
         )
