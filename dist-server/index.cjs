@@ -771,7 +771,7 @@ function verifyPassword(password, stored) {
 var MYSQL_DDL = `
 CREATE TABLE IF NOT EXISTS settings (
   \`key\`  VARCHAR(191) NOT NULL PRIMARY KEY,
-  value TEXT
+  value MEDIUMTEXT
 );
 CREATE TABLE IF NOT EXISTS counters (
   name    VARCHAR(191) NOT NULL PRIMARY KEY,
@@ -1515,6 +1515,11 @@ CREATE TABLE IF NOT EXISTS rack_sale_machines (
 CREATE INDEX idx_rstrans_sale ON rack_sale_transporters(rack_sale_id);
 CREATE INDEX idx_rstrans_transporter ON rack_sale_transporters(transporter_id);
 CREATE INDEX idx_rsmach_sale ON rack_sale_machines(rack_sale_id)`
+  },
+  {
+    // Logo is stored as a data URL in settings — widen the value column to hold it.
+    id: "016_settings_value_mediumtext",
+    sql: "ALTER TABLE settings MODIFY value MEDIUMTEXT"
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -2642,9 +2647,25 @@ async function getBusinessName() {
   return { business_name: await getBusinessNameInternal() };
 }
 async function setBusinessName(payload) {
-  const value = (payload.business_name ?? "").trim();
+  await putSetting("business_name", (payload.business_name ?? "").trim());
+  return { ok: true };
+}
+async function putSetting(key, value) {
   const sql = dbKind() === "mysql" ? "INSERT INTO settings (`key`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)" : "INSERT INTO settings (`key`, value) VALUES (?, ?) ON CONFLICT(`key`) DO UPDATE SET value = excluded.value";
-  await getDb().prepare(sql).run("business_name", value);
+  await getDb().prepare(sql).run(key, value);
+}
+async function getSettingValue(key) {
+  const row = await getDb().prepare("SELECT value FROM settings WHERE `key` = ?").get(key);
+  return row?.value || "";
+}
+async function getBranding() {
+  return { business_name: await getBusinessNameInternal(), logo: await getSettingValue("logo_data") };
+}
+async function setLogo(payload) {
+  const logo = (payload.logo ?? "").trim();
+  if (logo && !logo.startsWith("data:image/")) return { ok: false, error: "Logo must be an image." };
+  if (logo.length > 4e6) return { ok: false, error: "Logo is too large \u2014 use a smaller image." };
+  await putSetting("logo_data", logo);
   return { ok: true };
 }
 async function publicRateList(payload) {
@@ -6544,6 +6565,8 @@ var handlers = {
   "rates.removeShareLink": revokeShareLink,
   "rates.getBusinessName": getBusinessName,
   "rates.setBusinessName": setBusinessName,
+  "rates.getBranding": getBranding,
+  "rates.setLogo": setLogo,
   "rateChart.list": listRateChart,
   "rateChart.create": createRateChart,
   "rateChart.update": updateRateChart,

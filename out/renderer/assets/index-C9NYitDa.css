@@ -728,6 +728,9 @@ video {
 .w-11 {
   width: 2.75rem;
 }
+.w-12 {
+  width: 3rem;
+}
 .w-14 {
   width: 3.5rem;
 }
@@ -1114,6 +1117,10 @@ video {
 }
 .to-primary\/70 {
   --tw-gradient-to: hsl(var(--primary) / 0.7) var(--tw-gradient-to-position);
+}
+.object-cover {
+  -o-object-fit: cover;
+     object-fit: cover;
 }
 .p-1 {
   padding: 0.25rem;

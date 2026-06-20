@@ -11298,7 +11298,9 @@ const api = {
     shareLink: (customer_id) => call("rates.createShareLink", { customer_id }),
     removeShareLink: (customer_id) => call("rates.removeShareLink", { customer_id }),
     getBusinessName: () => call("rates.getBusinessName"),
-    setBusinessName: (business_name) => call("rates.setBusinessName", { business_name })
+    setBusinessName: (business_name) => call("rates.setBusinessName", { business_name }),
+    getBranding: () => call("rates.getBranding"),
+    setLogo: (logo) => call("rates.setLogo", { logo })
   },
   purchases: {
     list: (filter) => call("purchases.list", filter),
@@ -12117,6 +12119,17 @@ const History = createLucideIcon("History", [
   ["path", { d: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8", key: "1357e3" }],
   ["path", { d: "M3 3v5h5", key: "1xhq8a" }],
   ["path", { d: "M12 7v5l4 2", key: "1fdv2h" }]
+]);
+/**
+ * @license lucide-react v0.468.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const Image = createLucideIcon("Image", [
+  ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", ry: "2", key: "1m3agn" }],
+  ["circle", { cx: "9", cy: "9", r: "2", key: "af1f0g" }],
+  ["path", { d: "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21", key: "1xmnt7" }]
 ]);
 /**
  * @license lucide-react v0.468.0 - ISC
@@ -35875,6 +35888,7 @@ function AppShell({
 }) {
   const { user } = usePerms();
   const groups = useVisibleNav();
+  const { data: branding } = useQuery({ queryKey: ["branding"], queryFn: api.rates.getBranding });
   const [navOpen, setNavOpen] = reactExports.useState(false);
   const loc = useLocation();
   reactExports.useEffect(() => setNavOpen(false), [loc.pathname]);
@@ -35896,10 +35910,17 @@ function AppShell({
         ),
         children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 border-b px-5 py-4", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Mountain, { size: 21 }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm font-bold leading-tight", children: "BL Crushing" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] text-muted-foreground", children: "Stone Crusher Manager" })
+            branding?.logo ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "img",
+              {
+                src: branding.logo,
+                alt: "Logo",
+                className: "h-10 w-10 shrink-0 rounded-xl object-cover shadow-sm ring-1 ring-black/5"
+              }
+            ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Mountain, { size: 21 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "truncate text-sm font-bold leading-tight", children: branding?.business_name || "BL Crushing" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] text-muted-foreground", children: "Stone Crusher" })
             ] })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("nav", { className: "flex-1 space-y-5 overflow-y-auto px-3 py-4", children: groups.map((g2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
@@ -65750,19 +65771,62 @@ function SettingsPage() {
   const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
   const { data: delStatus } = useQuery({ queryKey: ["deleteStatus"], queryFn: api.system.deleteStatus });
   const [plantForm, setPlantForm] = reactExports.useState({ status: "active" });
-  const { data: bizNameData } = useQuery({ queryKey: ["businessName"], queryFn: api.rates.getBusinessName });
+  const { data: branding } = useQuery({ queryKey: ["branding"], queryFn: api.rates.getBranding });
   const [businessName, setBusinessName] = reactExports.useState("");
   reactExports.useEffect(() => {
-    if (bizNameData?.business_name != null) setBusinessName(bizNameData.business_name);
-  }, [bizNameData]);
+    if (branding?.business_name != null) setBusinessName(branding.business_name);
+  }, [branding]);
   const saveBusinessName = useMutation({
     mutationFn: (name) => api.rates.setBusinessName(name),
     onSuccess: () => {
+      qc2.invalidateQueries({ queryKey: ["branding"] });
       qc2.invalidateQueries({ queryKey: ["businessName"] });
-      toast.success("Business name saved.");
+      toast.success("Business name saved — updated on the sidebar.");
     },
     onError: (e3) => toast.error(e3.message)
   });
+  const logoInputRef = reactExports.useRef(null);
+  const saveLogo = useMutation({
+    mutationFn: (logo) => api.rates.setLogo(logo),
+    onSuccess: (res) => {
+      if (res.ok) {
+        qc2.invalidateQueries({ queryKey: ["branding"] });
+        toast.success("Logo updated.");
+      } else toast.error(res.error || "Could not save logo.");
+    },
+    onError: (e3) => toast.error(e3.message)
+  });
+  async function onLogoFile(file) {
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please choose an image file.");
+      return;
+    }
+    const dataUrl = await new Promise((resolve, reject) => {
+      const r2 = new FileReader();
+      r2.onload = () => resolve(String(r2.result));
+      r2.onerror = () => reject(new Error("Could not read the file."));
+      r2.readAsDataURL(file);
+    });
+    const img = new window.Image();
+    img.onload = () => {
+      const max2 = 256;
+      const scale = Math.min(1, max2 / Math.max(img.width, img.height));
+      const w2 = Math.max(1, Math.round(img.width * scale));
+      const h2 = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = w2;
+      canvas.height = h2;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        saveLogo.mutate(dataUrl);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w2, h2);
+      saveLogo.mutate(canvas.toDataURL("image/png"));
+    };
+    img.onerror = () => toast.error("That image could not be loaded.");
+    img.src = dataUrl;
+  }
   const { data: workdays } = useQuery({ queryKey: ["workdays"], queryFn: api.system.getWorkdays });
   const offDays = new Set(workdays?.weekly_offs ?? [0]);
   const saveWorkdays = useMutation({
@@ -65952,12 +66016,12 @@ function SettingsPage() {
         /* @__PURE__ */ jsxRuntimeExports.jsxs(Card, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(CardHeader, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardTitle, { className: "flex items-center gap-2", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Building2, { size: 18 }),
-            " Business Name"
+            " Branding"
           ] }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "space-y-3", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: "Shown as the heading on the public rate pages you share with customers." }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "space-y-4", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: "Your business name shows at the top of the sidebar and on the public rate pages you share. The logo shows in the sidebar." }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-end gap-2", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex-1", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Name on shared rate pages", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex-1", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Business name", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
                 Input,
                 {
                   value: businessName,
@@ -65966,7 +66030,26 @@ function SettingsPage() {
                 }
               ) }) }),
               /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: () => saveBusinessName.mutate(businessName), disabled: !businessName.trim(), children: "Save" })
-            ] })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Logo", hint: "Square images look best — it's resized automatically.", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
+              branding?.logo ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: branding.logo, alt: "Current logo", className: "h-12 w-12 rounded-xl object-cover ring-1 ring-black/5" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-12 w-12 items-center justify-center rounded-xl border border-dashed text-muted-foreground", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Image, { size: 18 }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "input",
+                {
+                  ref: logoInputRef,
+                  type: "file",
+                  accept: "image/*",
+                  className: "hidden",
+                  onChange: (e3) => {
+                    const f2 = e3.target.files?.[0];
+                    if (f2) onLogoFile(f2);
+                    e3.target.value = "";
+                  }
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => logoInputRef.current?.click(), disabled: saveLogo.isPending, children: branding?.logo ? "Change Logo" : "Upload Logo" }),
+              branding?.logo && /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", onClick: () => saveLogo.mutate(""), disabled: saveLogo.isPending, children: "Remove" })
+            ] }) })
           ] })
         ] })
       ] }),
@@ -66110,7 +66193,10 @@ function SettingsPage() {
           )
         ] }) })
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-6 text-xs text-muted-foreground", children: "BL Crushing — Stone Crusher Manager. All data is stored locally on this computer. Keep regular backups of your data file." })
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-6 text-xs text-muted-foreground", children: [
+        businessName || "BL Crushing",
+        " — Stone Crusher. All data is stored locally on this computer. Keep regular backups of your data file."
+      ] })
     ] })
   ] });
 }
