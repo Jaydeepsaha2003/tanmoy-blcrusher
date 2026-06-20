@@ -249,6 +249,7 @@ export function Ledgers(): React.JSX.Element {
         <div className="no-print mb-4 flex flex-wrap items-center gap-2">
           <SearchSelect
             className="w-full sm:w-44"
+            alwaysSearch
             value={partyType}
             onChange={(v) => switchType(v as LedgerType)}
             options={[
@@ -264,6 +265,7 @@ export function Ledgers(): React.JSX.Element {
           />
           <SearchSelect
             className="w-full sm:w-56"
+            alwaysSearch
             value={partyId ?? ''}
             onChange={(v) => setPartyId(v ? Number(v) : undefined)}
             options={[
@@ -276,6 +278,7 @@ export function Ledgers(): React.JSX.Element {
             <>
               <SearchSelect
                 className="w-full sm:w-36"
+                alwaysSearch
                 value={fy === '' ? '' : String(fy)}
                 onChange={(v) => selectFy(v)}
                 options={[

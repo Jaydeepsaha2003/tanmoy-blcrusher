@@ -96,7 +96,8 @@ export function SearchSelect({
   options,
   placeholder = 'Select…',
   disabled,
-  className
+  className,
+  alwaysSearch
 }: {
   value: number | string | '' | null | undefined
   onChange: (value: string) => void
@@ -104,6 +105,8 @@ export function SearchSelect({
   placeholder?: string
   disabled?: boolean
   className?: string
+  /** Force the search box to show even for short lists. */
+  alwaysSearch?: boolean
 }): React.JSX.Element {
   const [open, setOpen] = React.useState(false)
   const [q, setQ] = React.useState('')
@@ -118,8 +121,8 @@ export function SearchSelect({
   const sel = options.find((o) => String(o.value) === String(value ?? ''))
   const ql = q.trim().toLowerCase()
   const filtered = ql ? options.filter((o) => o.label.toLowerCase().includes(ql)) : options
-  // Short lists don't need a search box — keep them as a clean dropdown.
-  const showSearch = options.length > 7
+  // Short lists don't need a search box — keep them as a clean dropdown (unless forced).
+  const showSearch = alwaysSearch || options.length > 7
   return (
     <div ref={ref} className={cn('relative', className)}>
       <button
