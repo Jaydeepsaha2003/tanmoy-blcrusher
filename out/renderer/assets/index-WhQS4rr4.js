@@ -59616,7 +59616,7 @@ function Purchases() {
     downloadExcel(
       "purchases",
       "Purchases",
-      ["Purchase No", "Date", "Mode", "Supplier", "Plant", "Item", "UOM", "Quantity", "Qty (m³)", "Rate", "Amount", "Transport", "Machines", "Paid", "Status"],
+      ["Purchase No", "Date", "Mode", "Supplier", "Plant", "Item", "UOM", "Quantity", "Qty (m³)", "Rate", "Amount", "Transport", "Machines", "Paid", "Status", "Remarks"],
       data.map((p2) => [
         p2.purchase_no,
         fmtDate(p2.date),
@@ -59632,7 +59632,8 @@ function Purchases() {
         p2.transport_total ?? 0,
         p2.machine_total ?? 0,
         p2.paid_amount,
-        p2.payment_status
+        p2.payment_status,
+        p2.remarks ?? ""
       ])
     );
   }
@@ -59724,6 +59725,11 @@ function Purchases() {
                 "⚙ ",
                 fmtMoney(p2.machine_total)
               ] })
+            ] }),
+            p2.remarks && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-0.5 text-[11px] italic text-muted-foreground", children: [
+              "“",
+              p2.remarks,
+              "”"
             ] })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "whitespace-nowrap text-right tnum", children: [
@@ -61149,7 +61155,8 @@ function Dispatch() {
         "Vehicle Type",
         "Challan",
         "Delivery",
-        "Payment"
+        "Payment",
+        "Remarks"
       ],
       data.map((d2) => [
         d2.dispatch_no,
@@ -61171,7 +61178,8 @@ function Dispatch() {
         vehicleLabel[d2.vehicle_type],
         d2.challan_no,
         d2.delivery_status,
-        d2.payment_status
+        d2.payment_status,
+        d2.remarks ?? ""
       ])
     );
   }
@@ -61287,6 +61295,11 @@ function Dispatch() {
                 "⚙ ",
                 fmtMoney(d2.machine_total)
               ] })
+            ] }),
+            d2.remarks && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-0.5 text-[11px] italic text-muted-foreground", children: [
+              "“",
+              d2.remarks,
+              "”"
             ] })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
@@ -65362,6 +65375,11 @@ function RackDetail() {
                   "⚙ ",
                   fmtMoney(s2.machine_total)
                 ] })
+              ] }),
+              s2.remarks && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "mt-0.5 block text-[11px] italic text-muted-foreground", children: [
+                "“",
+                s2.remarks,
+                "”"
               ] })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtQty(s2.quantity) }),
