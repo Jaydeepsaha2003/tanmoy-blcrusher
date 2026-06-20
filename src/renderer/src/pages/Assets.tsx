@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, FileSpreadsheet, Gauge, ArrowLeftRight } from 'lucide-react'
+import { Plus, Pencil, Trash2, FileSpreadsheet, Gauge, ArrowLeftRight, AlertTriangle } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { Asset } from '@shared/types'
 import { PageHeader, Page } from '@/components/layout'
@@ -23,7 +23,7 @@ import {
 import { useToast } from '@/components/toast'
 import { confirmDialog } from '@/components/confirm'
 import { usePlant } from '@/lib/plant'
-import { today, downloadExcel, cn } from '@/lib/utils'
+import { today, fmtQty, fmtMoney, downloadExcel, cn } from '@/lib/utils'
 
 const CATEGORIES = ['Crusher', 'Tipper', 'Excavator', 'JCB', 'JCB Loader', 'Loader', 'Dumper', 'Generator', 'Other']
 
@@ -35,6 +35,8 @@ export function Assets(): React.JSX.Element {
   const { data = [] } = useQuery({ queryKey: ['assets', plantId], queryFn: () => api.assets.list(plantId) })
   const { data: plants = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
   const { data: businesses = [] } = useQuery({ queryKey: ['businesses'], queryFn: api.businesses.list })
+  const { data: overview = [] } = useQuery({ queryKey: ['machineOverview'], queryFn: () => api.machinery.overview() })
+  const ov = React.useMemo(() => new Map(overview.map((o) => [o.asset_id, o])), [overview])
   const [open, setOpen] = React.useState(false)
   const [form, setForm] = React.useState<any>({})
   const [moveForm, setMoveForm] = React.useState<any>(null)
@@ -125,48 +127,61 @@ export function Assets(): React.JSX.Element {
           <Table>
             <THead>
               <TR>
-                <TH>Name</TH>
-                <TH>Type</TH>
-                <TH>Category</TH>
-                <TH>Identifier / Reg.</TH>
+                <TH>Machine / Vehicle</TH>
                 <TH>Plants</TH>
-                <TH>Business</TH>
+                <TH className="text-right">Run</TH>
+                <TH className="text-right">Diesel (L)</TH>
+                <TH className="text-right">Maintenance</TH>
                 <TH>Status</TH>
                 <TH className="text-right">Actions</TH>
               </TR>
             </THead>
             <TBody>
-              {rows.map((a) => (
-                <TR key={a.id}>
-                  <TD className="font-medium">{a.name}</TD>
-                  <TD><Badge variant={a.asset_type === 'vehicle' ? 'default' : 'muted'}>{a.asset_type}</Badge></TD>
-                  <TD className="text-muted-foreground">{a.category || '-'}</TD>
-                  <TD className="font-mono text-xs">{a.identifier || '-'}</TD>
-                  <TD className="text-muted-foreground">
-                    {(a.plant_names ?? []).length === 0 ? (
-                      <Badge variant="muted">All plants</Badge>
-                    ) : (
-                      <span className="text-[13px]">{(a.plant_names ?? []).join(', ')}</span>
-                    )}
-                  </TD>
-                  <TD className="text-muted-foreground">{a.business_name || '-'}</TD>
-                  <TD className="capitalize text-muted-foreground">{a.status}</TD>
-                  <TD className="text-right">
-                    <Button variant="ghost" size="icon" title="Logbook, ledger & documents" onClick={() => nav(`/machinery/${a.id}`)}>
-                      <Gauge size={15} />
-                    </Button>
-                    <Button variant="ghost" size="icon" title="Move to another plant" onClick={() => setMoveForm({ id: a.id, name: a.name, plant_ids: a.plant_ids ?? [], date: today(), remarks: '' })}>
-                      <ArrowLeftRight size={15} />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(a)}>
-                      <Pencil size={15} />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => remove(a)}>
-                      <Trash2 size={15} className="text-destructive" />
-                    </Button>
-                  </TD>
-                </TR>
-              ))}
+              {rows.map((a) => {
+                const o = ov.get(a.id)
+                const unit = (o?.meter_type ?? a.meter_type ?? 'hour') === 'km' ? 'km' : 'hr'
+                return (
+                  <TR key={a.id} className="cursor-pointer" onClick={() => nav(`/machinery/${a.id}`)}>
+                    <TD>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{a.name}</span>
+                        <Badge variant={a.asset_type === 'vehicle' ? 'default' : 'muted'}>{a.asset_type}</Badge>
+                        {o?.over && (
+                          <span title={`Using ${fmtQty(o.actual_consumption)} vs standard ${fmtQty(o.standard_consumption)} L/${unit}`} className="inline-flex items-center gap-0.5 rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-semibold text-destructive">
+                            <AlertTriangle size={11} /> Over fuel
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {a.category || 'Uncategorised'}{a.identifier ? ` · ${a.identifier}` : ''}{a.business_name ? ` · ${a.business_name}` : ''}
+                      </div>
+                    </TD>
+                    <TD className="text-muted-foreground">
+                      {(a.plant_names ?? []).length === 0 ? <Badge variant="muted">All plants</Badge> : <span className="text-[13px]">{(a.plant_names ?? []).join(', ')}</span>}
+                    </TD>
+                    <TD className="tnum text-right">
+                      {o && o.usage_qty > 0 ? <>{fmtQty(o.usage_qty)} <span className="text-xs text-muted-foreground">{unit}</span></> : <span className="text-muted-foreground">—</span>}
+                    </TD>
+                    <TD className="tnum text-right">{o && o.diesel_litres > 0 ? fmtQty(o.diesel_litres) : <span className="text-muted-foreground">—</span>}</TD>
+                    <TD className="tnum text-right">{o && o.maintenance > 0 ? fmtMoney(o.maintenance) : <span className="text-muted-foreground">—</span>}</TD>
+                    <TD className="capitalize text-muted-foreground">{a.status}</TD>
+                    <TD className="text-right" onClick={(e) => e.stopPropagation()}>
+                      <Button variant="ghost" size="icon" title="Logbook, ledger & documents" onClick={() => nav(`/machinery/${a.id}`)}>
+                        <Gauge size={15} />
+                      </Button>
+                      <Button variant="ghost" size="icon" title="Move to another plant" onClick={() => setMoveForm({ id: a.id, name: a.name, plant_ids: a.plant_ids ?? [], date: today(), remarks: '' })}>
+                        <ArrowLeftRight size={15} />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(a)}>
+                        <Pencil size={15} />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => remove(a)}>
+                        <Trash2 size={15} className="text-destructive" />
+                      </Button>
+                    </TD>
+                  </TR>
+                )
+              })}
             </TBody>
           </Table>
         )}

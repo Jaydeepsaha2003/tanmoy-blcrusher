@@ -301,6 +301,61 @@ export async function mileageReport(payload: {
   return rows
 }
 
+/** At-a-glance metrics per asset for the register table (all-time totals). */
+export interface MachineOverviewRow {
+  asset_id: number
+  meter_type: MeterType
+  usage_qty: number
+  diesel_litres: number
+  fuel_litres: number
+  actual_consumption: number | null
+  standard_consumption: number | null
+  maintenance: number
+  over: boolean
+}
+export async function machineryOverview(): Promise<MachineOverviewRow[]> {
+  const d = getDb()
+  const assets = (await d
+    .prepare(`SELECT id, meter_type, standard_consumption FROM assets`)
+    .all()) as { id: number; meter_type: string; standard_consumption: number | null }[]
+  const diesel = (await d
+    .prepare(`SELECT asset_id, COALESCE(SUM(litres),0) AS litres FROM diesel_issues WHERE asset_id IS NOT NULL GROUP BY asset_id`)
+    .all()) as { asset_id: number; litres: number }[]
+  const logs = (await d
+    .prepare(
+      `SELECT asset_id, COALESCE(SUM(usage_qty),0) AS usage_qty,
+              COALESCE(SUM(CASE WHEN fuel_litres IS NOT NULL THEN fuel_litres ELSE 0 END),0) AS log_fuel,
+              SUM(CASE WHEN fuel_litres IS NOT NULL THEN 1 ELSE 0 END) AS fuel_rows
+       FROM machine_logs GROUP BY asset_id`
+    )
+    .all()) as { asset_id: number; usage_qty: number; log_fuel: number; fuel_rows: number }[]
+  const maint = (await d
+    .prepare(`SELECT asset_id, COALESCE(SUM(amount),0) AS amt FROM plant_expenses WHERE asset_id IS NOT NULL AND category='maintenance' GROUP BY asset_id`)
+    .all()) as { asset_id: number; amt: number }[]
+  const dieselBy = new Map(diesel.map((r) => [r.asset_id, r.litres]))
+  const logBy = new Map(logs.map((r) => [r.asset_id, r]))
+  const maintBy = new Map(maint.map((r) => [r.asset_id, r.amt]))
+  return assets.map((a) => {
+    const lg = logBy.get(a.id)
+    const usage = round3(lg?.usage_qty ?? 0)
+    const dieselLitres = round3(dieselBy.get(a.id) ?? 0)
+    const fuel = lg && lg.fuel_rows > 0 ? round3(lg.log_fuel) : dieselLitres
+    const actual = usage > 0 && fuel > 0 ? round3(fuel / usage) : null
+    const std = a.standard_consumption ?? null
+    return {
+      asset_id: a.id,
+      meter_type: a.meter_type === 'km' ? 'km' : 'hour',
+      usage_qty: usage,
+      diesel_litres: dieselLitres,
+      fuel_litres: fuel,
+      actual_consumption: actual,
+      standard_consumption: std,
+      maintenance: money(maintBy.get(a.id) ?? 0),
+      over: actual != null && std != null && actual > std
+    }
+  })
+}
+
 /** All logbook entries across machines (for the cross-machine logbook page). */
 export async function listAllLogs(payload: { from?: string; to?: string; asset_id?: number } = {}): Promise<MachineLog[]> {
   const d = getDb()

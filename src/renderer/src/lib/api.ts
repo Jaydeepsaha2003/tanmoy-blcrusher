@@ -37,6 +37,7 @@ import type {
   AssetDocument,
   MachineBalanceSheet,
   MachineMileageRow,
+  MachineOverviewRow,
   PlantExpense,
   ExpenseCategoryTotal,
   DieselPurchase,
@@ -291,6 +292,7 @@ export const api = {
       call<MachineLog[]>('machinery.allLogs', filter),
     mileage: (filter?: { from?: string; to?: string; asset_type?: string }) =>
       call<MachineMileageRow[]>('machinery.mileage', filter),
+    overview: () => call<MachineOverviewRow[]>('machinery.overview'),
     addLog: (p: unknown) => call<MachineLog>('machinery.addLog', p),
     updateLog: (p: unknown) => call<MachineLog>('machinery.updateLog', p),
     deleteLog: (id: number) => call<{ ok: boolean }>('machinery.deleteLog', { id }),

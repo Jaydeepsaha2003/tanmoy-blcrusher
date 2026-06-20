@@ -826,6 +826,19 @@ export interface MachineBalanceSheet {
   cost_per_unit: number | null
 }
 
+/** At-a-glance per-asset metrics for the register table. */
+export interface MachineOverviewRow {
+  asset_id: number
+  meter_type: MeterType
+  usage_qty: number
+  diesel_litres: number
+  fuel_litres: number
+  actual_consumption: number | null
+  standard_consumption: number | null
+  maintenance: number
+  over: boolean
+}
+
 /** One row of the cross-machine mileage / consumption report (standard vs actual). */
 export interface MachineMileageRow {
   asset_id: number
