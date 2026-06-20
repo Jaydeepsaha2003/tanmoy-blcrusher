@@ -80,6 +80,7 @@ export function Dispatch(): React.JSX.Element {
   function blankForm(): any {
     return {
       sell_mode: 'customer',
+      dispatch_no: '',
       customer_id: customers[0]?.id,
       to_plant_id: null,
       plant_id: plantId ?? plants[0]?.id,
@@ -278,77 +279,85 @@ export function Dispatch(): React.JSX.Element {
           <Table>
             <THead>
               <TR>
-                <TH>Sale No</TH>
-                <TH>Date</TH>
+                <TH>Sale</TH>
                 <TH>Buyer</TH>
-                <TH>Plant / Product</TH>
-                <TH className="text-right">Qty</TH>
+                <TH>Item</TH>
+                <TH className="text-right">Quantity</TH>
                 <TH className="text-right">Rate</TH>
                 <TH className="text-right">Invoice</TH>
-                <TH>Vehicle</TH>
-                <TH>Challan</TH>
-                <TH>Delivery</TH>
-                <TH>Payment</TH>
-                <TH className="text-right">Actions</TH>
+                <TH>Status</TH>
+                <TH className="text-right"></TH>
               </TR>
             </THead>
             <TBody>
               {data.map((d) => (
                 <TR key={d.id}>
-                  <TD className="font-mono text-xs font-medium">{d.dispatch_no}</TD>
-                  <TD>{fmtDate(d.date)}</TD>
-                  <TD className="font-medium">
+                  <TD>
+                    <div className="font-mono text-[13px] font-semibold">{d.dispatch_no}</div>
+                    <div className="text-[11px] text-muted-foreground">{fmtDate(d.date)}</div>
+                  </TD>
+                  <TD>
                     {d.to_plant_id ? (
-                      <span className="flex items-center gap-1">{d.to_plant_name}<Badge variant="default">Plant</Badge></span>
+                      <span className="inline-flex items-center gap-1.5 font-medium">
+                        {d.to_plant_name}<Badge variant="default">Plant</Badge>
+                      </span>
                     ) : (
-                      d.customer_name
+                      <span className="font-medium">{d.customer_name}</span>
                     )}
                   </TD>
-                  <TD className="text-muted-foreground">
-                    {d.plant_name} / {d.product_name}
+                  <TD>
+                    <div className="text-[13px]">
+                      <span className="text-muted-foreground">{d.plant_name}</span>
+                      <span className="mx-1 text-muted-foreground">·</span>
+                      <span className="font-medium">{d.product_name}</span>
+                    </div>
                     {d.outsourced ? (
-                      <span className="block text-[11px]">
+                      <div className="text-[11px] text-muted-foreground">
                         Outsourced{d.outsource_name ? ` · ${d.outsource_name}${d.outsource_head ? ` (${d.outsource_head})` : ''}` : ''}
-                      </span>
+                      </div>
                     ) : null}
+                    {(d.vehicle_no || d.challan_no) && (
+                      <div className="text-[11px] text-muted-foreground">
+                        {vehicleLabel[d.vehicle_type]}
+                        {d.vehicle_no ? ` · ${d.vehicle_no}` : ''}
+                        {d.challan_no ? ` · Challan ${d.challan_no}` : ''}
+                      </div>
+                    )}
                     {((d.transport_total ?? 0) > 0 || (d.machine_total ?? 0) > 0) && (
-                      <span className="mt-0.5 flex flex-wrap gap-x-2 text-[11px]">
+                      <div className="mt-0.5 flex flex-wrap gap-x-2 text-[11px] text-muted-foreground">
                         {(d.transport_total ?? 0) > 0 && <span>🚚 {fmtMoney(d.transport_total)}</span>}
                         {(d.machine_total ?? 0) > 0 && <span>⚙ {fmtMoney(d.machine_total)}</span>}
-                      </span>
+                      </div>
                     )}
                   </TD>
                   <TD className="text-right">
-                    {fmtQty(d.quantity)} <span className="text-xs text-muted-foreground">{d.uom}</span>
-                    {d.sale_quantity != null && (
-                      <span className="block text-[11px] text-muted-foreground">
+                    <span className="tnum">{fmtQty(d.quantity)}</span> <span className="text-xs text-muted-foreground">{d.uom}</span>
+                    {d.sale_quantity != null && d.quantity - d.sale_quantity !== 0 && (
+                      <div className="text-[11px] text-muted-foreground">
                         sold {fmtQty(d.sale_quantity)}
-                        {d.quantity - d.sale_quantity !== 0 && (
-                          <span className={d.quantity - d.sale_quantity > 0 ? 'text-warning' : 'text-destructive'}>
-                            {' · '}±{fmtQty(Math.abs(d.quantity - d.sale_quantity))}
-                          </span>
-                        )}
-                      </span>
+                        <span className={d.quantity - d.sale_quantity > 0 ? 'text-warning' : 'text-destructive'}>
+                          {' · '}±{fmtQty(Math.abs(d.quantity - d.sale_quantity))}
+                        </span>
+                      </div>
                     )}
                   </TD>
-                  <TD className="text-right">{d.rate == null ? <Badge variant="warning">No rate</Badge> : fmtMoney(d.rate)}</TD>
-                  <TD className="text-right font-semibold">{fmtMoney(d.billed_total)}</TD>
-                  <TD className="text-muted-foreground">
-                    {d.vehicle_no || '-'}
-                    <span className="block text-[11px]">
-                      {vehicleLabel[d.vehicle_type]}{d.transporter_name ? ` · ${d.transporter_name}` : ''}
-                    </span>
+                  <TD className="tnum text-right">{d.rate == null ? <Badge variant="warning">No rate</Badge> : fmtMoney(d.rate)}</TD>
+                  <TD className="tnum text-right font-semibold">{fmtMoney(d.billed_total)}</TD>
+                  <TD>
+                    <div className="flex flex-col items-start gap-1">
+                      <Badge variant={d.delivery_status === 'delivered' ? 'success' : 'muted'}>{d.delivery_status}</Badge>
+                      <Badge variant={payBadge[d.payment_status]}>{d.payment_status}</Badge>
+                    </div>
                   </TD>
-                  <TD className="font-mono text-xs">{d.challan_no || '-'}</TD>
-                  <TD><Badge variant={d.delivery_status === 'delivered' ? 'success' : 'muted'}>{d.delivery_status}</Badge></TD>
-                  <TD><Badge variant={payBadge[d.payment_status]}>{d.payment_status}</Badge></TD>
                   <TD className="text-right">
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(d)}>
-                      <Pencil size={15} />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => remove(d)}>
-                      <Trash2 size={15} className="text-destructive" />
-                    </Button>
+                    <div className="flex justify-end">
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(d)}>
+                        <Pencil size={15} />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => remove(d)}>
+                        <Trash2 size={15} className="text-destructive" />
+                      </Button>
+                    </div>
                   </TD>
                 </TR>
               ))}
@@ -379,7 +388,10 @@ export function Dispatch(): React.JSX.Element {
 
             {/* Buyer & product */}
             <Section title={interPlant ? 'Destination & Product' : 'Customer & Product'}>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <Field label="Invoice / Voucher No." hint={form.id ? 'Edit to renumber' : 'Blank = auto'}>
+                  <Input value={form.dispatch_no || ''} onChange={(e) => setForm({ ...form, dispatch_no: e.target.value })} placeholder="Auto-generate" />
+                </Field>
                 {interPlant ? (
                   <Field label="Destination Plant" required hint="Auto-creates a finished-goods purchase there">
                     <SearchSelect

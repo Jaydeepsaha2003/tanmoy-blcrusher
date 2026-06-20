@@ -38,6 +38,20 @@ function round2(n: number): number {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100
 }
 
+/**
+ * Resolve the sale invoice/voucher number: use the user's value if given (must be
+ * unique), otherwise auto-generate the next SALE number. Runs inside a transaction.
+ */
+async function resolveInvoiceNo(d: Db, provided: string | undefined): Promise<string> {
+  const wanted = (provided ?? '').trim()
+  if (!wanted) return nextNumber('SALE', 'dispatch')
+  const dupe = (await d.prepare(`SELECT id FROM dispatches WHERE dispatch_no = ?`).get(wanted)) as
+    | { id: number }
+    | undefined
+  if (dupe) throw new Error(`Invoice number "${wanted}" is already used by another sale.`)
+  return wanted
+}
+
 /** A transporter cost line as accepted from the UI. */
 interface DispatchTransporterInput {
   transporter_id: number
@@ -214,6 +228,8 @@ function roundQty(n: number): number {
 
 export interface DispatchInput {
   id?: number
+  /** Optional user-supplied invoice/voucher no; blank → auto-generated. */
+  dispatch_no?: string
   customer_id: number
   plant_id: number
   product_name: string
@@ -351,7 +367,7 @@ export async function createDispatch(p: DispatchInput): Promise<Dispatch> {
   const id = await d.transaction(async () => {
     const toPlantId: number | null = interPlant ? Number(p.to_plant_id) : null
     const customerId = interPlant ? await ensureInternalCustomer(toPlantId!) : p.customer_id
-    const no = await nextNumber('SALE', 'dispatch')
+    const no = await resolveInvoiceNo(d, p.dispatch_no)
     const info = await d
       .prepare(
         `INSERT INTO dispatches
@@ -409,23 +425,33 @@ export async function updateDispatch(p: DispatchInput): Promise<Dispatch> {
     if (old.linked_purchase_id) await removeLinkedPurchase(old.linked_purchase_id)
     const toPlantId: number | null = interPlant ? Number(p.to_plant_id) : null
     const customerId = interPlant ? await ensureInternalCustomer(toPlantId!) : p.customer_id
+    // Invoice/voucher no may be edited; blank keeps the existing one.
+    const wantedNo = (p.dispatch_no ?? '').trim()
+    let newNo = old.dispatch_no
+    if (wantedNo && wantedNo !== old.dispatch_no) {
+      const dupe = (await d
+        .prepare(`SELECT id FROM dispatches WHERE dispatch_no = ? AND id <> ?`)
+        .get(wantedNo, p.id)) as { id: number } | undefined
+      if (dupe) throw new Error(`Invoice number "${wantedNo}" is already used by another sale.`)
+      newNo = wantedNo
+    }
     await d.prepare(
-      `UPDATE dispatches SET customer_id=@customer_id, plant_id=@plant_id, product_name=@product_name,
+      `UPDATE dispatches SET dispatch_no=@dispatch_no, customer_id=@customer_id, plant_id=@plant_id, product_name=@product_name,
         uom=@uom, quantity=@quantity, qty_cm=@qty_cm, sale_quantity=@sale_quantity, rate=@rate, amount=@amount,
         transport_charge=@transport_charge, transport_billed=@transport_billed,
         other_charge=@other_charge, other_billed=@other_billed,
         vehicle_no=@vehicle_no, vehicle_type=@vehicle_type, transporter_id=@transporter_id, driver=@driver, challan_no=@challan_no,
         outsourced=@outsourced, outsource_id=@outsource_id, delivery_status=@delivery_status, payment_status=@payment_status, paid_amount=@paid_amount,
         to_plant_id=@to_plant_id, linked_purchase_id=NULL, date=@date, remarks=@remarks WHERE id=@id`
-    ).run({ id: p.id, ...fields, customer_id: customerId, to_plant_id: toPlantId })
+    ).run({ id: p.id, ...fields, dispatch_no: newNo, customer_id: customerId, to_plant_id: toPlantId })
     await writeDispatchChildLines(d, p.id!, p.transporters, p.machines)
-    // Rebuild the stock movement to match the current outsourced flag.
+    // Rebuild the stock movement to match the current outsourced flag (re-key to the new no).
     await d.prepare(`DELETE FROM stock_movements WHERE ref_no=? AND type='dispatch'`).run(old.dispatch_no)
     if (!outsourced) {
       await addMovement(d, {
         type: 'dispatch',
         material_type: 'finished',
-        ref_no: old.dispatch_no,
+        ref_no: newNo,
         plant_id: p.plant_id,
         product_name: product,
         change_qty: -qtyCm,
