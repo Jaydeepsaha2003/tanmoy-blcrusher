@@ -509,14 +509,6 @@ export function Dispatch(): React.JSX.Element {
                     options={[{ value: 'own', label: 'Own Vehicle' }, { value: 'rented', label: 'Rented' }, { value: 'party', label: 'From Party' }]}
                   />
                 </Field>
-                <Field label="Transporter (invoice)" hint="Billable transport posts to this transporter's ledger">
-                  <SearchSelect
-                    value={form.transporter_id ?? ''}
-                    onChange={(v) => setForm({ ...form, transporter_id: v ? Number(v) : null })}
-                    options={[{ value: '', label: '— None —' }, ...transporters.map((t) => ({ value: t.id, label: t.name }))]}
-                    placeholder="— None —"
-                  />
-                </Field>
                 <Field label="Vehicle No.">
                   <Input value={form.vehicle_no} onChange={(e) => setForm({ ...form, vehicle_no: e.target.value })} placeholder="e.g. JH-01-AB-1234" />
                 </Field>
@@ -579,7 +571,7 @@ export function Dispatch(): React.JSX.Element {
               </Button>
               <p className="mt-1 text-[11px] text-muted-foreground">
                 {transporters.length
-                  ? 'Your transport cost — posts to the transporter ledger (separate from the invoice transport above).'
+                  ? "Your transport cost — posts to the transporter's ledger and the plant. (To charge the customer for delivery, use Transport Charges below.)"
                   : 'Add transporters under Transporters first.'}
               </p>
             </Section>
