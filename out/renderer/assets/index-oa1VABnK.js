@@ -61331,6 +61331,9 @@ function Companies() {
     mutationFn: (p2) => p2.id ? api.companies.update(p2) : api.companies.create(p2),
     onSuccess: () => {
       qc2.invalidateQueries({ queryKey: ["companies"] });
+      qc2.invalidateQueries({ queryKey: ["suppliers"] });
+      qc2.invalidateQueries({ queryKey: ["customers"] });
+      qc2.invalidateQueries({ queryKey: ["transporters"] });
       setOpen(false);
       toast.success("Company saved.");
     },
@@ -61371,7 +61374,7 @@ function Companies() {
             " Excel"
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { onClick: () => {
-            setForm({});
+            setForm({ as_supplier: true, as_customer: true, as_transporter: true });
             setOpen(true);
           }, children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 16 }),
@@ -61425,6 +61428,32 @@ function Companies() {
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Modal, { open, onClose: () => setOpen(false), title: form.id ? "Edit Company" : "New Company", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Company Name", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.name || "", onChange: (e3) => setForm({ ...form, name: e3.target.value }), placeholder: "e.g. Brijesh Ltd." }) }),
+      !form.id && /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Create as", hint: "Auto-creates a linked record for each role so you can use this company straight away. Uncheck any you don't need.", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-wrap gap-2", children: [
+        ["as_supplier", "Supplier"],
+        ["as_customer", "Customer"],
+        ["as_transporter", "Transporter"]
+      ].map(([key, label]) => {
+        const checked = form[key] !== false;
+        return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "label",
+          {
+            className: "flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors " + (checked ? "border-primary bg-primary/5 text-foreground" : "border-input text-muted-foreground hover:bg-accent"),
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "input",
+                {
+                  type: "checkbox",
+                  className: "h-4 w-4",
+                  checked,
+                  onChange: (e3) => setForm({ ...form, [key]: e3.target.checked })
+                }
+              ),
+              label
+            ]
+          },
+          key
+        );
+      }) }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Contact Details", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.contact || "", onChange: (e3) => setForm({ ...form, contact: e3.target.value }), placeholder: "Phone / email" }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Address", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Textarea, { value: form.address || "", onChange: (e3) => setForm({ ...form, address: e3.target.value }) }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.remarks || "", onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) }),

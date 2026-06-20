@@ -1341,6 +1341,48 @@ async function importProductsFromSettings(adapter2) {
     keep.set(name.toLowerCase(), 0);
   }
 }
+async function uppercaseExistingNames(adapter2, kind) {
+  const flag = "names_upper_v1";
+  const done = (await adapter2.exec("SELECT value FROM settings WHERE `key` = ?", [flag], null)).rows;
+  if (done.length > 0) return;
+  const cols = [
+    ["companies", "name"],
+    ["suppliers", "name"],
+    ["customers", "name"],
+    ["transporters", "name"],
+    ["plants", "name"],
+    ["plants", "code"],
+    ["businesses", "name"],
+    ["outsource", "name"],
+    ["outsource", "head"],
+    ["products", "name"],
+    ["stock_locations", "name"],
+    ["employees", "name"],
+    ["employees", "designation"],
+    ["assets", "name"],
+    ["plant_expenses", "title"],
+    ["production_settings", "product_name"],
+    ["production_outputs", "product_name"],
+    ["stock_movements", "product_name"],
+    ["dispatches", "product_name"],
+    ["purchases", "product_name"],
+    ["rack_loadings", "product_name"],
+    ["rack_unloadings", "product_name"],
+    ["rack_sales", "product_name"],
+    ["finished_goods_opening", "product_name"],
+    ["customer_rates", "product_name"],
+    ["rate_chart", "product_name"],
+    ["transport_charges", "vehicle_type"]
+  ];
+  for (const [t, c] of cols) {
+    try {
+      await adapter2.exec(`UPDATE ${t} SET ${c} = UPPER(${c})`, void 0, null);
+    } catch {
+    }
+  }
+  const ins = kind === "mysql" ? "INSERT INTO settings (`key`, value) VALUES (?, '1') ON DUPLICATE KEY UPDATE value = '1'" : "INSERT INTO settings (`key`, value) VALUES (?, '1') ON CONFLICT(`key`) DO UPDATE SET value = '1'";
+  await adapter2.exec(ins, [flag], null);
+}
 async function seedDefaults(adapter2) {
   const pwRow = (await adapter2.exec("SELECT value FROM settings WHERE `key` = 'admin_password'", void 0, null)).rows[0];
   if (!pwRow) {
@@ -1387,6 +1429,7 @@ async function runMigrations(adapter2, kind) {
   }
   await seedDefaults(adapter2);
   await importProductsFromSettings(adapter2);
+  await uppercaseExistingNames(adapter2, kind);
 }
 
 // src/main/db/index.ts
@@ -1504,7 +1547,7 @@ function toCm(qty, uom, f) {
 }
 function properCase(s) {
   if (!s) return "";
-  return s.trim().replace(/\s+/g, " ").toLowerCase().replace(/(^|[\s\-/().&])([a-z])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+  return s.trim().replace(/\s+/g, " ").toUpperCase();
 }
 function derivePaymentStatus(total, paid) {
   const t = Math.round((Number(total) + Number.EPSILON) * 100) / 100;
@@ -3152,7 +3195,7 @@ async function listTransporters(payload = {}) {
            SELECT trips, total_cm, amount, diesel_amount FROM rack_loadings WHERE transporter_id = @id
            UNION ALL
            SELECT trips, total_cm, amount, diesel_amount FROM rack_unloadings WHERE transporter_id = @id
-         )`
+         ) AS u`
     ).get({ id: t.id });
     const pay = await d.prepare(
       `SELECT
@@ -3238,8 +3281,20 @@ async function listCompanies() {
 async function createCompany(p) {
   const d = getDb();
   if (!p.name?.trim()) throw new Error("Company name is required.");
-  const info = await d.prepare(`INSERT INTO companies (name, contact, address, remarks) VALUES (?, ?, ?, ?)`).run(properCase(p.name), p.contact ?? "", p.address ?? "", p.remarks ?? "");
-  return await d.prepare(`SELECT * FROM companies WHERE id = ?`).get(info.lastInsertRowid);
+  const name = properCase(p.name);
+  const contact = p.contact ?? "";
+  const address = p.address ?? "";
+  return await d.transaction(async () => {
+    const info = await d.prepare(`INSERT INTO companies (name, contact, address, remarks) VALUES (?, ?, ?, ?)`).run(name, contact, address, p.remarks ?? "");
+    const companyId = Number(info.lastInsertRowid);
+    const mk = async (table) => {
+      await d.prepare(`INSERT INTO ${table} (name, contact, address, remarks, company_id) VALUES (?, ?, ?, '', ?)`).run(name, contact, address, companyId);
+    };
+    if (p.as_supplier !== false) await mk("suppliers");
+    if (p.as_customer !== false) await mk("customers");
+    if (p.as_transporter !== false) await mk("transporters");
+    return await d.prepare(`SELECT * FROM companies WHERE id = ?`).get(companyId);
+  });
 }
 async function updateCompany(p) {
   const d = getDb();
