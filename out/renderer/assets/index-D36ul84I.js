@@ -60851,6 +60851,7 @@ function Dispatch() {
   function blankForm() {
     return {
       sell_mode: "customer",
+      dispatch_no: "",
       customer_id: customers[0]?.id,
       to_plant_id: null,
       plant_id: plantId ?? plants[0]?.id,
@@ -61075,35 +61076,40 @@ function Dispatch() {
       ] }),
       data.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No direct sales found." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table, { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Sale No" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Date" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Sale" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Buyer" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plant / Product" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Qty" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Item" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Quantity" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Rate" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Invoice" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Vehicle" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Challan" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Delivery" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Payment" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Status" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right" })
         ] }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: data.map((d2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-mono text-xs font-medium", children: d2.dispatch_no }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: fmtDate(d2.date) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: d2.to_plant_id ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex items-center gap-1", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "font-mono text-[13px] font-semibold", children: d2.dispatch_no }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] text-muted-foreground", children: fmtDate(d2.date) })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: d2.to_plant_id ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "inline-flex items-center gap-1.5 font-medium", children: [
             d2.to_plant_name,
             /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "default", children: "Plant" })
-          ] }) : d2.customer_name }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-muted-foreground", children: [
-            d2.plant_name,
-            " / ",
-            d2.product_name,
-            d2.outsourced ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "block text-[11px]", children: [
+          ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-medium", children: d2.customer_name }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-[13px]", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-muted-foreground", children: d2.plant_name }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mx-1 text-muted-foreground", children: "·" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-medium", children: d2.product_name })
+            ] }),
+            d2.outsourced ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-[11px] text-muted-foreground", children: [
               "Outsourced",
               d2.outsource_name ? ` · ${d2.outsource_name}${d2.outsource_head ? ` (${d2.outsource_head})` : ""}` : ""
             ] }) : null,
-            ((d2.transport_total ?? 0) > 0 || (d2.machine_total ?? 0) > 0) && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "mt-0.5 flex flex-wrap gap-x-2 text-[11px]", children: [
+            (d2.vehicle_no || d2.challan_no) && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-[11px] text-muted-foreground", children: [
+              vehicleLabel[d2.vehicle_type],
+              d2.vehicle_no ? ` · ${d2.vehicle_no}` : "",
+              d2.challan_no ? ` · Challan ${d2.challan_no}` : ""
+            ] }),
+            ((d2.transport_total ?? 0) > 0 || (d2.machine_total ?? 0) > 0) && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-0.5 flex flex-wrap gap-x-2 text-[11px] text-muted-foreground", children: [
               (d2.transport_total ?? 0) > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
                 "🚚 ",
                 fmtMoney(d2.transport_total)
@@ -61115,35 +61121,29 @@ function Dispatch() {
             ] })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
-            fmtQty(d2.quantity),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tnum", children: fmtQty(d2.quantity) }),
             " ",
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-muted-foreground", children: d2.uom }),
-            d2.sale_quantity != null && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "block text-[11px] text-muted-foreground", children: [
+            d2.sale_quantity != null && d2.quantity - d2.sale_quantity !== 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-[11px] text-muted-foreground", children: [
               "sold ",
               fmtQty(d2.sale_quantity),
-              d2.quantity - d2.sale_quantity !== 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: d2.quantity - d2.sale_quantity > 0 ? "text-warning" : "text-destructive", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: d2.quantity - d2.sale_quantity > 0 ? "text-warning" : "text-destructive", children: [
                 " · ",
                 "±",
                 fmtQty(Math.abs(d2.quantity - d2.sale_quantity))
               ] })
             ] })
           ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: d2.rate == null ? /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "warning", children: "No rate" }) : fmtMoney(d2.rate) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right font-semibold", children: fmtMoney(d2.billed_total) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-muted-foreground", children: [
-            d2.vehicle_no || "-",
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "block text-[11px]", children: [
-              vehicleLabel[d2.vehicle_type],
-              d2.transporter_name ? ` · ${d2.transporter_name}` : ""
-            ] })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-mono text-xs", children: d2.challan_no || "-" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: d2.delivery_status === "delivered" ? "success" : "muted", children: d2.delivery_status }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: payBadge$5[d2.payment_status], children: d2.payment_status }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: d2.rate == null ? /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "warning", children: "No rate" }) : fmtMoney(d2.rate) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right font-semibold", children: fmtMoney(d2.billed_total) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-start gap-1", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: d2.delivery_status === "delivered" ? "success" : "muted", children: d2.delivery_status }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: payBadge$5[d2.payment_status], children: d2.payment_status })
+          ] }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-end", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => openEdit(d2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => remove(d2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
-          ] })
+          ] }) })
         ] }, d2.id)) })
       ] })
     ] }),
@@ -61163,7 +61163,8 @@ function Dispatch() {
           key
         )) }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs(Section, { title: interPlant ? "Destination & Product" : "Customer & Product", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-3", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Invoice / Voucher No.", hint: form.id ? "Edit to renumber" : "Blank = auto", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.dispatch_no || "", onChange: (e3) => setForm({ ...form, dispatch_no: e3.target.value }), placeholder: "Auto-generate" }) }),
             interPlant ? /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Destination Plant", required: true, hint: "Auto-creates a finished-goods purchase there", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
               SearchSelect,
               {
