@@ -11328,6 +11328,7 @@ const api = {
   },
   dispatches: {
     list: (filter) => call("dispatches.list", filter),
+    detail: (id2) => call("dispatches.detail", { id: id2 }),
     create: (p2) => call("dispatches.create", p2),
     update: (p2) => call("dispatches.update", p2),
     setRate: (id2, rate) => call("dispatches.setRate", { id: id2, rate }),
@@ -35530,13 +35531,17 @@ function SearchSelect({
   const sel = options.find((o) => String(o.value) === String(value ?? ""));
   const ql2 = q2.trim().toLowerCase();
   const filtered = ql2 ? options.filter((o) => o.label.toLowerCase().includes(ql2)) : options;
+  const showSearch = options.length > 7;
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { ref, className: cn("relative", className), children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs(
       "button",
       {
         type: "button",
         disabled,
-        onClick: () => setOpen((v2) => !v2),
+        onClick: () => {
+          setQ("");
+          setOpen((v2) => !v2);
+        },
         className: "flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-input bg-card px-3 text-left text-sm shadow-sm transition-all focus-visible:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-50",
         children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: cn("truncate", !sel && "text-muted-foreground"), children: sel ? sel.label : placeholder }),
@@ -35545,7 +35550,7 @@ function SearchSelect({
       }
     ),
     open && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "absolute z-[60] mt-1 w-full overflow-hidden rounded-lg border bg-card shadow-xl", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 border-b px-2.5 py-1.5", children: [
+      showSearch && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 border-b px-2.5 py-1.5", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Search, { size: 14, className: "text-muted-foreground" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           "input",
@@ -58981,14 +58986,14 @@ function Plants() {
           onChange: (e3) => setForm({ ...form, location: e3.target.value })
         }
       ) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Status", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        Select,
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Status", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        SearchSelect,
         {
           value: form.status || "active",
-          onChange: (e3) => setForm({ ...form, status: e3.target.value }),
-          children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "active", children: "Active" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "inactive", children: "Inactive" })
+          onChange: (v2) => setForm({ ...form, status: v2 }),
+          options: [
+            { value: "active", label: "Active" },
+            { value: "inactive", label: "Inactive" }
           ]
         }
       ) }),
@@ -59090,12 +59095,12 @@ function StockLocations() {
         title: form.id ? "Edit Location" : "New Stock Location",
         children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", hint: plantId && !form.id ? "Locked to active plant" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-            Select,
+            SearchSelect,
             {
               value: form.plant_id || "",
               disabled: !!form.id || !!plantId,
-              onChange: (e3) => setForm({ ...form, plant_id: Number(e3.target.value) }),
-              children: plants.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.id, children: p2.name }, p2.id))
+              onChange: (v2) => setForm({ ...form, plant_id: Number(v2) }),
+              options: plants.map((p2) => ({ value: p2.id, label: p2.name }))
             }
           ) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Location Name", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -59235,26 +59240,20 @@ function Suppliers() {
         children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Supplier Name", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.name || "", onChange: (e3) => setForm({ ...form, name: e3.target.value }) }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Company / Group (optional)", hint: "For a combined company ledger", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              Select,
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Company / Group (optional)", hint: "For a combined company ledger", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
               {
                 value: form.company_id ?? "",
-                onChange: (e3) => setForm({ ...form, company_id: e3.target.value ? Number(e3.target.value) : null }),
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "— None —" }),
-                  companies.map((c2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: c2.id, children: c2.name }, c2.id))
-                ]
+                onChange: (v2) => setForm({ ...form, company_id: v2 ? Number(v2) : null }),
+                options: [{ value: "", label: "— None —" }, ...companies.map((c2) => ({ value: c2.id, label: c2.name }))]
               }
             ) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", hint: "Common = available to all plants", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              Select,
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", hint: "Common = available to all plants", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
               {
                 value: form.plant_id ?? "",
-                onChange: (e3) => setForm({ ...form, plant_id: e3.target.value ? Number(e3.target.value) : null }),
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Common (all plants)" }),
-                  plants.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.id, children: p2.name }, p2.id))
-                ]
+                onChange: (v2) => setForm({ ...form, plant_id: v2 ? Number(v2) : null }),
+                options: [{ value: "", label: "Common (all plants)" }, ...plants.map((p2) => ({ value: p2.id, label: p2.name }))]
               }
             ) })
           ] }),
@@ -59493,16 +59492,29 @@ function Purchases() {
     ),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Page, { children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap items-center gap-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { className: "w-full sm:w-48", value: filter.supplier_id ?? "", onChange: (e3) => setFilter({ ...filter, supplier_id: e3.target.value ? Number(e3.target.value) : void 0 }), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "All suppliers" }),
-          suppliers.map((s2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: s2.id, children: s2.name }, s2.id))
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { className: "w-full sm:w-44", value: filter.payment_status ?? "", onChange: (e3) => setFilter({ ...filter, payment_status: e3.target.value || void 0 }), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "All payments" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "paid", children: "Paid" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "partial", children: "Partial" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "unpaid", children: "Unpaid" })
-        ] })
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            className: "w-full sm:w-48",
+            value: filter.supplier_id ?? "",
+            onChange: (v2) => setFilter({ ...filter, supplier_id: v2 ? Number(v2) : void 0 }),
+            options: [{ value: "", label: "All suppliers" }, ...suppliers.map((s2) => ({ value: s2.id, label: s2.name }))]
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            className: "w-full sm:w-44",
+            value: filter.payment_status ?? "",
+            onChange: (v2) => setFilter({ ...filter, payment_status: v2 || void 0 }),
+            options: [
+              { value: "", label: "All payments" },
+              { value: "paid", label: "Paid" },
+              { value: "partial", label: "Partial" },
+              { value: "unpaid", label: "Unpaid" }
+            ]
+          }
+        )
       ] }),
       data.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No purchases found." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table, { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
@@ -59595,7 +59607,15 @@ function Purchases() {
             }
           ) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Purchase Date", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: form.date, onChange: (e3) => setForm({ ...form, date: e3.target.value }) }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", required: true, hint: plantId ? "Active plant" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: form.plant_id || "", disabled: !!plantId, onChange: (e3) => setForm({ ...form, plant_id: Number(e3.target.value), stock_location_id: void 0 }), children: plants.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.id, children: p2.name }, p2.id)) }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", required: true, hint: plantId ? "Active plant" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SearchSelect,
+            {
+              value: form.plant_id || "",
+              disabled: !!plantId,
+              onChange: (v2) => setForm({ ...form, plant_id: Number(v2), stock_location_id: void 0 }),
+              options: plants.map((p2) => ({ value: p2.id, label: p2.name }))
+            }
+          ) }),
           mk2 === "finished" ? /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product", required: true, className: "sm:col-span-2", hint: "Added to this product's finished-goods stock", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
             SearchSelect,
             {
@@ -59624,7 +59644,14 @@ function Purchases() {
           ) })
         ] }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Section$1, { title: mk2 === "mining" ? "Quantity & Royalty Rate" : "Quantity & Rate", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4 sm:grid-cols-4", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Unit (UOM)", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: form.uom || "CM", onChange: (e3) => setForm({ ...form, uom: e3.target.value }), children: UOMS.map((u2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: u2, children: u2 }, u2)) }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Unit (UOM)", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SearchSelect,
+            {
+              value: form.uom || "CM",
+              onChange: (v2) => setForm({ ...form, uom: v2 }),
+              options: UOMS.map((u2) => ({ value: u2, label: u2 }))
+            }
+          ) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `Quantity (${form.uom || "CM"})`, required: true, hint: form.uom !== "CM" ? `= ${fmtQty(toCm(Number(form.quantity) || 0, form.uom))} m³` : "m³", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.quantity, onChange: (e3) => setForm({ ...form, quantity: e3.target.value }) }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `${mk2 === "mining" ? "Royalty" : "Rate"} / ${form.uom || "CM"}`, required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.rate, onChange: (e3) => setForm({ ...form, rate: e3.target.value }), placeholder: "Rate" }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Paid Amount", hint: "Sets status", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.paid_amount, onChange: (e3) => setForm({ ...form, paid_amount: e3.target.value }) }) })
@@ -59654,14 +59681,18 @@ function Purchases() {
                     }
                   ),
                   /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: t2.vehicle_no, onChange: (e3) => setTransporter(i, { vehicle_no: e3.target.value }), placeholder: "JH01AB1234" }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: t2.basis || "flat", onChange: (e3) => setTransporter(i, { basis: e3.target.value }), children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "flat", children: "Flat" }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "trip", children: "Per Trip" }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: "uom", children: [
-                      "Per ",
-                      form.uom || "UOM"
-                    ] })
-                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    SearchSelect,
+                    {
+                      value: t2.basis || "flat",
+                      onChange: (v2) => setTransporter(i, { basis: v2 }),
+                      options: [
+                        { value: "flat", label: "Flat" },
+                        { value: "trip", label: "Per Trip" },
+                        { value: "uom", label: `Per ${form.uom || "UOM"}` }
+                      ]
+                    }
+                  ),
                   /* @__PURE__ */ jsxRuntimeExports.jsx(
                     Input,
                     {
@@ -59715,10 +59746,17 @@ function Purchases() {
                     placeholder: "Machine…"
                   }
                 ),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: m2.basis || "hour", onChange: (e3) => setMachine(i, { basis: e3.target.value }), children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "hour", children: "Per Hour" }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "cm", children: "Per m³" })
-                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  SearchSelect,
+                  {
+                    value: m2.basis || "hour",
+                    onChange: (v2) => setMachine(i, { basis: v2 }),
+                    options: [
+                      { value: "hour", label: "Per Hour" },
+                      { value: "cm", label: "Per m³" }
+                    ]
+                  }
+                ),
                 /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: m2.qty, onChange: (e3) => setMachine(i, { qty: e3.target.value }) }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: m2.rate, onChange: (e3) => setMachine(i, { rate: e3.target.value }) }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -59838,7 +59876,16 @@ function ProductionSettings() {
       }
     ),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Page, { children: plants.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "Create a plant first." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "max-w-2xl space-y-4", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { className: "w-full sm:w-72", value: plantId || "", disabled: !!globalPlant, onChange: (e3) => setPlantId(Number(e3.target.value)), children: plants.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.id, children: p2.name }, p2.id)) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        SearchSelect,
+        {
+          className: "w-full sm:w-72",
+          value: plantId || "",
+          disabled: !!globalPlant,
+          onChange: (v2) => setPlantId(Number(v2)),
+          options: plants.map((p2) => ({ value: p2.id, label: p2.name }))
+        }
+      ),
       /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "pt-5", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-[1fr_140px_40px] gap-2 px-1 text-xs font-semibold uppercase text-muted-foreground", children: [
@@ -59847,11 +59894,19 @@ function ProductionSettings() {
             /* @__PURE__ */ jsxRuntimeExports.jsx("div", {})
           ] }),
           rows.map((r2, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-[1fr_140px_40px] gap-2", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: r2.product_name, onChange: (e3) => update(i, { product_name: e3.target.value }), children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Select product…" }),
-              r2.product_name && !products.some((p2) => p2.name === r2.product_name) && /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: r2.product_name, children: r2.product_name }),
-              products.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.name, children: p2.name }, p2.id))
-            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
+              {
+                value: r2.product_name,
+                onChange: (v2) => update(i, { product_name: v2 }),
+                placeholder: "Select product…",
+                options: [
+                  /* Keep a stale value selectable so an existing setting still shows. */
+                  ...r2.product_name && !products.some((p2) => p2.name === r2.product_name) ? [{ value: r2.product_name, label: r2.product_name }] : [],
+                  ...products.map((p2) => ({ value: p2.name, label: p2.name }))
+                ]
+              }
+            ),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: r2.output_percentage, onChange: (e3) => update(i, { output_percentage: e3.target.value }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => setRows((rs) => rs.filter((_, idx) => idx !== i)), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
           ] }, i))
@@ -59974,27 +60029,27 @@ function ProductionEntry() {
     ] }) }),
     form && /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { open, onClose: () => setOpen(false), title: "New Production", width: "max-w-2xl", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", hint: plantId ? "Locked to active plant" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: form.plant_id || "", disabled: !!plantId, onChange: (e3) => setForm({ ...form, plant_id: Number(e3.target.value), stock_location_id: void 0 }), children: plants.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.id, children: p2.name }, p2.id)) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", hint: plantId ? "Locked to active plant" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            value: form.plant_id || "",
+            disabled: !!plantId,
+            onChange: (v2) => setForm({ ...form, plant_id: Number(v2), stock_location_id: void 0 }),
+            options: plants.map((p2) => ({ value: p2.id, label: p2.name }))
+          }
+        ) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Production Date", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: form.date, onChange: (e3) => setForm({ ...form, date: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           Field,
           {
             label: "Stock Location",
             hint: selectedLoc ? `Available: ${fmtQty(selectedLoc.balance_qty)} m³` : "Leave blank to use the plant itself as the default location",
-            children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              Select,
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
               {
                 value: form.stock_location_id || "",
-                onChange: (e3) => setForm({ ...form, stock_location_id: e3.target.value ? Number(e3.target.value) : void 0 }),
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Plant default (auto)" }),
-                  formLocations.map((l2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: l2.id, children: [
-                    l2.name,
-                    " (",
-                    fmtQty(l2.balance_qty),
-                    " m³)"
-                  ] }, l2.id))
-                ]
+                onChange: (v2) => setForm({ ...form, stock_location_id: v2 ? Number(v2) : void 0 }),
+                options: [{ value: "", label: "Plant default (auto)" }, ...formLocations.map((l2) => ({ value: l2.id, label: `${l2.name} (${fmtQty(l2.balance_qty)} m³)` }))]
               }
             )
           }
@@ -60088,10 +60143,15 @@ function FinishedGoods() {
     ),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Page, { children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap items-center gap-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { className: "w-full sm:w-44", value: filter.product_name ?? "", onChange: (e3) => setFilter({ ...filter, product_name: e3.target.value || void 0 }), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "All products" }),
-          products.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2, children: p2 }, p2))
-        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            className: "w-full sm:w-44",
+            value: filter.product_name ?? "",
+            onChange: (v2) => setFilter({ ...filter, product_name: v2 || void 0 }),
+            options: [{ value: "", label: "All products" }, ...products.map((p2) => ({ value: p2, label: p2 }))]
+          }
+        ),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", className: "w-full sm:w-40", value: filter.from ?? "", onChange: (e3) => setFilter({ ...filter, from: e3.target.value || void 0 }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-muted-foreground", children: "to" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", className: "w-full sm:w-40", value: filter.to ?? "", onChange: (e3) => setFilter({ ...filter, to: e3.target.value || void 0 }) })
@@ -60120,7 +60180,15 @@ function FinishedGoods() {
       ] })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Modal, { open, onClose: () => setOpen(false), title: "Set Opening Finished Goods", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", hint: plantId ? "Locked to active plant" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: form.plant_id || "", disabled: !!plantId, onChange: (e3) => setForm({ ...form, plant_id: Number(e3.target.value) }), children: plants.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.id, children: p2.name }, p2.id)) }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", hint: plantId ? "Locked to active plant" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        SearchSelect,
+        {
+          value: form.plant_id || "",
+          disabled: !!plantId,
+          onChange: (v2) => setForm({ ...form, plant_id: Number(v2) }),
+          options: plants.map((p2) => ({ value: p2.id, label: p2.name }))
+        }
+      ) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product Name", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.product_name, onChange: (e3) => setForm({ ...form, product_name: e3.target.value }), placeholder: "e.g. 30/40" }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Opening Quantity (m³)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.opening_qty, onChange: (e3) => setForm({ ...form, opening_qty: Number(e3.target.value) }) }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-end gap-2 pt-2", children: [
@@ -60210,15 +60278,12 @@ function Products() {
           onChange: (e3) => setForm({ ...form, description: e3.target.value })
         }
       ) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Status", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        Select,
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Status", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        SearchSelect,
         {
           value: form.status || "active",
-          onChange: (e3) => setForm({ ...form, status: e3.target.value }),
-          children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "active", children: "Active" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "inactive", children: "Inactive" })
-          ]
+          onChange: (v2) => setForm({ ...form, status: v2 }),
+          options: [{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }]
         }
       ) }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-end gap-2 pt-2", children: [
@@ -60381,22 +60446,11 @@ function RateChart() {
     ] }),
     rateForm && /* @__PURE__ */ jsxRuntimeExports.jsx(Modal, { open: true, onClose: () => setRateForm(null), title: rateForm.id ? "Edit Rate" : "New Product Rate", width: "max-w-xl", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-3", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: rateForm.product_name || "", onChange: (e3) => setRateForm({ ...rateForm, product_name: e3.target.value }), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Select…" }),
-          rateForm.product_name && !products.some((p2) => p2.name === rateForm.product_name) && /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: rateForm.product_name, children: rateForm.product_name }),
-          products.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.name, children: p2.name }, p2.id))
-        ] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Location", className: "sm:col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: rateForm.stock_location_id || "", onChange: (e3) => setRateForm({ ...rateForm, stock_location_id: Number(e3.target.value) }), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Select…" }),
-          formLocations.map((l2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: l2.id, children: [
-            l2.plant_name,
-            " · ",
-            l2.name
-          ] }, l2.id))
-        ] }) })
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: rateForm.product_name || "", onChange: (v2) => setRateForm({ ...rateForm, product_name: v2 }), options: [...rateForm.product_name && !products.some((p2) => p2.name === rateForm.product_name) ? [{ value: rateForm.product_name, label: rateForm.product_name }] : [], ...products.map((p2) => ({ value: p2.name, label: p2.name }))], placeholder: "Select…" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Location", className: "sm:col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: rateForm.stock_location_id || "", onChange: (v2) => setRateForm({ ...rateForm, stock_location_id: Number(v2) }), options: formLocations.map((l2) => ({ value: l2.id, label: `${l2.plant_name} · ${l2.name}` })), placeholder: "Select…" }) })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4 sm:grid-cols-4", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Unit", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: rateForm.uom || "CM", onChange: (e3) => setRateForm({ ...rateForm, uom: e3.target.value }), children: UOMS.map((u2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: u2, children: u2 }, u2)) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Unit", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: rateForm.uom || "CM", onChange: (v2) => setRateForm({ ...rateForm, uom: v2 }), options: UOMS.map((u2) => ({ value: u2, label: u2 })) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Wholesale ₹", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: rateForm.rate_wholesale ?? "", onChange: (e3) => setRateForm({ ...rateForm, rate_wholesale: Number(e3.target.value) }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Retail ₹", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: rateForm.rate_retail ?? "", onChange: (e3) => setRateForm({ ...rateForm, rate_retail: Number(e3.target.value) }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Customer ₹", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: rateForm.rate_customer ?? "", onChange: (e3) => setRateForm({ ...rateForm, rate_customer: Number(e3.target.value) }) }) })
@@ -60412,19 +60466,8 @@ function RateChart() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { list: "lorry-types", value: tForm.vehicle_type || "", onChange: (e3) => setTForm({ ...tForm, vehicle_type: e3.target.value }), placeholder: "e.g. 10 Wheeler" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("datalist", { id: "lorry-types", children: LORRY_TYPES.map((v2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: v2 }, v2)) })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Location", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: tForm.stock_location_id || "", onChange: (e3) => setTForm({ ...tForm, stock_location_id: Number(e3.target.value) }), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Select…" }),
-          formLocations.map((l2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: l2.id, children: [
-            l2.plant_name,
-            " · ",
-            l2.name
-          ] }, l2.id))
-        ] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Basis", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: tForm.basis || "trip", onChange: (e3) => setTForm({ ...tForm, basis: e3.target.value }), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "trip", children: "Per Trip" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "cm", children: "Per m³" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "ton", children: "Per Ton" })
-        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Location", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: tForm.stock_location_id || "", onChange: (v2) => setTForm({ ...tForm, stock_location_id: Number(v2) }), options: formLocations.map((l2) => ({ value: l2.id, label: `${l2.plant_name} · ${l2.name}` })), placeholder: "Select…" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Basis", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: tForm.basis || "trip", onChange: (v2) => setTForm({ ...tForm, basis: v2 }), options: [{ value: "trip", label: "Per Trip" }, { value: "cm", label: "Per m³" }, { value: "ton", label: "Per Ton" }] }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Charge ₹", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: tForm.charge ?? "", onChange: (e3) => setTForm({ ...tForm, charge: Number(e3.target.value) }) }) })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-end gap-2 pt-1", children: [
@@ -60544,26 +60587,20 @@ function Customers() {
         children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Customer / Party Name", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.name || "", onChange: (e3) => setForm({ ...form, name: e3.target.value }) }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Company / Group (optional)", hint: "For a combined company ledger", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              Select,
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Company / Group (optional)", hint: "For a combined company ledger", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
               {
                 value: form.company_id ?? "",
-                onChange: (e3) => setForm({ ...form, company_id: e3.target.value ? Number(e3.target.value) : null }),
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "— None —" }),
-                  companies.map((c2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: c2.id, children: c2.name }, c2.id))
-                ]
+                onChange: (v2) => setForm({ ...form, company_id: v2 ? Number(v2) : null }),
+                options: [{ value: "", label: "— None —" }, ...companies.map((c2) => ({ value: c2.id, label: c2.name }))]
               }
             ) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", hint: "Common = available to all plants", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              Select,
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", hint: "Common = available to all plants", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
               {
                 value: form.plant_id ?? "",
-                onChange: (e3) => setForm({ ...form, plant_id: e3.target.value ? Number(e3.target.value) : null }),
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Common (all plants)" }),
-                  plants.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.id, children: p2.name }, p2.id))
-                ]
+                onChange: (v2) => setForm({ ...form, plant_id: v2 ? Number(v2) : null }),
+                options: [{ value: "", label: "Common (all plants)" }, ...plants.map((p2) => ({ value: p2.id, label: p2.name }))]
               }
             ) })
           ] }),
@@ -60710,12 +60747,27 @@ function RatesModal({
           /* @__PURE__ */ jsxRuntimeExports.jsx("div", {})
         ] }),
         rows.map((r2, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-[1fr_96px_120px_36px] gap-2", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: r2.product_name, onChange: (e3) => update(i, { product_name: e3.target.value }), children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Select product…" }),
-            r2.product_name && !products.some((p2) => p2.name === r2.product_name) && /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: r2.product_name, children: r2.product_name }),
-            products.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.name, children: p2.name }, p2.id))
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: r2.uom, onChange: (e3) => update(i, { uom: e3.target.value }), children: UOMS.map((u2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: u2, children: u2 }, u2)) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SearchSelect,
+            {
+              value: r2.product_name,
+              onChange: (v2) => update(i, { product_name: v2 }),
+              placeholder: "Select product…",
+              options: [
+                // keep a stale value selectable
+                ...r2.product_name && !products.some((p2) => p2.name === r2.product_name) ? [{ value: r2.product_name, label: r2.product_name }] : [],
+                ...products.map((p2) => ({ value: p2.name, label: p2.name }))
+              ]
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SearchSelect,
+            {
+              value: r2.uom,
+              onChange: (v2) => update(i, { uom: v2 }),
+              options: UOMS.map((u2) => ({ value: u2, label: u2 }))
+            }
+          ),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             Input,
             {
@@ -60773,6 +60825,7 @@ function Dispatch() {
   });
   const { data: outsourceVendors = [] } = useQuery({ queryKey: ["outsource"], queryFn: () => api.outsource.list() });
   const { data: transporters = [] } = useQuery({ queryKey: ["transporters", plantId], queryFn: () => api.transporters.list(plantId) });
+  const { data: assets = [] } = useQuery({ queryKey: ["assets", plantId], queryFn: () => api.assets.list(plantId) });
   const [filter, setFilter] = reactExports.useState({});
   const { data = [] } = useQuery({
     queryKey: ["dispatches", filter, plantId],
@@ -60795,9 +60848,11 @@ function Dispatch() {
     },
     onError: (e3) => toast.error(e3.message)
   });
-  function openNew() {
-    setForm({
+  function blankForm() {
+    return {
+      sell_mode: "customer",
       customer_id: customers[0]?.id,
+      to_plant_id: null,
       plant_id: plantId ?? plants[0]?.id,
       product_name: "",
       outsource_id: null,
@@ -60818,12 +60873,35 @@ function Dispatch() {
       delivery_status: "pending",
       paid_amount: "",
       date: today(),
-      remarks: ""
+      remarks: "",
+      transporters: [],
+      machines: []
+    };
+  }
+  function openNew() {
+    setForm(blankForm());
+    setOpen(true);
+  }
+  async function openEdit(d2) {
+    const det = await api.dispatches.detail(d2.id).catch(() => null);
+    const src = det ?? d2;
+    setForm({
+      ...src,
+      sell_mode: src.to_plant_id ? "plant" : "customer",
+      rate: src.rate ?? "",
+      sale_quantity: src.sale_quantity ?? "",
+      transport_charge: src.transport_charge ?? "",
+      other_charge: src.other_charge ?? "",
+      paid_amount: src.paid_amount ?? "",
+      transport_billed: !!src.transport_billed,
+      other_billed: !!src.other_billed,
+      transporters: (src.transporters ?? []).map((t2) => ({ transporter_id: t2.transporter_id, vehicle_no: t2.vehicle_no, basis: t2.basis || "flat", qty: t2.qty || "", rate: t2.rate || "", charge: t2.charge })),
+      machines: (src.machines ?? []).map((m2) => ({ asset_id: m2.asset_id, basis: m2.basis, qty: m2.qty, rate: m2.rate, outsource_id: m2.outsource_id }))
     });
     setOpen(true);
   }
   async function remove(d2) {
-    const ok2 = await confirmDialog({ title: "Delete sale", message: `Delete ${d2.dispatch_no}? Stock will be restored.` });
+    const ok2 = await confirmDialog({ title: "Delete sale", message: `Delete ${d2.dispatch_no}? Stock will be restored.${d2.linked_purchase_id ? " The linked inter-plant purchase will also be removed." : ""}` });
     if (!ok2) return;
     const res = await api.dispatches.delete(d2.id);
     if (res.ok) {
@@ -60831,9 +60909,31 @@ function Dispatch() {
       toast.success("Sale deleted.");
     } else toast.error(res.error || "Could not delete.");
   }
+  const tlines = form?.transporters ?? [];
+  function addTransporter() {
+    setForm({ ...form, transporters: [...tlines, { transporter_id: 0, vehicle_no: "", basis: "flat", qty: "", rate: "", charge: "" }] });
+  }
+  function setTransporter(i, patch) {
+    setForm({ ...form, transporters: tlines.map((t2, idx) => idx === i ? { ...t2, ...patch } : t2) });
+  }
+  function delTransporter(i) {
+    setForm({ ...form, transporters: tlines.filter((_, idx) => idx !== i) });
+  }
+  const mlines = form?.machines ?? [];
+  function addMachine() {
+    setForm({ ...form, machines: [...mlines, { asset_id: 0, basis: "hour", qty: "", rate: "", outsource_id: null }] });
+  }
+  function setMachine(i, patch) {
+    setForm({ ...form, machines: mlines.map((m2, idx) => idx === i ? { ...m2, ...patch } : m2) });
+  }
+  function delMachine(i) {
+    setForm({ ...form, machines: mlines.filter((_, idx) => idx !== i) });
+  }
   function submit() {
+    const interPlant2 = form.sell_mode === "plant";
     save.mutate({
       ...form,
+      to_plant_id: interPlant2 ? Number(form.to_plant_id) || null : null,
       quantity: Number(form.quantity),
       sale_quantity: form.sale_quantity === "" || form.sale_quantity == null ? null : Number(form.sale_quantity),
       rate: form.rate === "" || form.rate == null ? null : Number(form.rate),
@@ -60841,7 +60941,18 @@ function Dispatch() {
       other_charge: Number(form.other_charge) || 0,
       paid_amount: Number(form.paid_amount) || 0,
       transport_billed: !!form.transport_billed,
-      other_billed: !!form.other_billed
+      other_billed: !!form.other_billed,
+      // Inter-plant always uses real plant stock (never outsourced).
+      outsourced: interPlant2 ? false : !!form.outsourced,
+      transporters: (form.transporters ?? []).filter((t2) => t2.transporter_id).map((t2) => ({
+        transporter_id: Number(t2.transporter_id),
+        vehicle_no: t2.vehicle_no || "",
+        basis: t2.basis || "flat",
+        qty: Number(t2.qty) || 0,
+        rate: Number(t2.rate) || 0,
+        charge: Number(t2.charge) || 0
+      })),
+      machines: (form.machines ?? []).filter((m2) => m2.asset_id).map((m2) => ({ asset_id: Number(m2.asset_id), basis: m2.basis || "hour", qty: Number(m2.qty) || 0, rate: Number(m2.rate) || 0, outsource_id: m2.outsource_id ? Number(m2.outsource_id) : null }))
     });
   }
   function exportExcel() {
@@ -60851,7 +60962,7 @@ function Dispatch() {
       [
         "Sale No",
         "Date",
-        "Customer",
+        "Customer / Plant",
         "Plant",
         "Product",
         "Qty",
@@ -60861,6 +60972,8 @@ function Dispatch() {
         "Transport",
         "Other",
         "Invoice Total",
+        "Transport Cost",
+        "Machine Cost",
         "Paid",
         "Vehicle",
         "Vehicle Type",
@@ -60871,7 +60984,7 @@ function Dispatch() {
       data.map((d2) => [
         d2.dispatch_no,
         fmtDate(d2.date),
-        d2.customer_name,
+        d2.to_plant_id ? `${d2.to_plant_name} (plant)` : d2.customer_name,
         d2.plant_name,
         d2.product_name,
         d2.quantity,
@@ -60881,6 +60994,8 @@ function Dispatch() {
         d2.transport_charge,
         d2.other_charge,
         d2.billed_total ?? "",
+        d2.transport_total ?? 0,
+        d2.machine_total ?? 0,
         d2.paid_amount,
         d2.vehicle_no,
         vehicleLabel[d2.vehicle_type],
@@ -60890,6 +61005,7 @@ function Dispatch() {
       ])
     );
   }
+  const interPlant = form?.sell_mode === "plant";
   plants.find((pl2) => pl2.id === form?.plant_id);
   const actualQty = Number(form?.quantity) || 0;
   const saleSet = !!form && form.sale_quantity !== "" && form.sale_quantity != null;
@@ -60901,12 +61017,17 @@ function Dispatch() {
   const billedExtra = form ? (form.transport_billed ? Number(form.transport_charge) || 0 : 0) + (form.other_billed ? Number(form.other_charge) || 0 : 0) : 0;
   const invoiceTotal = goods + billedExtra;
   const available = form ? (selProduct?.balance_qty ?? 0) + (form.id ? Number(form.qty_cm) || 0 : 0) : 0;
+  const lineCharge = (t2) => t2.basis === "trip" || t2.basis === "uom" ? (Number(t2.qty) || 0) * (Number(t2.rate) || 0) : Number(t2.charge) || 0;
+  const transportCost = (form?.transporters ?? []).reduce((s2, t2) => s2 + lineCharge(t2), 0);
+  const machineCost = (form?.machines ?? []).reduce((s2, m2) => s2 + (Number(m2.qty) || 0) * (Number(m2.rate) || 0), 0);
+  const destPlants = plants.filter((p2) => p2.id !== form?.plant_id);
+  const canSave = !!form && !!form.product_name && Number(form.quantity) > 0 && (interPlant ? !!form.to_plant_id : !!form.customer_id) && (interPlant || !form.outsourced ? qtyCm <= available : true);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       PageHeader,
       {
         title: "Direct Sale",
-        description: "Load from the plant and sell straight to the customer at the unloading point",
+        description: "Load from the plant and sell to a customer — or transfer to your own other plant",
         actions: /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", onClick: exportExcel, disabled: !data.length, children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(FileSpreadsheet, { size: 16 }),
@@ -60921,27 +61042,42 @@ function Dispatch() {
     ),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Page, { children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap items-center gap-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { className: "w-full sm:w-48", value: filter.customer_id ?? "", onChange: (e3) => setFilter({ ...filter, customer_id: e3.target.value ? Number(e3.target.value) : void 0 }), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "All customers" }),
-          customers.map((c2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: c2.id, children: c2.name }, c2.id))
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { className: "w-full sm:w-44", value: filter.delivery_status ?? "", onChange: (e3) => setFilter({ ...filter, delivery_status: e3.target.value || void 0 }), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "All deliveries" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "pending", children: "Pending" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "delivered", children: "Delivered" })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { className: "w-full sm:w-44", value: filter.payment_status ?? "", onChange: (e3) => setFilter({ ...filter, payment_status: e3.target.value || void 0 }), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "All payments" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "unpaid", children: "Unpaid" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "partial", children: "Partial" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "paid", children: "Paid" })
-        ] })
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            className: "w-full sm:w-48",
+            value: filter.customer_id ?? "",
+            onChange: (v2) => setFilter({ ...filter, customer_id: v2 ? Number(v2) : void 0 }),
+            options: [{ value: "", label: "All customers" }, ...customers.map((c2) => ({ value: c2.id, label: c2.name }))],
+            placeholder: "All customers"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            className: "w-full sm:w-44",
+            value: filter.delivery_status ?? "",
+            onChange: (v2) => setFilter({ ...filter, delivery_status: v2 || void 0 }),
+            options: [{ value: "", label: "All deliveries" }, { value: "pending", label: "Pending" }, { value: "delivered", label: "Delivered" }],
+            placeholder: "All deliveries"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            className: "w-full sm:w-44",
+            value: filter.payment_status ?? "",
+            onChange: (v2) => setFilter({ ...filter, payment_status: v2 || void 0 }),
+            options: [{ value: "", label: "All payments" }, { value: "unpaid", label: "Unpaid" }, { value: "partial", label: "Partial" }, { value: "paid", label: "Paid" }],
+            placeholder: "All payments"
+          }
+        )
       ] }),
       data.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No direct sales found." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table, { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Sale No" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Date" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Customer" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Buyer" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plant / Product" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Qty" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Rate" }),
@@ -60955,7 +61091,10 @@ function Dispatch() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: data.map((d2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-mono text-xs font-medium", children: d2.dispatch_no }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: fmtDate(d2.date) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: d2.customer_name }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: d2.to_plant_id ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex items-center gap-1", children: [
+            d2.to_plant_name,
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "default", children: "Plant" })
+          ] }) : d2.customer_name }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-muted-foreground", children: [
             d2.plant_name,
             " / ",
@@ -60963,7 +61102,17 @@ function Dispatch() {
             d2.outsourced ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "block text-[11px]", children: [
               "Outsourced",
               d2.outsource_name ? ` · ${d2.outsource_name}${d2.outsource_head ? ` (${d2.outsource_head})` : ""}` : ""
-            ] }) : null
+            ] }) : null,
+            ((d2.transport_total ?? 0) > 0 || (d2.machine_total ?? 0) > 0) && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "mt-0.5 flex flex-wrap gap-x-2 text-[11px]", children: [
+              (d2.transport_total ?? 0) > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+                "🚚 ",
+                fmtMoney(d2.transport_total)
+              ] }),
+              (d2.machine_total ?? 0) > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+                "⚙ ",
+                fmtMoney(d2.machine_total)
+              ] })
+            ] })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
             fmtQty(d2.quantity),
@@ -60992,35 +61141,72 @@ function Dispatch() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: d2.delivery_status === "delivered" ? "success" : "muted", children: d2.delivery_status }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: payBadge$5[d2.payment_status], children: d2.payment_status }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => {
-              setForm({ ...d2, rate: d2.rate ?? "", sale_quantity: d2.sale_quantity ?? "", transport_billed: !!d2.transport_billed, other_billed: !!d2.other_billed });
-              setOpen(true);
-            }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => openEdit(d2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => remove(d2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
           ] })
         ] }, d2.id)) })
       ] })
     ] }),
-    form && /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { open, onClose: () => setOpen(false), title: form.id ? `Edit ${form.dispatch_no}` : "New Direct Sale", width: "max-w-3xl", children: [
+    form && /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { open, onClose: () => setOpen(false), title: form.id ? `Edit ${form.dispatch_no}` : "New Direct Sale", width: "max-w-4xl", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-5", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(Section, { title: "Customer & Product", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-wrap gap-2", children: [["customer", "Sell to Customer"], ["plant", "Transfer to Own Plant"]].map(([key, label]) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            type: "button",
+            onClick: () => setForm({ ...form, sell_mode: key, to_plant_id: key === "plant" ? form.to_plant_id : null, outsourced: key === "plant" ? false : form.outsourced }),
+            className: cn(
+              "rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors",
+              form.sell_mode === key ? "border-primary bg-primary/5 text-foreground" : "border-input text-muted-foreground hover:bg-accent"
+            ),
+            children: label
+          },
+          key
+        )) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(Section, { title: interPlant ? "Destination & Product" : "Customer & Product", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-3", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Customer / Party", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: form.customer_id || "", onChange: (e3) => setForm({ ...form, customer_id: Number(e3.target.value) }), children: customers.map((c2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: c2.id, children: c2.name }, c2.id)) }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", required: true, hint: plantId ? "Locked to active plant" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: form.plant_id || "", disabled: !!plantId, onChange: (e3) => setForm({ ...form, plant_id: Number(e3.target.value), product_name: "" }), children: plants.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.id, children: p2.name }, p2.id)) }) }),
+            interPlant ? /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Destination Plant", required: true, hint: "Auto-creates a finished-goods purchase there", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
+              {
+                value: form.to_plant_id ?? "",
+                onChange: (v2) => setForm({ ...form, to_plant_id: v2 ? Number(v2) : null }),
+                options: destPlants.map((p2) => ({ value: p2.id, label: p2.name })),
+                placeholder: "Select plant…"
+              }
+            ) }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Customer / Party", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
+              {
+                value: form.customer_id || "",
+                onChange: (v2) => setForm({ ...form, customer_id: Number(v2) }),
+                options: customers.map((c2) => ({ value: c2.id, label: c2.name })),
+                placeholder: "Select customer…"
+              }
+            ) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Source Plant", required: true, hint: plantId ? "Locked to active plant" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
+              {
+                value: form.plant_id || "",
+                disabled: !!plantId,
+                onChange: (v2) => setForm({ ...form, plant_id: Number(v2), product_name: "", to_plant_id: form.to_plant_id === Number(v2) ? null : form.to_plant_id }),
+                options: plants.map((p2) => ({ value: p2.id, label: p2.name })),
+                placeholder: "Select plant…"
+              }
+            ) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: form.date, onChange: (e3) => setForm({ ...form, date: e3.target.value }) }) })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-3", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sm:col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product", required: true, hint: !form.outsourced && selProduct ? `Available: ${fmtQty(selProduct.balance_qty)} m³` : void 0, children: form.outsourced ? /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.product_name, onChange: (e3) => setForm({ ...form, product_name: e3.target.value }), placeholder: "Outsourced product name" }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: form.product_name, onChange: (e3) => setForm({ ...form, product_name: e3.target.value }), children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Select product…" }),
-              avail.map((a2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: a2.product_name, children: [
-                a2.product_name,
-                " (",
-                fmtQty(a2.balance_qty),
-                " m³)"
-              ] }, a2.product_name)),
-              form.id && form.product_name && !avail.some((a2) => a2.product_name === form.product_name) && /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: form.product_name, children: form.product_name })
-            ] }) }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sm:col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product", required: true, hint: !form.outsourced && selProduct ? `Available: ${fmtQty(selProduct.balance_qty)} m³` : void 0, children: form.outsourced ? /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.product_name, onChange: (e3) => setForm({ ...form, product_name: e3.target.value }), placeholder: "Outsourced product name" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
+              {
+                value: form.product_name,
+                onChange: (v2) => setForm({ ...form, product_name: v2 }),
+                options: [
+                  ...avail.map((a2) => ({ value: a2.product_name, label: `${a2.product_name} (${fmtQty(a2.balance_qty)} m³)` })),
+                  ...form.id && form.product_name && !avail.some((a2) => a2.product_name === form.product_name) ? [{ value: form.product_name, label: form.product_name }] : []
+                ],
+                placeholder: "Select product…"
+              }
+            ) }) }),
+            !interPlant && /* @__PURE__ */ jsxRuntimeExports.jsxs(
               "label",
               {
                 className: cn(
@@ -61045,23 +61231,25 @@ function Dispatch() {
               }
             )
           ] }),
-          form.outsourced && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Outsource Vendor", hint: "Who the outsourced material came from", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-            Select,
+          form.outsourced && !interPlant && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Outsource Vendor", hint: "Who the outsourced material came from", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SearchSelect,
             {
               value: form.outsource_id ?? "",
-              onChange: (e3) => setForm({ ...form, outsource_id: e3.target.value ? Number(e3.target.value) : null }),
-              children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "— Select vendor —" }),
-                outsourceVendors.map((o) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: o.id, children: [
-                  o.name,
-                  o.head ? ` — ${o.head}` : ""
-                ] }, o.id))
-              ]
+              onChange: (v2) => setForm({ ...form, outsource_id: v2 ? Number(v2) : null }),
+              options: [{ value: "", label: "— Select vendor —" }, ...outsourceVendors.map((o) => ({ value: o.id, label: `${o.name}${o.head ? ` — ${o.head}` : ""}` }))],
+              placeholder: "— Select vendor —"
             }
           ) }) })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Section, { title: "Quantity & Rate", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4 sm:grid-cols-4", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Unit (UOM)", required: true, hint: "1 m³ = 1.6 ton = 35.31 cft", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: form.uom, onChange: (e3) => setForm({ ...form, uom: e3.target.value }), children: UOMS.map((u2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: u2, children: u2 === "CM" ? "m³" : u2 === "TON" ? "Ton" : "CFT" }, u2)) }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Unit (UOM)", required: true, hint: "1 m³ = 1.6 ton = 35.31 cft", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SearchSelect,
+            {
+              value: form.uom,
+              onChange: (v2) => setForm({ ...form, uom: v2 }),
+              options: UOMS.map((u2) => ({ value: u2, label: u2 === "CM" ? "m³" : u2 === "TON" ? "Ton" : "CFT" }))
+            }
+          ) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `Actual Qty (${form.uom})`, required: true, hint: qtyCm > 0 ? `${fmtQty(qtyCm)} m³ off stock` : "Dispatched from plant", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.quantity, onChange: (e3) => setForm({ ...form, quantity: e3.target.value }) }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             Field,
@@ -61071,33 +61259,151 @@ function Dispatch() {
               children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.sale_quantity, onChange: (e3) => setForm({ ...form, sale_quantity: e3.target.value }), placeholder: "Optional" })
             }
           ),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `Rate per ${form.uom}`, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.rate, onChange: (e3) => setForm({ ...form, rate: e3.target.value }), placeholder: "Optional" }) })
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `Rate per ${form.uom}`, hint: interPlant ? "Transfer price to the other plant" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.rate, onChange: (e3) => setForm({ ...form, rate: e3.target.value }), placeholder: "Optional" }) })
         ] }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Section, { title: "Vehicle & Delivery", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4 sm:grid-cols-3", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Vehicle Type", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: form.vehicle_type, onChange: (e3) => setForm({ ...form, vehicle_type: e3.target.value }), children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "own", children: "Own Vehicle" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "rented", children: "Rented" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "party", children: "From Party" })
-          ] }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Transporter", hint: "Transport charge posts to this transporter's ledger", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-            Select,
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Vehicle Type", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SearchSelect,
+            {
+              value: form.vehicle_type,
+              onChange: (v2) => setForm({ ...form, vehicle_type: v2 }),
+              options: [{ value: "own", label: "Own Vehicle" }, { value: "rented", label: "Rented" }, { value: "party", label: "From Party" }]
+            }
+          ) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Transporter (invoice)", hint: "Billable transport posts to this transporter's ledger", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SearchSelect,
             {
               value: form.transporter_id ?? "",
-              onChange: (e3) => setForm({ ...form, transporter_id: e3.target.value ? Number(e3.target.value) : null }),
-              children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "— None —" }),
-                transporters.map((t2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: t2.id, children: t2.name }, t2.id))
-              ]
+              onChange: (v2) => setForm({ ...form, transporter_id: v2 ? Number(v2) : null }),
+              options: [{ value: "", label: "— None —" }, ...transporters.map((t2) => ({ value: t2.id, label: t2.name }))],
+              placeholder: "— None —"
             }
           ) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Vehicle No.", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.vehicle_no, onChange: (e3) => setForm({ ...form, vehicle_no: e3.target.value }), placeholder: "e.g. JH-01-AB-1234" }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Driver", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.driver, onChange: (e3) => setForm({ ...form, driver: e3.target.value }) }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Challan No.", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.challan_no, onChange: (e3) => setForm({ ...form, challan_no: e3.target.value }) }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Delivery Status", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: form.delivery_status, onChange: (e3) => setForm({ ...form, delivery_status: e3.target.value }), children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "pending", children: "Pending" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "delivered", children: "Delivered" })
-          ] }) })
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Delivery Status", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SearchSelect,
+            {
+              value: form.delivery_status,
+              onChange: (v2) => setForm({ ...form, delivery_status: v2 }),
+              options: [{ value: "pending", label: "Pending" }, { value: "delivered", label: "Delivered" }]
+            }
+          ) })
         ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(Section, { title: "Transport — cost lines (optional)", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+            tlines.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-[1fr_92px_96px_64px_76px_90px_32px] gap-2 px-1 text-[11px] font-semibold uppercase text-muted-foreground", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Transporter" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Vehicle" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Basis" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Qty" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Rate ₹" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Charge ₹" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", {})
+            ] }),
+            tlines.map((t2, i) => {
+              const computed = t2.basis === "trip" || t2.basis === "uom";
+              return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-[1fr_92px_96px_64px_76px_90px_32px] items-center gap-2", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  SearchSelect,
+                  {
+                    value: t2.transporter_id || "",
+                    onChange: (v2) => setTransporter(i, { transporter_id: Number(v2) }),
+                    options: transporters.map((tr) => ({ value: tr.id, label: tr.name })),
+                    placeholder: "Transporter…"
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: t2.vehicle_no, onChange: (e3) => setTransporter(i, { vehicle_no: e3.target.value }), placeholder: "JH01AB1234" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  SearchSelect,
+                  {
+                    value: t2.basis || "flat",
+                    onChange: (v2) => setTransporter(i, { basis: v2 }),
+                    options: [{ value: "flat", label: "Flat" }, { value: "trip", label: "Per Trip" }, { value: "uom", label: `Per ${form.uom || "UOM"}` }]
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  Input,
+                  {
+                    type: "number",
+                    step: "0.01",
+                    value: computed ? t2.qty : "",
+                    disabled: !computed,
+                    placeholder: computed ? "" : "—",
+                    onChange: (e3) => setTransporter(i, { qty: e3.target.value })
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  Input,
+                  {
+                    type: "number",
+                    step: "0.01",
+                    value: computed ? t2.rate : "",
+                    disabled: !computed,
+                    placeholder: computed ? "" : "—",
+                    onChange: (e3) => setTransporter(i, { rate: e3.target.value })
+                  }
+                ),
+                computed ? /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "text", value: fmtMoney(lineCharge(t2)), disabled: true, className: "text-right font-medium" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: t2.charge, onChange: (e3) => setTransporter(i, { charge: e3.target.value }) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => delTransporter(i), children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 15, className: "text-destructive" }) })
+              ] }, i);
+            })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", size: "sm", className: "mt-2", disabled: !transporters.length, onClick: addTransporter, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 14 }),
+            " Add Transporter"
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-[11px] text-muted-foreground", children: transporters.length ? "Your transport cost — posts to the transporter ledger (separate from the invoice transport above)." : "Add transporters under Transporters first." })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(Section, { title: "Machines (optional) — posts to Equipment Rent", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+            mlines.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-[1fr_90px_80px_90px_1fr_32px] gap-2 px-1 text-[11px] font-semibold uppercase text-muted-foreground", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Machine" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Basis" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Qty" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Rate ₹" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Vendor (opt)" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", {})
+            ] }),
+            mlines.map((m2, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-[1fr_90px_80px_90px_1fr_32px] items-center gap-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                SearchSelect,
+                {
+                  value: m2.asset_id || "",
+                  onChange: (v2) => setMachine(i, { asset_id: Number(v2) }),
+                  options: assets.map((a2) => ({ value: a2.id, label: a2.name })),
+                  placeholder: "Machine…"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                SearchSelect,
+                {
+                  value: m2.basis || "hour",
+                  onChange: (v2) => setMachine(i, { basis: v2 }),
+                  options: [{ value: "hour", label: "Per Hour" }, { value: "cm", label: "Per m³" }]
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: m2.qty, onChange: (e3) => setMachine(i, { qty: e3.target.value }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: m2.rate, onChange: (e3) => setMachine(i, { rate: e3.target.value }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                SearchSelect,
+                {
+                  value: m2.outsource_id ?? "",
+                  onChange: (v2) => setMachine(i, { outsource_id: v2 ? Number(v2) : null }),
+                  options: [{ value: "", label: "— None —" }, ...outsourceVendors.map((o) => ({ value: o.id, label: o.name }))],
+                  placeholder: "— None —"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => delMachine(i), children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 15, className: "text-destructive" }) })
+            ] }, i))
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", size: "sm", className: "mt-2", disabled: !assets.length, onClick: addMachine, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 14 }),
+            " Add Machine"
+          ] }),
+          !assets.length && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-[11px] text-muted-foreground", children: "Add machines under Machinery & Vehicles first." })
+        ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs(Section, { title: "Charges & Payment", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-3", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -61127,10 +61433,10 @@ function Dispatch() {
             /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sm:col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.remarks || "", onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) }) })
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-3 sm:grid-cols-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-3 sm:grid-cols-3", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border bg-muted/40 px-4 py-3 text-sm", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: "Stock" }),
-            form.outsourced ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-1 font-medium text-primary", children: "Outsourced — no plant stock used" }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-1", children: [
+            form.outsourced && !interPlant ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-1 font-medium text-primary", children: "Outsourced — no plant stock used" }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-1", children: [
               "Available ",
               /* @__PURE__ */ jsxRuntimeExports.jsxs("b", { children: [
                 fmtQty(available),
@@ -61138,22 +61444,14 @@ function Dispatch() {
               ] }),
               qtyCm > available && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ml-2 font-semibold text-destructive", children: "— exceeds stock!" })
             ] }),
-            saleQty != null && shortageQty !== 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-0.5 text-xs", children: [
-              "Sold ",
+            interPlant && form.to_plant_id && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-0.5 text-xs text-muted-foreground", children: [
+              "Adds ",
               /* @__PURE__ */ jsxRuntimeExports.jsxs("b", { children: [
-                fmtQty(billableQty),
-                " ",
-                form.uom
+                fmtQty(qtyCm),
+                " m³"
               ] }),
-              " ·",
-              " ",
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: shortageQty > 0 ? "text-warning" : "text-destructive", children: [
-                shortageQty > 0 ? "shortage" : "excess",
-                " ",
-                fmtQty(Math.abs(shortageQty)),
-                " ",
-                form.uom
-              ] })
+              " to ",
+              plants.find((p2) => p2.id === Number(form.to_plant_id))?.name
             ] })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border bg-muted/40 px-4 py-3 text-sm", children: [
@@ -61171,12 +61469,21 @@ function Dispatch() {
               " = ",
               /* @__PURE__ */ jsxRuntimeExports.jsx("b", { className: "text-primary", children: fmtMoney(invoiceTotal) })
             ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border bg-muted/40 px-4 py-3 text-sm", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: "Your costs" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-1", children: [
+              "Transport ",
+              /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: fmtMoney(transportCost) }),
+              " · Machines ",
+              /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: fmtMoney(machineCost) })
+            ] })
           ] })
         ] })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 flex justify-end gap-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setOpen(false), children: "Cancel" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: submit, disabled: !form.customer_id || !form.product_name || !(Number(form.quantity) > 0) || !form.outsourced && qtyCm > available, children: "Save Sale" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: submit, disabled: !canSave, children: "Save Sale" })
       ] })
     ] })
   ] });
@@ -61349,7 +61656,16 @@ function Budget() {
     /* @__PURE__ */ jsxRuntimeExports.jsx(PageHeader, { title: "Plant Budget", description: "Plan spend per head and track it against actual, for any period" }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Page, { children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap items-end gap-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { className: "w-full sm:w-52", value: plant ?? "", disabled: !!plantId, onChange: (e3) => setPlant(Number(e3.target.value)), children: plants.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.id, children: p2.name }, p2.id)) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            className: "w-full sm:w-52",
+            value: plant ?? "",
+            disabled: !!plantId,
+            onChange: (v2) => setPlant(Number(v2)),
+            options: plants.map((p2) => ({ value: p2.id, label: p2.name }))
+          }
+        ),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", size: "sm", onClick: () => setRange(monthRange(/* @__PURE__ */ new Date())), children: "This Month" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", size: "sm", onClick: () => setRange(fyRange(/* @__PURE__ */ new Date())), children: "This FY" }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1", children: [
@@ -61529,26 +61845,20 @@ function Transporters() {
         children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Transporter Name", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.name || "", onChange: (e3) => setForm({ ...form, name: e3.target.value }) }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Company / Group (optional)", hint: "For a combined company ledger", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              Select,
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Company / Group (optional)", hint: "For a combined company ledger", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
               {
                 value: form.company_id ?? "",
-                onChange: (e3) => setForm({ ...form, company_id: e3.target.value ? Number(e3.target.value) : null }),
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "— None —" }),
-                  companies.map((c2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: c2.id, children: c2.name }, c2.id))
-                ]
+                onChange: (v2) => setForm({ ...form, company_id: v2 ? Number(v2) : null }),
+                options: [{ value: "", label: "— None —" }, ...companies.map((c2) => ({ value: c2.id, label: c2.name }))]
               }
             ) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", hint: "Common = available to all plants", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              Select,
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", hint: "Common = available to all plants", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
               {
                 value: form.plant_id ?? "",
-                onChange: (e3) => setForm({ ...form, plant_id: e3.target.value ? Number(e3.target.value) : null }),
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Common (all plants)" }),
-                  plants.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.id, children: p2.name }, p2.id))
-                ]
+                onChange: (v2) => setForm({ ...form, plant_id: v2 ? Number(v2) : null }),
+                options: [{ value: "", label: "Common (all plants)" }, ...plants.map((p2) => ({ value: p2.id, label: p2.name }))]
               }
             ) })
           ] }),
@@ -61999,27 +62309,15 @@ function Assets() {
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { open, onClose: () => setOpen(false), title: form.id ? "Edit Asset" : "New Machine / Vehicle", width: "max-w-2xl", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Name", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.name || "", onChange: (e3) => setForm({ ...form, name: e3.target.value }), placeholder: "e.g. Crusher Unit 1" }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Type", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: form.asset_type || "machine", onChange: (e3) => setForm({ ...form, asset_type: e3.target.value }), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "machine", children: "Machine" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "vehicle", children: "Vehicle" })
-        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Type", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.asset_type || "machine", onChange: (v2) => setForm({ ...form, asset_type: v2 }), options: [{ value: "machine", label: "Machine" }, { value: "vehicle", label: "Vehicle" }] }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs(Field, { label: "Category", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { list: "asset-cats", value: form.category || "", onChange: (e3) => setForm({ ...form, category: e3.target.value }), placeholder: "Crusher, Tipper, JCB…" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("datalist", { id: "asset-cats", children: CATEGORIES.map((c2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: c2 }, c2)) })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Identifier / Reg. No.", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.identifier || "", onChange: (e3) => setForm({ ...form, identifier: e3.target.value }), placeholder: "e.g. JH-01-AB-1234" }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", hint: "Common = shared by all plants", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: form.plant_id ?? "", onChange: (e3) => setForm({ ...form, plant_id: e3.target.value ? Number(e3.target.value) : null }), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Common (all plants)" }),
-          plants.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.id, children: p2.name }, p2.id))
-        ] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Owning Business / Firm", hint: "Costs & rent of this machine roll up here", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: form.business_id ?? "", onChange: (e3) => setForm({ ...form, business_id: e3.target.value ? Number(e3.target.value) : null }), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "— None —" }),
-          businesses.map((b2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: b2.id, children: b2.name }, b2.id))
-        ] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Status", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: form.status || "active", onChange: (e3) => setForm({ ...form, status: e3.target.value }), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "active", children: "Active" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "inactive", children: "Inactive" })
-        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", hint: "Common = shared by all plants", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.plant_id ?? "", onChange: (v2) => setForm({ ...form, plant_id: v2 ? Number(v2) : null }), options: [{ value: "", label: "Common (all plants)" }, ...plants.map((p2) => ({ value: p2.id, label: p2.name }))] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Owning Business / Firm", hint: "Costs & rent of this machine roll up here", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.business_id ?? "", onChange: (v2) => setForm({ ...form, business_id: v2 ? Number(v2) : null }), options: [{ value: "", label: "— None —" }, ...businesses.map((b2) => ({ value: b2.id, label: b2.name }))] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Status", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.status || "active", onChange: (v2) => setForm({ ...form, status: v2 }), options: [{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }] }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.remarks || "", onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) }) })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 flex justify-end gap-2", children: [
@@ -62218,10 +62516,15 @@ function PlantExpenses() {
         })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap items-center gap-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { className: "w-full sm:w-52", value: catFilter, onChange: (e3) => setCatFilter(e3.target.value), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "All categories" }),
-          CATS.map((c2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: c2.value, children: c2.label }, c2.value))
-        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            className: "w-full sm:w-52",
+            value: catFilter,
+            onChange: (v2) => setCatFilter(v2),
+            options: [{ value: "", label: "All categories" }, ...CATS.map((c2) => ({ value: c2.value, label: c2.label }))]
+          }
+        ),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", className: "w-full sm:w-36", value: from, onChange: (e3) => setFrom(e3.target.value) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-muted-foreground", children: "to" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", className: "w-full sm:w-36", value: to, onChange: (e3) => setTo(e3.target.value) })
@@ -62252,8 +62555,23 @@ function PlantExpenses() {
     ] }),
     form && /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { open, onClose: () => setOpen(false), title: form.id ? `Edit ${form.expense_no}` : "New Plant Expense", width: "max-w-2xl", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", required: true, hint: plantId ? "Locked to active plant" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: form.plant_id || "", disabled: !!plantId, onChange: (e3) => setForm({ ...form, plant_id: Number(e3.target.value) }), children: plants.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.id, children: p2.name }, p2.id)) }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Category", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: form.category, onChange: (e3) => setForm({ ...form, category: e3.target.value }), children: CATS.map((c2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: c2.value, children: c2.label }, c2.value)) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", required: true, hint: plantId ? "Locked to active plant" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            value: form.plant_id || "",
+            disabled: !!plantId,
+            onChange: (v2) => setForm({ ...form, plant_id: Number(v2) }),
+            options: plants.map((p2) => ({ value: p2.id, label: p2.name }))
+          }
+        ) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Category", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            value: form.category,
+            onChange: (v2) => setForm({ ...form, category: v2 }),
+            options: CATS.map((c2) => ({ value: c2.value, label: c2.label }))
+          }
+        ) }),
         form.category === "electricity" && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Opening Reading", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.meter_open, onChange: (e3) => setForm({ ...form, meter_open: e3.target.value }) }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Closing Reading", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.meter_close, onChange: (e3) => setForm({ ...form, meter_close: e3.target.value }) }) }),
@@ -62286,28 +62604,43 @@ function PlantExpenses() {
           ) })
         ] }),
         form.category === "maintenance" && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Machine / Vehicle", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: form.asset_id ?? "", onChange: (e3) => setForm({ ...form, asset_id: e3.target.value ? Number(e3.target.value) : null }), children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "— Select —" }),
-            assets.map((a2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: a2.id, children: [
-              a2.name,
-              a2.identifier ? ` (${a2.identifier})` : ""
-            ] }, a2.id))
-          ] }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Machine / Vehicle", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SearchSelect,
+            {
+              value: form.asset_id ?? "",
+              onChange: (v2) => setForm({ ...form, asset_id: v2 ? Number(v2) : null }),
+              options: [
+                { value: "", label: "— Select —" },
+                ...assets.map((a2) => ({ value: a2.id, label: `${a2.name}${a2.identifier ? ` (${a2.identifier})` : ""}` }))
+              ]
+            }
+          ) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Amount", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.amount, onChange: (e3) => setForm({ ...form, amount: e3.target.value }) }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Parts / Work done (optional)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Textarea, { value: form.parts || "", onChange: (e3) => setForm({ ...form, parts: e3.target.value }), placeholder: "e.g. Jaw plate, bearings, hydraulic hose…" }) }) })
         ] }),
         isRent && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-          form.category === "equipment_rent" ? /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Equipment", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.title || "", onChange: (e3) => setForm({ ...form, title: e3.target.value }), placeholder: "e.g. Excavator, JCB" }) }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Vehicle", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: form.asset_id ?? "", onChange: (e3) => setForm({ ...form, asset_id: e3.target.value ? Number(e3.target.value) : null }), children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "— Select —" }),
-            assets.map((a2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: a2.id, children: [
-              a2.name,
-              a2.identifier ? ` (${a2.identifier})` : ""
-            ] }, a2.id))
-          ] }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Basis", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: form.basis, onChange: (e3) => setForm({ ...form, basis: e3.target.value }), children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "lumpsum", children: "Lump sum" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "hourly", children: "Per hour" })
-          ] }) }),
+          form.category === "equipment_rent" ? /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Equipment", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.title || "", onChange: (e3) => setForm({ ...form, title: e3.target.value }), placeholder: "e.g. Excavator, JCB" }) }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Vehicle", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SearchSelect,
+            {
+              value: form.asset_id ?? "",
+              onChange: (v2) => setForm({ ...form, asset_id: v2 ? Number(v2) : null }),
+              options: [
+                { value: "", label: "— Select —" },
+                ...assets.map((a2) => ({ value: a2.id, label: `${a2.name}${a2.identifier ? ` (${a2.identifier})` : ""}` }))
+              ]
+            }
+          ) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Basis", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SearchSelect,
+            {
+              value: form.basis,
+              onChange: (v2) => setForm({ ...form, basis: v2 }),
+              options: [
+                { value: "lumpsum", label: "Lump sum" },
+                { value: "hourly", label: "Per hour" }
+              ]
+            }
+          ) }),
           rentHourly ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Hours", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.hours, onChange: (e3) => setForm({ ...form, hours: e3.target.value }) }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Rate / Hour", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.rate, onChange: (e3) => setForm({ ...form, rate: e3.target.value }) }) }),
@@ -62321,13 +62654,17 @@ function PlantExpenses() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: form.date, onChange: (e3) => setForm({ ...form, date: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Amount Paid", hint: "Sets payment status automatically", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.paid_amount, onChange: (e3) => setForm({ ...form, paid_amount: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Payment Status", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-9 items-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: payBadge$3[derivePaymentStatus(computedAmount, Number(form.paid_amount) || 0)], children: derivePaymentStatus(computedAmount, Number(form.paid_amount) || 0) }) }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Outsourced From (optional)", hint: "Posts to the vendor's ledger as payable", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: form.outsource_id ?? "", onChange: (e3) => setForm({ ...form, outsource_id: e3.target.value ? Number(e3.target.value) : null }), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "— None —" }),
-          outsourceVendors.map((o) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: o.id, children: [
-            o.name,
-            o.head ? ` (${o.head})` : ""
-          ] }, o.id))
-        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Outsourced From (optional)", hint: "Posts to the vendor's ledger as payable", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            value: form.outsource_id ?? "",
+            onChange: (v2) => setForm({ ...form, outsource_id: v2 ? Number(v2) : null }),
+            options: [
+              { value: "", label: "— None —" },
+              ...outsourceVendors.map((o) => ({ value: o.id, label: `${o.name}${o.head ? ` (${o.head})` : ""}` }))
+            ]
+          }
+        ) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.remarks || "", onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 rounded-lg bg-muted/60 px-4 py-2.5 text-sm", children: [
@@ -62530,8 +62867,23 @@ function Diesel() {
     ] }),
     pForm && /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { open: true, onClose: () => setPForm(null), title: pForm.id ? `Edit ${pForm.purchase_no}` : "New Diesel Purchase", width: "max-w-2xl", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Creditor (Supplier)", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: pForm.supplier_id || "", onChange: (e3) => setPForm({ ...pForm, supplier_id: Number(e3.target.value) }), children: suppliers.map((s2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: s2.id, children: s2.name }, s2.id)) }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", required: true, hint: plantId ? "Locked to active plant" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: pForm.plant_id || "", disabled: !!plantId, onChange: (e3) => setPForm({ ...pForm, plant_id: Number(e3.target.value) }), children: plants.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.id, children: p2.name }, p2.id)) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Creditor (Supplier)", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            value: pForm.supplier_id || "",
+            onChange: (v2) => setPForm({ ...pForm, supplier_id: Number(v2) }),
+            options: suppliers.map((s2) => ({ value: s2.id, label: s2.name }))
+          }
+        ) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", required: true, hint: plantId ? "Locked to active plant" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            value: pForm.plant_id || "",
+            disabled: !!plantId,
+            onChange: (v2) => setPForm({ ...pForm, plant_id: Number(v2) }),
+            options: plants.map((p2) => ({ value: p2.id, label: p2.name }))
+          }
+        ) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Litres", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: pForm.litres, onChange: (e3) => setPForm({ ...pForm, litres: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Rate / Litre", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: pForm.rate, onChange: (e3) => setPForm({ ...pForm, rate: e3.target.value }), placeholder: "Optional" }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Amount", hint: "= litres × rate", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: fmtMoney(pAmount), disabled: true }) }),
@@ -62546,13 +62898,17 @@ function Diesel() {
       ] })
     ] }),
     iForm && /* @__PURE__ */ jsxRuntimeExports.jsx(Modal, { open: true, onClose: () => setIForm(null), title: iForm.id ? `Edit ${iForm.issue_no}` : "Issue Diesel", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Machine / Vehicle", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: iForm.asset_id ?? "", onChange: (e3) => setIForm({ ...iForm, asset_id: e3.target.value ? Number(e3.target.value) : null }), children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "— Unassigned —" }),
-        assets.map((a2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: a2.id, children: [
-          a2.name,
-          a2.identifier ? ` (${a2.identifier})` : ""
-        ] }, a2.id))
-      ] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Machine / Vehicle", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        SearchSelect,
+        {
+          value: iForm.asset_id ?? "",
+          onChange: (v2) => setIForm({ ...iForm, asset_id: v2 ? Number(v2) : null }),
+          options: [
+            { value: "", label: "— Unassigned —" },
+            ...assets.map((a2) => ({ value: a2.id, label: `${a2.name}${a2.identifier ? ` (${a2.identifier})` : ""}` }))
+          ]
+        }
+      ) }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Litres", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: iForm.litres, onChange: (e3) => setIForm({ ...iForm, litres: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: iForm.date, onChange: (e3) => setIForm({ ...iForm, date: e3.target.value }) }) })
@@ -62695,21 +63051,39 @@ function Employees() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { list: "desigs", value: form.designation, onChange: (e3) => setForm({ ...form, designation: e3.target.value }), placeholder: "Operator, Helper…" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("datalist", { id: "desigs", children: DESIGNATIONS.map((x2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: x2 }, x2)) })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Wage Type", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: form.wage_type, onChange: (e3) => setForm({ ...form, wage_type: e3.target.value }), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "monthly", children: "Monthly Salary" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "daily", children: "Daily Wage" })
-        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Wage Type", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            value: form.wage_type,
+            onChange: (v2) => setForm({ ...form, wage_type: v2 }),
+            options: [
+              { value: "monthly", label: "Monthly Salary" },
+              { value: "daily", label: "Daily Wage" }
+            ]
+          }
+        ) }),
         form.wage_type === "monthly" ? /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Monthly Salary", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.monthly_salary, onChange: (e3) => setForm({ ...form, monthly_salary: e3.target.value }) }) }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Daily Wage", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.daily_wage, onChange: (e3) => setForm({ ...form, daily_wage: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Overtime Rate / hour", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.ot_rate, onChange: (e3) => setForm({ ...form, ot_rate: e3.target.value }), placeholder: "Optional" }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", hint: "Common = shared by all plants", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: form.plant_id ?? "", onChange: (e3) => setForm({ ...form, plant_id: e3.target.value ? Number(e3.target.value) : null }), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Common (all plants)" }),
-          plants.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.id, children: p2.name }, p2.id))
-        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", hint: "Common = shared by all plants", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            value: form.plant_id ?? "",
+            onChange: (v2) => setForm({ ...form, plant_id: v2 ? Number(v2) : null }),
+            options: [{ value: "", label: "Common (all plants)" }, ...plants.map((p2) => ({ value: p2.id, label: p2.name }))]
+          }
+        ) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Contact", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.contact, onChange: (e3) => setForm({ ...form, contact: e3.target.value }) }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Status", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: form.status, onChange: (e3) => setForm({ ...form, status: e3.target.value }), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "active", children: "Active" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "inactive", children: "Inactive" })
-        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Status", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            value: form.status,
+            onChange: (v2) => setForm({ ...form, status: v2 }),
+            options: [
+              { value: "active", label: "Active" },
+              { value: "inactive", label: "Inactive" }
+            ]
+          }
+        ) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.remarks, onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) }) })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 flex justify-end gap-2", children: [
@@ -62899,20 +63273,23 @@ function Payroll() {
     ] }),
     form && /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { open: true, onClose: () => setForm(null), title: form.id ? `Edit ${form.entry_no}` : "Add Wages", width: "max-w-2xl", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Employee", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: form.employee_id || "", onChange: (e3) => setForm({ ...form, employee_id: Number(e3.target.value) }), children: employees.map((x2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: x2.id, children: [
-          x2.name,
-          " (",
-          x2.wage_type === "monthly" ? `${fmtMoney(x2.monthly_salary)}/mo` : `${fmtMoney(x2.daily_wage)}/day`,
-          ")"
-        ] }, x2.id)) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Employee", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            value: form.employee_id || "",
+            onChange: (v2) => setForm({ ...form, employee_id: Number(v2) }),
+            options: employees.map((x2) => ({ value: x2.id, label: `${x2.name} (${x2.wage_type === "monthly" ? `${fmtMoney(x2.monthly_salary)}/mo` : `${fmtMoney(x2.daily_wage)}/day`})` }))
+          }
+        ) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Pay Period", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "month", value: form.period, onChange: (e3) => setForm({ ...form, period: e3.target.value }) }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Operate Machine (optional)", hint: "Rolls this wage to the machine's business", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: form.asset_id ?? "", onChange: (e3) => setForm({ ...form, asset_id: e3.target.value ? Number(e3.target.value) : null }), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "— None —" }),
-          assets.map((a2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: a2.id, children: [
-            a2.name,
-            a2.identifier ? ` (${a2.identifier})` : ""
-          ] }, a2.id))
-        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Operate Machine (optional)", hint: "Rolls this wage to the machine's business", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            value: form.asset_id ?? "",
+            onChange: (v2) => setForm({ ...form, asset_id: v2 ? Number(v2) : null }),
+            options: [{ value: "", label: "— None —" }, ...assets.map((a2) => ({ value: a2.id, label: `${a2.name}${a2.identifier ? ` (${a2.identifier})` : ""}` }))]
+          }
+        ) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Working Days", hint: `In ${form.period || "month"} (excl. weekly offs)`, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: fmtQty(workingDays), disabled: true }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Days Worked", required: true, hint: emp?.wage_type === "monthly" ? "Pro-rates the monthly salary" : "Days × daily wage", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.5", value: form.days_worked, onChange: (e3) => setForm({ ...form, days_worked: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Overtime Hours", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.5", value: form.ot_hours, onChange: (e3) => setForm({ ...form, ot_hours: e3.target.value }) }) }),
@@ -63066,18 +63443,18 @@ function Racks() {
       }
     ),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Page, { children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-4 flex flex-wrap items-center gap-2", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        Select,
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-4 flex flex-wrap items-center gap-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        SearchSelect,
         {
           className: "w-full sm:w-44",
           value: filter.status ?? "",
-          onChange: (e3) => setFilter({ status: e3.target.value || void 0 }),
-          children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "All statuses" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "loading", children: "Loading" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "in_transit", children: "In Transit" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "reached", children: "Reached" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "closed", children: "Closed" })
+          onChange: (v2) => setFilter({ status: v2 || void 0 }),
+          options: [
+            { value: "", label: "All statuses" },
+            { value: "loading", label: "Loading" },
+            { value: "in_transit", label: "In Transit" },
+            { value: "reached", label: "Reached" },
+            { value: "closed", label: "Closed" }
           ]
         }
       ) }),
@@ -63691,24 +64068,43 @@ function RackDetail() {
         width: "max-w-2xl",
         children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: loadingForm.plant_id || "", onChange: (e3) => setLoadingForm({ ...loadingForm, plant_id: Number(e3.target.value), product_name: "" }), children: plants.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.id, children: p2.name }, p2.id)) }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product", children: loadingForm.outsourced ? /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: loadingForm.product_name, onChange: (e3) => setLoadingForm({ ...loadingForm, product_name: e3.target.value }), placeholder: "Outsourced product name" }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: loadingForm.product_name, onChange: (e3) => setLoadingForm({ ...loadingForm, product_name: e3.target.value }), children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Select product…" }),
-              availableFg.map((f2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: f2.product_name, children: [
-                f2.product_name,
-                " (",
-                fmtQty(f2.balance_qty),
-                " m³ available)"
-              ] }, f2.product_name)),
-              loadingForm.id && !availableFg.some((f2) => f2.product_name === loadingForm.product_name) && /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: loadingForm.product_name, children: loadingForm.product_name })
-            ] }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
+              {
+                value: loadingForm.plant_id || "",
+                onChange: (v2) => setLoadingForm({ ...loadingForm, plant_id: Number(v2), product_name: "" }),
+                options: plants.map((p2) => ({ value: p2.id, label: p2.name }))
+              }
+            ) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product", children: loadingForm.outsourced ? /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: loadingForm.product_name, onChange: (e3) => setLoadingForm({ ...loadingForm, product_name: e3.target.value }), placeholder: "Outsourced product name" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
+              {
+                value: loadingForm.product_name,
+                onChange: (v2) => setLoadingForm({ ...loadingForm, product_name: v2 }),
+                options: [
+                  ...availableFg.map((f2) => ({
+                    value: f2.product_name,
+                    label: `${f2.product_name} (${fmtQty(f2.balance_qty)} m³ available)`
+                  })),
+                  ...loadingForm.id && !availableFg.some((f2) => f2.product_name === loadingForm.product_name) ? [{ value: loadingForm.product_name, label: loadingForm.product_name }] : []
+                ],
+                placeholder: "Select product…"
+              }
+            ) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-2 -mt-1", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex items-center gap-2 text-sm text-muted-foreground", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx("input", { type: "checkbox", className: "h-4 w-4", checked: !!loadingForm.outsourced, onChange: (e3) => setLoadingForm({ ...loadingForm, outsourced: e3.target.checked, product_name: "" }) }),
               "Outsourced material (bought-in directly — does ",
               /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: "not" }),
               " use plant finished stock)"
             ] }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Transporter", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: loadingForm.transporter_id || "", onChange: (e3) => setLoadingForm({ ...loadingForm, transporter_id: Number(e3.target.value) }), children: transporters.map((t2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: t2.id, children: t2.name }, t2.id)) }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Transporter", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
+              {
+                value: loadingForm.transporter_id || "",
+                onChange: (v2) => setLoadingForm({ ...loadingForm, transporter_id: Number(v2) }),
+                options: transporters.map((t2) => ({ value: t2.id, label: t2.name }))
+              }
+            ) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Vehicle No.", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: loadingForm.vehicle_no || "", onChange: (e3) => setLoadingForm({ ...loadingForm, vehicle_no: e3.target.value }), placeholder: "e.g. JH-01-AB-1234" }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "No. of Trips", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "1", value: loadingForm.trips, onChange: (e3) => setLoadingForm({ ...loadingForm, trips: e3.target.value }) }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Per Trip (m³)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: loadingForm.per_trip_cm, onChange: (e3) => setLoadingForm({ ...loadingForm, per_trip_cm: e3.target.value }) }) }),
@@ -63754,19 +64150,29 @@ function RackDetail() {
         width: "max-w-2xl",
         children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: unloadForm.product_name, onChange: (e3) => setUnloadForm({ ...unloadForm, product_name: e3.target.value }), children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Select product…" }),
-              products.filter((p2) => p2.transit_shortage_cm > 0 || p2.product_name === unloadForm.product_name).map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: p2.product_name, children: [
-                p2.product_name,
-                " (",
-                fmtQty(p2.transit_shortage_cm),
-                " m³ on rake)"
-              ] }, p2.product_name))
-            ] }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Transporter", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: unloadForm.transporter_id ?? "", onChange: (e3) => setUnloadForm({ ...unloadForm, transporter_id: e3.target.value ? Number(e3.target.value) : null }), children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "— Select —" }),
-              transporters.map((t2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: t2.id, children: t2.name }, t2.id))
-            ] }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
+              {
+                value: unloadForm.product_name,
+                onChange: (v2) => setUnloadForm({ ...unloadForm, product_name: v2 }),
+                options: products.filter((p2) => p2.transit_shortage_cm > 0 || p2.product_name === unloadForm.product_name).map((p2) => ({
+                  value: p2.product_name,
+                  label: `${p2.product_name} (${fmtQty(p2.transit_shortage_cm)} m³ on rake)`
+                })),
+                placeholder: "Select product…"
+              }
+            ) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Transporter", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
+              {
+                value: unloadForm.transporter_id ?? "",
+                onChange: (v2) => setUnloadForm({ ...unloadForm, transporter_id: v2 ? Number(v2) : null }),
+                options: [
+                  { value: "", label: "— Select —" },
+                  ...transporters.map((t2) => ({ value: t2.id, label: t2.name }))
+                ]
+              }
+            ) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Vehicle No.", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: unloadForm.vehicle_no || "", onChange: (e3) => setUnloadForm({ ...unloadForm, vehicle_no: e3.target.value }), placeholder: "e.g. JH-01-AB-1234" }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "No. of Trips", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "1", value: unloadForm.trips, onChange: (e3) => setUnloadForm({ ...unloadForm, trips: e3.target.value }) }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Per Trip (m³)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: unloadForm.per_trip_cm, onChange: (e3) => setUnloadForm({ ...unloadForm, per_trip_cm: e3.target.value }) }) }),
@@ -63860,14 +64266,36 @@ function RackDetail() {
         width: "max-w-2xl",
         children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Customer", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: saleForm.customer_id || "", onChange: (e3) => setSaleForm({ ...saleForm, customer_id: Number(e3.target.value) }), children: customers.map((c2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: c2.id, children: c2.name }, c2.id)) }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: saleForm.product_name, onChange: (e3) => setSaleForm({ ...saleForm, product_name: e3.target.value }), children: products.filter((p2) => p2.balance_cm > 0 || p2.product_name === saleForm.product_name).map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: p2.product_name, children: [
-              p2.product_name,
-              " (",
-              fmtQty(p2.balance_cm),
-              " m³ in rack)"
-            ] }, p2.product_name)) }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Unit of Measure", hint: "1 m³ = 1.6 ton = 35.31 cft", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { value: saleForm.uom, onChange: (e3) => setSaleForm({ ...saleForm, uom: e3.target.value }), children: UOMS.map((u2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: u2, children: u2 === "CM" ? "Cubic Meter (m³)" : u2 === "TON" ? "Ton" : "Cubic Feet (CFT)" }, u2)) }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Customer", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
+              {
+                value: saleForm.customer_id || "",
+                onChange: (v2) => setSaleForm({ ...saleForm, customer_id: Number(v2) }),
+                options: customers.map((c2) => ({ value: c2.id, label: c2.name }))
+              }
+            ) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
+              {
+                value: saleForm.product_name,
+                onChange: (v2) => setSaleForm({ ...saleForm, product_name: v2 }),
+                options: products.filter((p2) => p2.balance_cm > 0 || p2.product_name === saleForm.product_name).map((p2) => ({
+                  value: p2.product_name,
+                  label: `${p2.product_name} (${fmtQty(p2.balance_cm)} m³ in rack)`
+                }))
+              }
+            ) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Unit of Measure", hint: "1 m³ = 1.6 ton = 35.31 cft", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
+              {
+                value: saleForm.uom,
+                onChange: (v2) => setSaleForm({ ...saleForm, uom: v2 }),
+                options: UOMS.map((u2) => ({
+                  value: u2,
+                  label: u2 === "CM" ? "Cubic Meter (m³)" : u2 === "TON" ? "Ton" : "Cubic Feet (CFT)"
+                }))
+              }
+            ) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(
               Field,
               {
@@ -64135,40 +64563,50 @@ function Ledgers() {
     ),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Page, { children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "no-print mb-4 flex flex-wrap items-center gap-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { className: "w-full sm:w-44", value: partyType, onChange: (e3) => switchType(e3.target.value), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "customer", children: "Customers" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "supplier", children: "Suppliers" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "transporter", children: "Transporters" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "outsource", children: "Outsource Vendors" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "company", children: "Companies" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "business", children: "Businesses (P&L)" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "plant", children: "Plants (P&L)" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "rack", children: "Racks" })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(
-          Select,
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
           {
-            className: "w-full sm:w-56",
-            value: partyId ?? "",
-            onChange: (e3) => setPartyId(e3.target.value ? Number(e3.target.value) : void 0),
-            children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: "", children: [
-                "— Select ",
-                partyLabel[partyType].toLowerCase(),
-                " —"
-              ] }),
-              balances.map((b2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: b2.party_id, children: b2.name }, b2.party_id))
+            className: "w-full sm:w-44",
+            value: partyType,
+            onChange: (v2) => switchType(v2),
+            options: [
+              { value: "customer", label: "Customers" },
+              { value: "supplier", label: "Suppliers" },
+              { value: "transporter", label: "Transporters" },
+              { value: "outsource", label: "Outsource Vendors" },
+              { value: "company", label: "Companies" },
+              { value: "business", label: "Businesses (P&L)" },
+              { value: "plant", label: "Plants (P&L)" },
+              { value: "rack", label: "Racks" }
             ]
           }
         ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            className: "w-full sm:w-56",
+            value: partyId ?? "",
+            onChange: (v2) => setPartyId(v2 ? Number(v2) : void 0),
+            options: [
+              { value: "", label: `— Select ${partyLabel[partyType].toLowerCase()} —` },
+              ...balances.map((b2) => ({ value: b2.party_id, label: b2.name }))
+            ],
+            placeholder: `— Select ${partyLabel[partyType].toLowerCase()} —`
+          }
+        ),
         partyId && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { className: "w-full sm:w-36", value: fy === "" ? "" : String(fy), onChange: (e3) => selectFy(e3.target.value), title: "Financial year", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "All time" }),
-            fyYears.map((y2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: y2, children: [
-              "FY ",
-              fyLabel(y2)
-            ] }, y2))
-          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SearchSelect,
+            {
+              className: "w-full sm:w-36",
+              value: fy === "" ? "" : String(fy),
+              onChange: (v2) => selectFy(v2),
+              options: [
+                { value: "", label: "All time" },
+                ...fyYears.map((y2) => ({ value: y2, label: `FY ${fyLabel(y2)}` }))
+              ]
+            }
+          ),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", className: "w-full sm:w-36", value: from, onChange: (e3) => {
             setFrom(e3.target.value);
             setFy("");
@@ -64280,18 +64718,32 @@ function Ledgers() {
     ] }),
     payForm && /* @__PURE__ */ jsxRuntimeExports.jsx(Modal, { open: true, onClose: () => setPayForm(null), title: `Record Payment — ${selected?.name ?? ""}`, children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Direction", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: payForm.direction, onChange: (e3) => setPayForm({ ...payForm, direction: e3.target.value }), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "in", children: "Received from party" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "out", children: "Paid to party" })
-        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Direction", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            value: payForm.direction,
+            onChange: (v2) => setPayForm({ ...payForm, direction: v2 }),
+            options: [
+              { value: "in", label: "Received from party" },
+              { value: "out", label: "Paid to party" }
+            ]
+          }
+        ) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Amount", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: payForm.amount, onChange: (e3) => setPayForm({ ...payForm, amount: e3.target.value }) }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Mode", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: payForm.mode, onChange: (e3) => setPayForm({ ...payForm, mode: e3.target.value }), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "cash", children: "Cash" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "bank", children: "Bank Transfer" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "upi", children: "UPI" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "cheque", children: "Cheque" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "other", children: "Other" })
-        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Mode", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            value: payForm.mode,
+            onChange: (v2) => setPayForm({ ...payForm, mode: v2 }),
+            options: [
+              { value: "cash", label: "Cash" },
+              { value: "bank", label: "Bank Transfer" },
+              { value: "upi", label: "UPI" },
+              { value: "cheque", label: "Cheque" },
+              { value: "other", label: "Other" }
+            ]
+          }
+        ) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: payForm.date, onChange: (e3) => setPayForm({ ...payForm, date: e3.target.value }) }) })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Reference", hint: "Optional — bill no, rack no, cheque no…", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: payForm.ref, onChange: (e3) => setPayForm({ ...payForm, ref: e3.target.value }) }) }),
@@ -64318,10 +64770,17 @@ function Ledgers() {
           {
             label: "Type",
             hint: partyType === "customer" ? "Dr = they owe you · Cr = advance from them" : "Cr = you owe them · Dr = advance you paid",
-            children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: openingForm.direction, onChange: (e3) => setOpeningForm({ ...openingForm, direction: e3.target.value }), children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "debit", children: "Debit (Dr)" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "credit", children: "Credit (Cr)" })
-            ] })
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
+              {
+                value: openingForm.direction,
+                onChange: (v2) => setOpeningForm({ ...openingForm, direction: v2 }),
+                options: [
+                  { value: "debit", label: "Debit (Dr)" },
+                  { value: "credit", label: "Credit (Cr)" }
+                ]
+              }
+            )
           }
         ),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: openingForm.remarks, onChange: (e3) => setOpeningForm({ ...openingForm, remarks: e3.target.value }) }) })
@@ -64474,18 +64933,34 @@ function Payments() {
         ] }) })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap items-center gap-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { className: "w-44", value: typeFilter, onChange: (e3) => setTypeFilter(e3.target.value), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "All parties" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "customer", children: "Customers" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "supplier", children: "Suppliers" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "transporter", children: "Transporters" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "outsource", children: "Outsource" })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { className: "w-44", value: statusFilter, onChange: (e3) => setStatusFilter(e3.target.value), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "All statuses" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "outstanding", children: "Outstanding" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "settled", children: "Settled" })
-        ] })
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            className: "w-44",
+            value: typeFilter,
+            onChange: (v2) => setTypeFilter(v2),
+            options: [
+              { value: "", label: "All parties" },
+              { value: "customer", label: "Customers" },
+              { value: "supplier", label: "Suppliers" },
+              { value: "transporter", label: "Transporters" },
+              { value: "outsource", label: "Outsource" }
+            ]
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            className: "w-44",
+            value: statusFilter,
+            onChange: (v2) => setStatusFilter(v2),
+            options: [
+              { value: "", label: "All statuses" },
+              { value: "outstanding", label: "Outstanding" },
+              { value: "settled", label: "Settled" }
+            ]
+          }
+        )
       ] }),
       rows.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No parties to show." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table, { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
@@ -64526,55 +65001,63 @@ function Payments() {
         title: payForm.pick ? "Record Payment / Advance" : `Record Payment — ${payForm.party_name}`,
         children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
           payForm.pick && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Party type", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              Select,
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Party type", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
               {
                 value: payForm.party_type,
-                onChange: (e3) => setPayForm({ ...payForm, party_type: e3.target.value, party_id: 0, party_name: "" }),
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "supplier", children: "Supplier" }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "customer", children: "Customer" }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "transporter", children: "Transporter" }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "outsource", children: "Outsource" })
+                onChange: (v2) => setPayForm({ ...payForm, party_type: v2, party_id: 0, party_name: "" }),
+                options: [
+                  { value: "supplier", label: "Supplier" },
+                  { value: "customer", label: "Customer" },
+                  { value: "transporter", label: "Transporter" },
+                  { value: "outsource", label: "Outsource" }
                 ]
               }
             ) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Party", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              Select,
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Party", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
               {
                 value: payForm.party_id || "",
-                onChange: (e3) => {
-                  const id2 = Number(e3.target.value);
+                onChange: (v2) => {
+                  const id2 = Number(v2);
                   const p2 = partyList(payForm.party_type).find((x2) => x2.id === id2);
                   setPayForm({ ...payForm, party_id: id2, party_name: p2?.name ?? "" });
                 },
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: "", children: [
-                    "Select ",
-                    typeLabel$1[payForm.party_type],
-                    "…"
-                  ] }),
-                  partyList(payForm.party_type).map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: p2.id, children: [
-                    p2.name,
-                    p2.head ? ` — ${p2.head}` : ""
-                  ] }, p2.id))
-                ]
+                options: partyList(payForm.party_type).map((p2) => ({
+                  value: p2.id,
+                  label: `${p2.name}${p2.head ? ` — ${p2.head}` : ""}`
+                })),
+                placeholder: `Select ${typeLabel$1[payForm.party_type]}…`
               }
             ) })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Direction", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: payForm.direction, onChange: (e3) => setPayForm({ ...payForm, direction: e3.target.value }), children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "in", children: "Received from party" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "out", children: "Paid to party" })
-            ] }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Direction", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
+              {
+                value: payForm.direction,
+                onChange: (v2) => setPayForm({ ...payForm, direction: v2 }),
+                options: [
+                  { value: "in", label: "Received from party" },
+                  { value: "out", label: "Paid to party" }
+                ]
+              }
+            ) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Amount", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", autoFocus: true, value: payForm.amount, onChange: (e3) => setPayForm({ ...payForm, amount: e3.target.value }) }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Mode", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: payForm.mode, onChange: (e3) => setPayForm({ ...payForm, mode: e3.target.value }), children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "cash", children: "Cash" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "bank", children: "Bank Transfer" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "upi", children: "UPI" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "cheque", children: "Cheque" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "other", children: "Other" })
-            ] }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Mode", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
+              {
+                value: payForm.mode,
+                onChange: (v2) => setPayForm({ ...payForm, mode: v2 }),
+                options: [
+                  { value: "cash", label: "Cash" },
+                  { value: "bank", label: "Bank Transfer" },
+                  { value: "upi", label: "UPI" },
+                  { value: "cheque", label: "Cheque" },
+                  { value: "other", label: "Other" }
+                ]
+              }
+            ) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: payForm.date, onChange: (e3) => setPayForm({ ...payForm, date: e3.target.value }) }) })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Reference", hint: "Optional — bill no, cheque no…", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: payForm.ref, onChange: (e3) => setPayForm({ ...payForm, ref: e3.target.value }) }) }),
@@ -64790,25 +65273,9 @@ function Movements() {
     ),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Page, { children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap items-center gap-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { className: "w-full sm:w-44", value: filter.stock_location_id ?? "", onChange: (e3) => set("stock_location_id", e3.target.value ? Number(e3.target.value) : ""), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "All locations" }),
-          formLocations.map((l2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: l2.id, children: l2.name }, l2.id))
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { className: "w-full sm:w-40", value: filter.material_type ?? "", onChange: (e3) => set("material_type", e3.target.value), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "All material" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "raw", children: "Raw" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "finished", children: "Finished" })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { className: "w-full sm:w-40", value: filter.type ?? "", onChange: (e3) => set("type", e3.target.value), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "All types" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "opening", children: "Opening" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "purchase", children: "Purchase" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "production_consume", children: "Consumed" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "production_output", children: "Produced" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "dispatch", children: "Dispatch" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "rack_load", children: "To Rack" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "transfer", children: "Transfer" })
-        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { className: "w-full sm:w-44", value: filter.stock_location_id ?? "", onChange: (v2) => set("stock_location_id", v2 ? Number(v2) : ""), options: [{ value: "", label: "All locations" }, ...formLocations.map((l2) => ({ value: l2.id, label: l2.name }))], placeholder: "All locations" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { className: "w-full sm:w-40", value: filter.material_type ?? "", onChange: (v2) => set("material_type", v2), options: [{ value: "", label: "All material" }, { value: "raw", label: "Raw" }, { value: "finished", label: "Finished" }], placeholder: "All material" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { className: "w-full sm:w-40", value: filter.type ?? "", onChange: (v2) => set("type", v2), options: [{ value: "", label: "All types" }, { value: "opening", label: "Opening" }, { value: "purchase", label: "Purchase" }, { value: "production_consume", label: "Consumed" }, { value: "production_output", label: "Produced" }, { value: "dispatch", label: "Dispatch" }, { value: "rack_load", label: "To Rack" }, { value: "transfer", label: "Transfer" }], placeholder: "All types" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", className: "w-full sm:w-36", value: filter.from ?? "", onChange: (e3) => set("from", e3.target.value) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-muted-foreground", children: "to" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", className: "w-full sm:w-36", value: filter.to ?? "", onChange: (e3) => set("to", e3.target.value) })
@@ -64840,25 +65307,8 @@ function Movements() {
       ] })
     ] }),
     xfer && /* @__PURE__ */ jsxRuntimeExports.jsx(Modal, { open: true, onClose: () => setXfer(null), title: "Transfer Raw Stock", width: "max-w-lg", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "From Location", required: true, hint: `Available: ${fmtQty(fromBalance)} m³`, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: xfer.from_location_id, onChange: (e3) => setXfer({ ...xfer, from_location_id: e3.target.value ? Number(e3.target.value) : "" }), children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Select source…" }),
-        locations.map((l2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: l2.id, children: [
-          l2.plant_name,
-          " — ",
-          l2.name,
-          " (",
-          fmtQty(l2.balance_qty),
-          " m³)"
-        ] }, l2.id))
-      ] }) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "To Location", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: xfer.to_location_id, onChange: (e3) => setXfer({ ...xfer, to_location_id: e3.target.value ? Number(e3.target.value) : "" }), children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Select destination…" }),
-        locations.filter((l2) => l2.id !== Number(xfer.from_location_id)).map((l2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: l2.id, children: [
-          l2.plant_name,
-          " — ",
-          l2.name
-        ] }, l2.id))
-      ] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "From Location", required: true, hint: `Available: ${fmtQty(fromBalance)} m³`, children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: xfer.from_location_id, onChange: (v2) => setXfer({ ...xfer, from_location_id: v2 ? Number(v2) : "" }), options: locations.map((l2) => ({ value: l2.id, label: `${l2.plant_name} — ${l2.name} (${fmtQty(l2.balance_qty)} m³)` })), placeholder: "Select source…" }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "To Location", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: xfer.to_location_id, onChange: (v2) => setXfer({ ...xfer, to_location_id: v2 ? Number(v2) : "" }), options: locations.filter((l2) => l2.id !== Number(xfer.from_location_id)).map((l2) => ({ value: l2.id, label: `${l2.plant_name} — ${l2.name}` })), placeholder: "Select destination…" }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Quantity (m³)", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: xfer.quantity, onChange: (e3) => setXfer({ ...xfer, quantity: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: xfer.date, onChange: (e3) => setXfer({ ...xfer, date: e3.target.value }) }) })
@@ -64922,11 +65372,8 @@ function Reports() {
     ),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Page, { children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap items-center gap-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Select, { className: "w-full sm:w-72", value: type, onChange: (e3) => setType(e3.target.value), children: REPORTS.map((r2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: r2.value, children: r2.label }, r2.value)) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { className: "w-full sm:w-44", value: plantId, disabled: !!globalPlant, onChange: (e3) => setPlantId(e3.target.value ? Number(e3.target.value) : ""), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "All plants" }),
-          plants.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.id, children: p2.name }, p2.id))
-        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { className: "w-full sm:w-72", value: type, onChange: (v2) => setType(v2), options: REPORTS.map((r2) => ({ value: r2.value, label: r2.label })) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { className: "w-full sm:w-44", value: plantId, disabled: !!globalPlant, onChange: (v2) => setPlantId(v2 ? Number(v2) : ""), options: [{ value: "", label: "All plants" }, ...plants.map((p2) => ({ value: p2.id, label: p2.name }))] }),
         usesDate && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", className: "w-full sm:w-36", value: from, onChange: (e3) => setFrom(e3.target.value) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-muted-foreground", children: "to" }),
@@ -65386,10 +65833,7 @@ function SettingsPage() {
                 onChange: (e3) => setPlantForm({ ...plantForm, cft_per_cm: e3.target.value === "" ? void 0 : Number(e3.target.value) })
               }
             ) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Status", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: plantForm.status || "active", onChange: (e3) => setPlantForm({ ...plantForm, status: e3.target.value }), children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "active", children: "Active" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "inactive", children: "Inactive" })
-            ] }) })
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Status", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: plantForm.status || "active", onChange: (v2) => setPlantForm({ ...plantForm, status: v2 }), options: [{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }] }) })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-end gap-2", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: () => savePlant.mutate(plantForm), disabled: !plantForm.name?.trim() || !plantForm.code?.trim(), children: plantForm.id ? "Update Plant" : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
@@ -65627,10 +66071,7 @@ function UsersPage() {
             onChange: (e3) => setForm({ ...form, password: e3.target.value })
           }
         ) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Role", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: form.role, onChange: (e3) => setForm({ ...form, role: e3.target.value }), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "staff", children: "Staff (scoped access)" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "admin", children: "Admin (full access)" })
-        ] }) })
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Role", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.role, onChange: (v2) => setForm({ ...form, role: v2 }), options: [{ value: "staff", label: "Staff (scoped access)" }, { value: "admin", label: "Admin (full access)" }] }) })
       ] }),
       form.role === "staff" && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
@@ -65644,17 +66085,13 @@ function UsersPage() {
           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-1.5 text-sm font-medium text-foreground/80", children: "Access per module — choose for each what this user can do" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-1 gap-2 rounded-lg border p-3 sm:grid-cols-2", children: STAFF_MODULES.map((m2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between gap-2", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm", children: m2.label }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              Select,
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
               {
                 className: "w-28 shrink-0",
                 value: modState(m2.key),
-                onChange: (e3) => setModState(m2.key, e3.target.value),
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "none", children: "No access" }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "view", children: "View" }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "edit", children: "Edit" })
-                ]
+                onChange: (v2) => setModState(m2.key, v2),
+                options: [{ value: "none", label: "No access" }, { value: "view", label: "View" }, { value: "edit", label: "Edit" }]
               }
             )
           ] }, m2.key)) }),
@@ -65705,10 +66142,14 @@ function ActivityLog() {
     ),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Page, { children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap items-end gap-3", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "User", className: "w-48", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: userId, onChange: (e3) => setUserId(e3.target.value), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "All users" }),
-          users.map((u2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: u2.id, children: u2.username }, u2.id))
-        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "User", className: "w-48", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            value: userId,
+            onChange: (v2) => setUserId(v2),
+            options: [{ value: "", label: "All users" }, ...users.map((u2) => ({ value: u2.id, label: u2.username }))]
+          }
+        ) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "From", className: "w-40", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: from, onChange: (e3) => setFrom(e3.target.value) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "To", className: "w-40", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: to, onChange: (e3) => setTo(e3.target.value) }) })
       ] }),

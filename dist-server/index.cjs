@@ -291,6 +291,8 @@ CREATE TABLE IF NOT EXISTS purchases (
   purchase_mode     TEXT NOT NULL DEFAULT 'purchase',
   product_name      TEXT NOT NULL DEFAULT '',
   outsource_id      INTEGER,
+  from_plant_id     INTEGER,
+  linked_dispatch_id INTEGER,
   uom               TEXT NOT NULL DEFAULT 'CM',
   quantity          REAL NOT NULL,
   qty_cm            REAL NOT NULL DEFAULT 0,
@@ -318,6 +320,30 @@ CREATE TABLE IF NOT EXISTS purchase_transporters (
 CREATE TABLE IF NOT EXISTS purchase_machines (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   purchase_id  INTEGER NOT NULL REFERENCES purchases(id),
+  asset_id     INTEGER NOT NULL REFERENCES assets(id),
+  basis        TEXT NOT NULL DEFAULT 'hour',
+  qty          REAL NOT NULL DEFAULT 0,
+  rate         REAL NOT NULL DEFAULT 0,
+  amount       REAL NOT NULL DEFAULT 0,
+  outsource_id INTEGER,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS dispatch_transporters (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  dispatch_id    INTEGER NOT NULL REFERENCES dispatches(id),
+  transporter_id INTEGER NOT NULL REFERENCES transporters(id),
+  vehicle_no     TEXT NOT NULL DEFAULT '',
+  basis          TEXT NOT NULL DEFAULT 'flat',
+  qty            REAL NOT NULL DEFAULT 0,
+  rate           REAL NOT NULL DEFAULT 0,
+  charge         REAL NOT NULL DEFAULT 0,
+  created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS dispatch_machines (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  dispatch_id  INTEGER NOT NULL REFERENCES dispatches(id),
   asset_id     INTEGER NOT NULL REFERENCES assets(id),
   basis        TEXT NOT NULL DEFAULT 'hour',
   qty          REAL NOT NULL DEFAULT 0,
@@ -386,6 +412,8 @@ CREATE TABLE IF NOT EXISTS dispatches (
   dispatch_status TEXT NOT NULL DEFAULT 'pending',
   payment_status  TEXT NOT NULL DEFAULT 'unpaid',
   paid_amount     REAL NOT NULL DEFAULT 0,
+  to_plant_id     INTEGER,
+  linked_purchase_id INTEGER,
   date            TEXT NOT NULL,
   remarks         TEXT NOT NULL DEFAULT '',
   created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime'))
@@ -687,6 +715,9 @@ CREATE INDEX IF NOT EXISTS idx_budget_plant ON budgets(plant_id);
 CREATE INDEX IF NOT EXISTS idx_ptrans_purchase ON purchase_transporters(purchase_id);
 CREATE INDEX IF NOT EXISTS idx_ptrans_transporter ON purchase_transporters(transporter_id);
 CREATE INDEX IF NOT EXISTS idx_pmach_purchase ON purchase_machines(purchase_id);
+CREATE INDEX IF NOT EXISTS idx_dtrans_dispatch ON dispatch_transporters(dispatch_id);
+CREATE INDEX IF NOT EXISTS idx_dtrans_transporter ON dispatch_transporters(transporter_id);
+CREATE INDEX IF NOT EXISTS idx_dmach_dispatch ON dispatch_machines(dispatch_id);
 `;
 
 // src/main/crypto.ts
@@ -808,7 +839,8 @@ CREATE TABLE IF NOT EXISTS suppliers (
   remarks    TEXT,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   company_id INT,
-  plant_id   INT
+  plant_id   INT,
+  plant_ref_id INT
 );
 CREATE TABLE IF NOT EXISTS customers (
   id          INT AUTO_INCREMENT PRIMARY KEY,
@@ -819,7 +851,8 @@ CREATE TABLE IF NOT EXISTS customers (
   created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   company_id  INT,
   plant_id    INT,
-  share_token VARCHAR(64)
+  share_token VARCHAR(64),
+  plant_ref_id INT
 );
 CREATE TABLE IF NOT EXISTS transporters (
   id         INT AUTO_INCREMENT PRIMARY KEY,
@@ -864,6 +897,8 @@ CREATE TABLE IF NOT EXISTS purchases (
   purchase_mode     VARCHAR(16) NOT NULL DEFAULT 'purchase',
   product_name      VARCHAR(255) NOT NULL DEFAULT '',
   outsource_id      INT,
+  from_plant_id     INT,
+  linked_dispatch_id INT,
   quantity          DOUBLE NOT NULL,
   rate              DOUBLE,
   amount            DOUBLE,
@@ -887,6 +922,28 @@ CREATE TABLE IF NOT EXISTS purchase_transporters (
 CREATE TABLE IF NOT EXISTS purchase_machines (
   id           INT AUTO_INCREMENT PRIMARY KEY,
   purchase_id  INT NOT NULL,
+  asset_id     INT NOT NULL,
+  basis        VARCHAR(8) NOT NULL DEFAULT 'hour',
+  qty          DOUBLE NOT NULL DEFAULT 0,
+  rate         DOUBLE NOT NULL DEFAULT 0,
+  amount       DOUBLE NOT NULL DEFAULT 0,
+  outsource_id INT,
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS dispatch_transporters (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  dispatch_id    INT NOT NULL,
+  transporter_id INT NOT NULL,
+  vehicle_no     VARCHAR(64) NOT NULL DEFAULT '',
+  basis          VARCHAR(8) NOT NULL DEFAULT 'flat',
+  qty            DOUBLE NOT NULL DEFAULT 0,
+  rate           DOUBLE NOT NULL DEFAULT 0,
+  charge         DOUBLE NOT NULL DEFAULT 0,
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS dispatch_machines (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  dispatch_id  INT NOT NULL,
   asset_id     INT NOT NULL,
   basis        VARCHAR(8) NOT NULL DEFAULT 'hour',
   qty          DOUBLE NOT NULL DEFAULT 0,
@@ -951,6 +1008,8 @@ CREATE TABLE IF NOT EXISTS dispatches (
   dispatch_status  VARCHAR(32) NOT NULL DEFAULT 'pending',
   payment_status   VARCHAR(32) NOT NULL DEFAULT 'unpaid',
   paid_amount      DOUBLE NOT NULL DEFAULT 0,
+  to_plant_id      INT,
+  linked_purchase_id INT,
   date             VARCHAR(32) NOT NULL,
   remarks          TEXT,
   created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -1343,6 +1402,41 @@ CREATE INDEX idx_pmach_purchase ON purchase_machines(purchase_id)`
     sql: `ALTER TABLE purchase_transporters ADD COLUMN basis VARCHAR(8) NOT NULL DEFAULT 'flat';
 ALTER TABLE purchase_transporters ADD COLUMN qty DOUBLE NOT NULL DEFAULT 0;
 ALTER TABLE purchase_transporters ADD COLUMN rate DOUBLE NOT NULL DEFAULT 0`
+  },
+  {
+    // Direct-sale transporter + machine cost lines, and inter-plant sale ↔ purchase linkage.
+    id: "014_dispatch_lines_interplant",
+    sql: `CREATE TABLE IF NOT EXISTS dispatch_transporters (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  dispatch_id    INT NOT NULL,
+  transporter_id INT NOT NULL,
+  vehicle_no     VARCHAR(64) NOT NULL DEFAULT '',
+  basis          VARCHAR(8) NOT NULL DEFAULT 'flat',
+  qty            DOUBLE NOT NULL DEFAULT 0,
+  rate           DOUBLE NOT NULL DEFAULT 0,
+  charge         DOUBLE NOT NULL DEFAULT 0,
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS dispatch_machines (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  dispatch_id  INT NOT NULL,
+  asset_id     INT NOT NULL,
+  basis        VARCHAR(8) NOT NULL DEFAULT 'hour',
+  qty          DOUBLE NOT NULL DEFAULT 0,
+  rate         DOUBLE NOT NULL DEFAULT 0,
+  amount       DOUBLE NOT NULL DEFAULT 0,
+  outsource_id INT,
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+ALTER TABLE dispatches ADD COLUMN to_plant_id INT;
+ALTER TABLE dispatches ADD COLUMN linked_purchase_id INT;
+ALTER TABLE purchases ADD COLUMN from_plant_id INT;
+ALTER TABLE purchases ADD COLUMN linked_dispatch_id INT;
+ALTER TABLE suppliers ADD COLUMN plant_ref_id INT;
+ALTER TABLE customers ADD COLUMN plant_ref_id INT;
+CREATE INDEX idx_dtrans_dispatch ON dispatch_transporters(dispatch_id);
+CREATE INDEX idx_dtrans_transporter ON dispatch_transporters(transporter_id);
+CREATE INDEX idx_dmach_dispatch ON dispatch_machines(dispatch_id)`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -1403,6 +1497,12 @@ async function sqliteLegacyMigrate(adapter2) {
   await addColumn("purchase_transporters", "basis", `TEXT NOT NULL DEFAULT 'flat'`);
   await addColumn("purchase_transporters", "qty", "REAL NOT NULL DEFAULT 0");
   await addColumn("purchase_transporters", "rate", "REAL NOT NULL DEFAULT 0");
+  await addColumn("dispatches", "to_plant_id", "INTEGER");
+  await addColumn("dispatches", "linked_purchase_id", "INTEGER");
+  await addColumn("purchases", "from_plant_id", "INTEGER");
+  await addColumn("purchases", "linked_dispatch_id", "INTEGER");
+  await addColumn("suppliers", "plant_ref_id", "INTEGER");
+  await addColumn("customers", "plant_ref_id", "INTEGER");
 }
 async function importProductsFromSettings(adapter2) {
   const all = (await adapter2.exec(`SELECT id, name FROM products ORDER BY id`, void 0, null)).rows;
@@ -2661,7 +2761,7 @@ async function listPurchases(filter = {}) {
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
   return await d.prepare(
     `SELECT pu.*, s.name AS supplier_name, p.name AS plant_name, l.name AS stock_location_name,
-        o.name AS outsource_name, o.head AS outsource_head,
+        o.name AS outsource_name, o.head AS outsource_head, fp.name AS from_plant_name,
         (SELECT COALESCE(SUM(charge),0) FROM purchase_transporters pt WHERE pt.purchase_id = pu.id) AS transport_total,
         (SELECT COALESCE(SUM(amount),0) FROM purchase_machines pm WHERE pm.purchase_id = pu.id) AS machine_total
        FROM purchases pu
@@ -2669,6 +2769,7 @@ async function listPurchases(filter = {}) {
        JOIN plants p ON p.id = pu.plant_id
        JOIN stock_locations l ON l.id = pu.stock_location_id
        LEFT JOIN outsource o ON o.id = pu.outsource_id
+       LEFT JOIN plants fp ON fp.id = pu.from_plant_id
        ${clause}
        ORDER BY pu.date DESC, pu.id DESC`
   ).all(params);
@@ -2695,8 +2796,8 @@ async function createPurchase(p) {
     const no = await nextNumber("PUR", "purchase");
     const info = await d.prepare(
       `INSERT INTO purchases
-          (purchase_no, supplier_id, plant_id, stock_location_id, material_type, purchase_mode, product_name, outsource_id, uom, quantity, qty_cm, rate, amount, paid_amount, payment_status, date, remarks)
-         VALUES (@purchase_no,@supplier_id,@plant_id,@stock_location_id,@material_type,@purchase_mode,@product_name,@outsource_id,@uom,@quantity,@qty_cm,@rate,@amount,@paid_amount,@payment_status,@date,@remarks)`
+          (purchase_no, supplier_id, plant_id, stock_location_id, material_type, purchase_mode, product_name, outsource_id, from_plant_id, linked_dispatch_id, uom, quantity, qty_cm, rate, amount, paid_amount, payment_status, date, remarks)
+         VALUES (@purchase_no,@supplier_id,@plant_id,@stock_location_id,@material_type,@purchase_mode,@product_name,@outsource_id,@from_plant_id,@linked_dispatch_id,@uom,@quantity,@qty_cm,@rate,@amount,@paid_amount,@payment_status,@date,@remarks)`
     ).run({
       purchase_no: no,
       supplier_id: p.supplier_id,
@@ -2706,6 +2807,8 @@ async function createPurchase(p) {
       purchase_mode: mode,
       product_name: product,
       outsource_id: p.outsource_id ?? null,
+      from_plant_id: p.from_plant_id ?? null,
+      linked_dispatch_id: p.linked_dispatch_id ?? null,
       uom,
       quantity: p.quantity,
       qty_cm: qtyCm,
@@ -2750,6 +2853,8 @@ async function updatePurchase(p) {
   if (!(p.quantity > 0)) throw new Error("Quantity must be greater than 0.");
   const old = await d.prepare(`SELECT * FROM purchases WHERE id = ?`).get(p.id);
   if (!old) throw new Error("Purchase not found.");
+  if (old.linked_dispatch_id)
+    throw new Error("This purchase was created by an inter-plant sale \u2014 edit that sale instead.");
   const mode = p.purchase_mode === "mining" ? "mining" : "purchase";
   const kind = mode === "purchase" && p.material_type === "finished" ? "finished" : "raw";
   const product = kind === "finished" ? properCase(p.product_name || "") : "";
@@ -2823,6 +2928,8 @@ async function deletePurchase(payload) {
   const d = getDb();
   const old = await d.prepare(`SELECT * FROM purchases WHERE id = ?`).get(payload.id);
   if (!old) return { ok: false, error: "Purchase not found." };
+  if (old.linked_dispatch_id)
+    return { ok: false, error: "This purchase was created by an inter-plant sale \u2014 delete that sale instead." };
   try {
     await d.transaction(async () => {
       await d.prepare(`DELETE FROM stock_movements WHERE ref_no=? AND type='purchase'`).run(
@@ -2842,6 +2949,17 @@ async function deletePurchase(payload) {
   } catch (e) {
     return { ok: false, error: e.message };
   }
+}
+async function removeLinkedPurchase(id) {
+  const d = getDb();
+  const old = await d.prepare(`SELECT * FROM purchases WHERE id = ?`).get(id);
+  if (!old) return;
+  await d.prepare(`DELETE FROM stock_movements WHERE ref_no=? AND type='purchase'`).run(old.purchase_no);
+  if (old.material_type === "finished" && old.product_name && await finishedBalance(d, old.plant_id, old.product_name) < 0)
+    throw new Error("Cannot reverse: the received goods have already been sold/dispatched at the destination plant.");
+  await d.prepare(`DELETE FROM purchase_transporters WHERE purchase_id = ?`).run(id);
+  await d.prepare(`DELETE FROM purchase_machines WHERE purchase_id = ?`).run(id);
+  await d.prepare(`DELETE FROM purchases WHERE id = ?`).run(id);
 }
 async function setPurchasePayment(payload) {
   const d = getDb();
@@ -3089,6 +3207,71 @@ function round6(n) {
 var BILLED_TOTAL_SQL = `(COALESCE(di.amount,0)
   + CASE WHEN di.transport_billed = 1 THEN di.transport_charge ELSE 0 END
   + CASE WHEN di.other_billed = 1 THEN di.other_charge ELSE 0 END)`;
+function round23(n) {
+  return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+}
+async function writeDispatchChildLines(d, dispatchId, transporters, machines) {
+  await d.prepare(`DELETE FROM dispatch_transporters WHERE dispatch_id = ?`).run(dispatchId);
+  await d.prepare(`DELETE FROM dispatch_machines WHERE dispatch_id = ?`).run(dispatchId);
+  const tStmt = d.prepare(
+    `INSERT INTO dispatch_transporters (dispatch_id, transporter_id, vehicle_no, basis, qty, rate, charge) VALUES (?, ?, ?, ?, ?, ?, ?)`
+  );
+  for (const t of transporters ?? []) {
+    if (!t.transporter_id) continue;
+    const basis = t.basis === "trip" || t.basis === "uom" ? t.basis : "flat";
+    const qty = basis === "flat" ? 0 : Number(t.qty) || 0;
+    const rate = basis === "flat" ? 0 : Number(t.rate) || 0;
+    const charge = basis === "flat" ? round23(Number(t.charge) || 0) : round23(qty * rate);
+    await tStmt.run(dispatchId, t.transporter_id, properCase(t.vehicle_no || ""), basis, qty, rate, charge);
+  }
+  const mStmt = d.prepare(
+    `INSERT INTO dispatch_machines (dispatch_id, asset_id, basis, qty, rate, amount, outsource_id) VALUES (?, ?, ?, ?, ?, ?, ?)`
+  );
+  for (const m of machines ?? []) {
+    if (!m.asset_id) continue;
+    const basis = m.basis === "cm" ? "cm" : "hour";
+    const qty = Number(m.qty) || 0;
+    const rate = Number(m.rate) || 0;
+    await mStmt.run(dispatchId, m.asset_id, basis, qty, rate, round23(qty * rate), m.outsource_id ?? null);
+  }
+}
+async function getDispatchDetail(payload) {
+  const d = getDb();
+  const di = await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id);
+  if (!di) return null;
+  di.transporters = await d.prepare(
+    `SELECT dt.*, t.name AS transporter_name FROM dispatch_transporters dt
+       JOIN transporters t ON t.id = dt.transporter_id WHERE dt.dispatch_id = ? ORDER BY dt.id`
+  ).all(payload.id);
+  di.machines = await d.prepare(
+    `SELECT dm.*, a.name AS asset_name, o.name AS outsource_name FROM dispatch_machines dm
+       JOIN assets a ON a.id = dm.asset_id
+       LEFT JOIN outsource o ON o.id = dm.outsource_id WHERE dm.dispatch_id = ? ORDER BY dm.id`
+  ).all(payload.id);
+  return di;
+}
+async function plantName(plantId) {
+  const r = await getDb().prepare(`SELECT name FROM plants WHERE id = ?`).get(plantId);
+  return r?.name ?? `Plant ${plantId}`;
+}
+async function ensureInternalCustomer(refPlantId) {
+  const d = getDb();
+  const ex = await d.prepare(`SELECT id FROM customers WHERE plant_ref_id = ?`).get(refPlantId);
+  if (ex) return ex.id;
+  const info = await d.prepare(
+    `INSERT INTO customers (name, contact, address, remarks, plant_ref_id) VALUES (?, '', '', 'Internal \u2014 inter-plant', ?)`
+  ).run(properCase(await plantName(refPlantId)), refPlantId);
+  return Number(info.lastInsertRowid);
+}
+async function ensureInternalSupplier(refPlantId) {
+  const d = getDb();
+  const ex = await d.prepare(`SELECT id FROM suppliers WHERE plant_ref_id = ?`).get(refPlantId);
+  if (ex) return ex.id;
+  const info = await d.prepare(
+    `INSERT INTO suppliers (name, contact, address, remarks, plant_ref_id) VALUES (?, '', '', 'Internal \u2014 inter-plant', ?)`
+  ).run(properCase(await plantName(refPlantId)), refPlantId);
+  return Number(info.lastInsertRowid);
+}
 async function listDispatches(filter = {}) {
   const d = getDb();
   const where = [];
@@ -3132,12 +3315,16 @@ async function listDispatches(filter = {}) {
   return await d.prepare(
     `SELECT di.*, c.name AS customer_name, p.name AS plant_name,
         o.name AS outsource_name, o.head AS outsource_head, t.name AS transporter_name,
-        ${BILLED_TOTAL_SQL} AS billed_total
+        tp.name AS to_plant_name,
+        ${BILLED_TOTAL_SQL} AS billed_total,
+        (SELECT COALESCE(SUM(charge),0) FROM dispatch_transporters dt WHERE dt.dispatch_id = di.id) AS transport_total,
+        (SELECT COALESCE(SUM(amount),0) FROM dispatch_machines dm WHERE dm.dispatch_id = di.id) AS machine_total
        FROM dispatches di
        JOIN customers c ON c.id = di.customer_id
        JOIN plants p ON p.id = di.plant_id
        LEFT JOIN outsource o ON o.id = di.outsource_id
        LEFT JOIN transporters t ON t.id = di.transporter_id
+       LEFT JOIN plants tp ON tp.id = di.to_plant_id
        ${clause}
        ORDER BY di.date DESC, di.id DESC`
   ).all(params);
@@ -3198,9 +3385,31 @@ function normalize(p, factors) {
     }
   };
 }
+async function createMirrorPurchase(sourcePlantId, destPlantId, dispatchId, product, qtyCm, amount, date) {
+  const supplierId = await ensureInternalSupplier(sourcePlantId);
+  const ratePerCm = amount != null && qtyCm > 0 ? round23(amount / qtyCm) : null;
+  const mirror = await createPurchase({
+    supplier_id: supplierId,
+    plant_id: destPlantId,
+    material_type: "finished",
+    product_name: product,
+    purchase_mode: "purchase",
+    from_plant_id: sourcePlantId,
+    linked_dispatch_id: dispatchId,
+    uom: "CM",
+    quantity: qtyCm,
+    rate: ratePerCm,
+    paid_amount: 0,
+    payment_status: "unpaid",
+    date,
+    remarks: `Inter-plant \u2014 received from ${await plantName(sourcePlantId)}`
+  });
+  return mirror.id;
+}
 async function createDispatch(p) {
   const d = getDb();
-  const { product, qtyCm, outsourced, fields } = normalize(p, await plantUomFactors(p.plant_id));
+  const interPlant = p.to_plant_id != null && Number(p.to_plant_id) > 0 && Number(p.to_plant_id) !== Number(p.plant_id);
+  const { product, qtyCm, amount, outsourced, fields } = normalize(p, await plantUomFactors(p.plant_id));
   if (!outsourced) {
     const available = await finishedBalance(d, p.plant_id, product);
     if (qtyCm > available)
@@ -3209,16 +3418,29 @@ async function createDispatch(p) {
       );
   }
   const id = await d.transaction(async () => {
+    const toPlantId = interPlant ? Number(p.to_plant_id) : null;
+    const customerId = interPlant ? await ensureInternalCustomer(toPlantId) : p.customer_id;
     const no = await nextNumber("SALE", "dispatch");
     const info = await d.prepare(
       `INSERT INTO dispatches
           (dispatch_no, customer_id, plant_id, product_name, uom, quantity, qty_cm, sale_quantity, rate, amount,
            transport_charge, transport_billed, other_charge, other_billed,
-           vehicle_no, vehicle_type, transporter_id, driver, challan_no, outsourced, outsource_id, delivery_status, dispatch_status, payment_status, paid_amount, date, remarks)
+           vehicle_no, vehicle_type, transporter_id, driver, challan_no, outsourced, outsource_id,
+           delivery_status, dispatch_status, payment_status, paid_amount, to_plant_id, linked_purchase_id, date, remarks)
          VALUES (@dispatch_no,@customer_id,@plant_id,@product_name,@uom,@quantity,@qty_cm,@sale_quantity,@rate,@amount,
            @transport_charge,@transport_billed,@other_charge,@other_billed,
-           @vehicle_no,@vehicle_type,@transporter_id,@driver,@challan_no,@outsourced,@outsource_id,@delivery_status,@dispatch_status,@payment_status,@paid_amount,@date,@remarks)`
-    ).run({ dispatch_no: no, dispatch_status: "pending", ...fields });
+           @vehicle_no,@vehicle_type,@transporter_id,@driver,@challan_no,@outsourced,@outsource_id,
+           @delivery_status,@dispatch_status,@payment_status,@paid_amount,@to_plant_id,@linked_purchase_id,@date,@remarks)`
+    ).run({
+      dispatch_no: no,
+      dispatch_status: "pending",
+      ...fields,
+      customer_id: customerId,
+      to_plant_id: toPlantId,
+      linked_purchase_id: null
+    });
+    const dispatchId = Number(info.lastInsertRowid);
+    await writeDispatchChildLines(d, dispatchId, p.transporters, p.machines);
     if (!outsourced) {
       await addMovement(d, {
         type: "dispatch",
@@ -3228,11 +3450,15 @@ async function createDispatch(p) {
         product_name: product,
         change_qty: -qtyCm,
         date: p.date,
-        note: "Direct sale to customer"
+        note: interPlant ? `Inter-plant sale to ${await plantName(toPlantId)}` : "Direct sale to customer"
       });
       if (await finishedBalance(d, p.plant_id, product) < 0) throw new Error("Stock cannot go negative.");
     }
-    return Number(info.lastInsertRowid);
+    if (interPlant) {
+      const purchaseId = await createMirrorPurchase(p.plant_id, toPlantId, dispatchId, product, qtyCm, amount, p.date);
+      await d.prepare(`UPDATE dispatches SET linked_purchase_id=? WHERE id=?`).run(purchaseId, dispatchId);
+    }
+    return dispatchId;
   });
   return await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(id);
 }
@@ -3241,8 +3467,12 @@ async function updateDispatch(p) {
   if (!p.id) throw new Error("Missing dispatch id.");
   const old = await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(p.id);
   if (!old) throw new Error("Dispatch not found.");
-  const { product, qtyCm, outsourced, fields } = normalize(p, await plantUomFactors(p.plant_id));
+  const interPlant = p.to_plant_id != null && Number(p.to_plant_id) > 0 && Number(p.to_plant_id) !== Number(p.plant_id);
+  const { product, qtyCm, amount, outsourced, fields } = normalize(p, await plantUomFactors(p.plant_id));
   await d.transaction(async () => {
+    if (old.linked_purchase_id) await removeLinkedPurchase(old.linked_purchase_id);
+    const toPlantId = interPlant ? Number(p.to_plant_id) : null;
+    const customerId = interPlant ? await ensureInternalCustomer(toPlantId) : p.customer_id;
     await d.prepare(
       `UPDATE dispatches SET customer_id=@customer_id, plant_id=@plant_id, product_name=@product_name,
         uom=@uom, quantity=@quantity, qty_cm=@qty_cm, sale_quantity=@sale_quantity, rate=@rate, amount=@amount,
@@ -3250,8 +3480,9 @@ async function updateDispatch(p) {
         other_charge=@other_charge, other_billed=@other_billed,
         vehicle_no=@vehicle_no, vehicle_type=@vehicle_type, transporter_id=@transporter_id, driver=@driver, challan_no=@challan_no,
         outsourced=@outsourced, outsource_id=@outsource_id, delivery_status=@delivery_status, payment_status=@payment_status, paid_amount=@paid_amount,
-        date=@date, remarks=@remarks WHERE id=@id`
-    ).run({ id: p.id, ...fields });
+        to_plant_id=@to_plant_id, linked_purchase_id=NULL, date=@date, remarks=@remarks WHERE id=@id`
+    ).run({ id: p.id, ...fields, customer_id: customerId, to_plant_id: toPlantId });
+    await writeDispatchChildLines(d, p.id, p.transporters, p.machines);
     await d.prepare(`DELETE FROM stock_movements WHERE ref_no=? AND type='dispatch'`).run(old.dispatch_no);
     if (!outsourced) {
       await addMovement(d, {
@@ -3262,12 +3493,16 @@ async function updateDispatch(p) {
         product_name: product,
         change_qty: -qtyCm,
         date: p.date,
-        note: "Direct sale to customer"
+        note: interPlant ? `Inter-plant sale to ${await plantName(toPlantId)}` : "Direct sale to customer"
       });
       if (await finishedBalance(d, old.plant_id, old.product_name) < 0)
         throw new Error("Edit would make finished goods stock negative.");
       if (await finishedBalance(d, p.plant_id, product) < 0)
         throw new Error("Edit would make finished goods stock negative.");
+    }
+    if (interPlant) {
+      const purchaseId = await createMirrorPurchase(p.plant_id, toPlantId, p.id, product, qtyCm, amount, p.date);
+      await d.prepare(`UPDATE dispatches SET linked_purchase_id=? WHERE id=?`).run(purchaseId, p.id);
     }
   });
   return await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(p.id);
@@ -3278,6 +3513,10 @@ async function setRate(payload) {
   const billableQty = row.sale_quantity != null ? row.sale_quantity : row.quantity;
   const amount = computeAmount2(payload.rate, billableQty);
   await d.prepare(`UPDATE dispatches SET rate=?, amount=? WHERE id=?`).run(payload.rate, amount, payload.id);
+  if (row.linked_purchase_id && amount != null && row.qty_cm > 0) {
+    const ratePerCm = round23(amount / row.qty_cm);
+    await d.prepare(`UPDATE purchases SET rate=?, amount=? WHERE id=?`).run(ratePerCm, amount, row.linked_purchase_id);
+  }
   return await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id);
 }
 async function setDelivery(payload) {
@@ -3307,11 +3546,18 @@ async function deleteDispatch(payload) {
   const d = getDb();
   const old = await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id);
   if (!old) return { ok: false, error: "Sale not found." };
-  await d.transaction(async () => {
-    await d.prepare(`DELETE FROM stock_movements WHERE ref_no=? AND type='dispatch'`).run(old.dispatch_no);
-    await d.prepare(`DELETE FROM dispatches WHERE id = ?`).run(payload.id);
-  });
-  return { ok: true };
+  try {
+    await d.transaction(async () => {
+      if (old.linked_purchase_id) await removeLinkedPurchase(old.linked_purchase_id);
+      await d.prepare(`DELETE FROM stock_movements WHERE ref_no=? AND type='dispatch'`).run(old.dispatch_no);
+      await d.prepare(`DELETE FROM dispatch_transporters WHERE dispatch_id = ?`).run(payload.id);
+      await d.prepare(`DELETE FROM dispatch_machines WHERE dispatch_id = ?`).run(payload.id);
+      await d.prepare(`DELETE FROM dispatches WHERE id = ?`).run(payload.id);
+    });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 }
 
 // src/main/services/transporters.ts
@@ -4392,6 +4638,36 @@ async function buildEntries(partyType, partyId) {
           debit: x.amount,
           credit: 0
         });
+    const dtrans = await d.prepare(
+      `SELECT di.dispatch_no, di.date, di.created_at, COALESCE(dt.charge,0) AS charge, t.name AS tname
+         FROM dispatch_transporters dt JOIN dispatches di ON di.id = dt.dispatch_id
+         JOIN transporters t ON t.id = dt.transporter_id WHERE di.plant_id = ?`
+    ).all(partyId);
+    for (const x of dtrans)
+      if (x.charge > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Sale transport \u2014 ${x.tname}`,
+          ref: x.dispatch_no,
+          debit: x.charge,
+          credit: 0
+        });
+    const dmach = await d.prepare(
+      `SELECT di.dispatch_no, di.date, di.created_at, COALESCE(dm.amount,0) AS amount, a.name AS aname
+         FROM dispatch_machines dm JOIN dispatches di ON di.id = dm.dispatch_id
+         JOIN assets a ON a.id = dm.asset_id WHERE di.plant_id = ?`
+    ).all(partyId);
+    for (const x of dmach)
+      if (x.amount > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Machine \u2014 ${x.aname}`,
+          ref: x.dispatch_no,
+          debit: x.amount,
+          credit: 0
+        });
     const dieselCost = await d.prepare(
       `SELECT purchase_no, date, created_at, COALESCE(amount,0) AS amount, litres
          FROM diesel_purchases WHERE plant_id = ?`
@@ -4535,6 +4811,21 @@ async function buildEntries(partyType, partyId) {
           created_at: x.created_at,
           particulars: `Machine hire \u2014 ${x.aname}`,
           ref: x.purchase_no,
+          debit: 0,
+          credit: x.amount
+        });
+    const dmach = await d.prepare(
+      `SELECT di.dispatch_no, di.date, di.created_at, COALESCE(dm.amount,0) AS amount, a.name AS aname
+         FROM dispatch_machines dm JOIN dispatches di ON di.id = dm.dispatch_id
+         JOIN assets a ON a.id = dm.asset_id WHERE dm.outsource_id = ?`
+    ).all(partyId);
+    for (const x of dmach)
+      if (x.amount > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Machine hire \u2014 ${x.aname}`,
+          ref: x.dispatch_no,
           debit: 0,
           credit: x.amount
         });
@@ -4712,6 +5003,21 @@ async function buildEntries(partyType, partyId) {
           created_at: x.created_at,
           particulars: `Transport \u2014 purchase inward${x.vno ? ` (${x.vno})` : ""}`,
           ref: x.purchase_no,
+          debit: 0,
+          credit: x.charge
+        });
+    const dtin = await d.prepare(
+      `SELECT di.dispatch_no, di.date, di.created_at, COALESCE(dt.charge,0) AS charge, COALESCE(dt.vehicle_no,'') AS vno
+         FROM dispatch_transporters dt JOIN dispatches di ON di.id = dt.dispatch_id
+         WHERE dt.transporter_id = ?`
+    ).all(partyId);
+    for (const x of dtin)
+      if (x.charge > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Transport \u2014 direct sale${x.vno ? ` (${x.vno})` : ""}`,
+          ref: x.dispatch_no,
           debit: 0,
           credit: x.charge
         });
@@ -5320,10 +5626,15 @@ async function getBudget(payload) {
        JOIN purchases pu ON pu.id = pm.purchase_id
        WHERE pu.plant_id = ? AND pu.date >= ? AND pu.date <= ?`
   ).get(plant_id, from, to);
+  const saleMachine = await d.prepare(
+    `SELECT COALESCE(SUM(dm.amount),0) AS amt FROM dispatch_machines dm
+       JOIN dispatches di ON di.id = dm.dispatch_id
+       WHERE di.plant_id = ? AND di.date >= ? AND di.date <= ?`
+  ).get(plant_id, from, to);
   const items = HEADS.map((h) => {
     const budget = budgetByHead.get(h.head) ?? 0;
     let actual = h.source === "diesel" ? money4(diesel.amt) : h.source === "payroll" ? money4(payroll.amt) : expByCat.get(h.head) ?? 0;
-    if (h.head === "equipment_rent") actual = money4(actual + money4(machine.amt));
+    if (h.head === "equipment_rent") actual = money4(actual + money4(machine.amt) + money4(saleMachine.amt));
     return { head: h.head, label: h.label, budget, actual, variance: money4(budget - actual) };
   });
   return {
@@ -6054,6 +6365,7 @@ var handlers = {
   "finished.available": availableProducts,
   "finished.setOpening": setOpening,
   "dispatches.list": listDispatches,
+  "dispatches.detail": getDispatchDetail,
   "dispatches.create": createDispatch,
   "dispatches.update": updateDispatch,
   "dispatches.setRate": setRate,
