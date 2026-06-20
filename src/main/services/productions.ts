@@ -1,7 +1,9 @@
 import { getDb, nextNumber } from '../db'
-import type { Production, ProductionOutput, ProductionSetting } from '@shared/types'
+import type { Production, ProductionOutput, ProductionSetting, Uom } from '@shared/types'
+import { toCm } from '@shared/types'
 import { addMovement, rawLocationBalance, finishedBalance } from './movements'
 import { ensureDefaultLocation } from './stockLocations'
+import { plantUomFactors } from './plants'
 
 export interface ProductionFilter {
   plant_id?: number
@@ -62,12 +64,17 @@ export async function previewProduction(payload: {
 export async function createProduction(p: {
   plant_id: number
   stock_location_id?: number
-  raw_qty: number
+  quantity?: number
+  uom?: Uom
+  raw_qty?: number
   date: string
   remarks: string
 }): Promise<Production> {
   const d = getDb()
-  if (!(p.raw_qty > 0)) throw new Error('Raw material quantity must be greater than 0.')
+  const uom: Uom = (['CM', 'TON', 'CFT'] as const).includes(p.uom as Uom) ? (p.uom as Uom) : 'CM'
+  const quantity = Number(p.quantity ?? p.raw_qty) || 0
+  if (!(quantity > 0)) throw new Error('Raw material quantity must be greater than 0.')
+  const rawQty = round(toCm(quantity, uom, await plantUomFactors(p.plant_id)))
   const locId = p.stock_location_id || (await ensureDefaultLocation(p.plant_id))
 
   const settings = (await d
@@ -77,19 +84,19 @@ export async function createProduction(p: {
     throw new Error('No production settings defined for this plant. Set them up first.')
 
   const available = await rawLocationBalance(d, locId)
-  if (p.raw_qty > available)
+  if (rawQty > available)
     throw new Error(
-      `Not enough raw material. Available: ${available} m³, requested: ${p.raw_qty} m³.`
+      `Not enough raw material. Available: ${available} m³, requested: ${rawQty} m³.`
     )
 
   const id = await d.transaction(async () => {
     const no = await nextNumber('PROD', 'production')
     const info = await d
       .prepare(
-        `INSERT INTO productions (production_no, plant_id, stock_location_id, raw_qty, date, remarks)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO productions (production_no, plant_id, stock_location_id, uom, quantity, raw_qty, date, remarks)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(no, p.plant_id, locId, p.raw_qty, p.date, p.remarks ?? '')
+      .run(no, p.plant_id, locId, uom, quantity, rawQty, p.date, p.remarks ?? '')
     const productionId = Number(info.lastInsertRowid)
 
     await addMovement(d, {
@@ -98,7 +105,7 @@ export async function createProduction(p: {
       ref_no: no,
       plant_id: p.plant_id,
       stock_location_id: locId,
-      change_qty: -p.raw_qty,
+      change_qty: -rawQty,
       date: p.date,
       note: 'Raw material consumed in production'
     })
@@ -108,7 +115,7 @@ export async function createProduction(p: {
        VALUES (?, ?, ?, ?)`
     )
     for (const s of settings) {
-      const qty = round((p.raw_qty * s.output_percentage) / 100)
+      const qty = round((rawQty * s.output_percentage) / 100)
       await outStmt.run(productionId, s.product_name, s.output_percentage, qty)
       if (qty > 0) {
         await addMovement(d, {

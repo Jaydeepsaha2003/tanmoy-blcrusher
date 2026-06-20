@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, Cog } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { Production } from '@shared/types'
+import { toCm, UOMS } from '@shared/types'
 import { PageHeader, Page } from '@/components/layout'
 import {
   Button,
@@ -40,18 +41,20 @@ export function ProductionEntry(): React.JSX.Element {
 
   const formLocations = locations.filter((l) => l.plant_id === form?.plant_id)
   const selectedLoc = locations.find((l) => l.id === form?.stock_location_id)
+  const formPlant = plants.find((p) => p.id === form?.plant_id)
+  const rawQtyCm = form ? toCm(Number(form.quantity) || 0, form.uom || 'CM', formPlant) : 0
 
   React.useEffect(() => {
     let active = true
-    if (form?.plant_id && Number(form.raw_qty) > 0) {
-      api.productions.preview(form.plant_id, Number(form.raw_qty)).then((p) => {
+    if (form?.plant_id && rawQtyCm > 0) {
+      api.productions.preview(form.plant_id, rawQtyCm).then((p) => {
         if (active) setPreview(p)
       })
     } else setPreview([])
     return () => {
       active = false
     }
-  }, [form?.plant_id, form?.raw_qty])
+  }, [form?.plant_id, rawQtyCm])
 
   const save = useMutation({
     mutationFn: (p: any) => api.productions.create(p),
@@ -64,7 +67,7 @@ export function ProductionEntry(): React.JSX.Element {
   })
 
   function openNew(): void {
-    setForm({ plant_id: plantId ?? plants[0]?.id, stock_location_id: undefined, raw_qty: '', date: today(), remarks: '' })
+    setForm({ plant_id: plantId ?? plants[0]?.id, stock_location_id: undefined, uom: 'CM', quantity: '', date: today(), remarks: '' })
     setOpen(true)
   }
 
@@ -100,7 +103,7 @@ export function ProductionEntry(): React.JSX.Element {
                 <TH>Date</TH>
                 <TH>Plant</TH>
                 <TH>Location</TH>
-                <TH className="text-right">Raw Used (m³)</TH>
+                <TH className="text-right">Raw Used</TH>
                 <TH>Outputs</TH>
                 <TH className="text-right">Actions</TH>
               </TR>
@@ -112,7 +115,10 @@ export function ProductionEntry(): React.JSX.Element {
                   <TD>{fmtDate(p.date)}</TD>
                   <TD className="font-medium">{p.plant_name}</TD>
                   <TD className="text-muted-foreground">{p.stock_location_name}</TD>
-                  <TD className="text-right">{fmtQty(p.raw_qty)}</TD>
+                  <TD className="whitespace-nowrap text-right">
+                    {fmtQty(p.quantity || p.raw_qty)} <span className="text-[11px] text-muted-foreground">{p.uom || 'CM'}</span>
+                    {(p.uom || 'CM') !== 'CM' && <div className="text-[11px] text-muted-foreground">{fmtQty(p.raw_qty)} m³</div>}
+                  </TD>
                   <TD>
                     <div className="flex flex-wrap gap-1">
                       {p.outputs?.map((o) => (
@@ -164,8 +170,18 @@ export function ProductionEntry(): React.JSX.Element {
                 options={[{ value: '', label: 'Plant default (auto)' }, ...formLocations.map((l) => ({ value: l.id, label: `${l.name} (${fmtQty(l.balance_qty)} m³)` }))]}
               />
             </Field>
-            <Field label="Raw Material Qty (m³)">
-              <Input type="number" step="0.001" value={form.raw_qty} onChange={(e) => setForm({ ...form, raw_qty: e.target.value })} />
+            <Field label="Raw Material Unit">
+              <SearchSelect
+                value={form.uom || 'CM'}
+                onChange={(v) => setForm({ ...form, uom: v })}
+                options={UOMS.map((u) => ({ value: u, label: u }))}
+              />
+            </Field>
+            <Field
+              label={`Raw Material Qty (${form.uom || 'CM'})`}
+              hint={(form.uom || 'CM') === 'CM' ? 'Stored as cubic metres' : `= ${fmtQty(rawQtyCm)} m³`}
+            >
+              <Input type="number" step="0.001" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
             </Field>
             <div className="col-span-2">
               <Field label="Remarks">
@@ -191,7 +207,7 @@ export function ProductionEntry(): React.JSX.Element {
               </CardContent>
             </Card>
           )}
-          {form.plant_id && preview.length === 0 && Number(form.raw_qty) > 0 && (
+          {form.plant_id && preview.length === 0 && rawQtyCm > 0 && (
             <p className="mt-3 text-sm text-destructive">
               No production settings for this plant. Set them up in Production Settings first.
             </p>
@@ -200,8 +216,8 @@ export function ProductionEntry(): React.JSX.Element {
           <div className="mt-5 flex justify-end gap-2">
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
             <Button
-              onClick={() => save.mutate({ ...form, raw_qty: Number(form.raw_qty) })}
-              disabled={!(Number(form.raw_qty) > 0) || preview.length === 0}
+              onClick={() => save.mutate({ ...form, quantity: Number(form.quantity), uom: form.uom || 'CM' })}
+              disabled={!(Number(form.quantity) > 0) || preview.length === 0}
             >
               Submit Production
             </Button>

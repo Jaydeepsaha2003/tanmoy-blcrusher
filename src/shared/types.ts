@@ -366,6 +366,8 @@ export interface Production {
   plant_name?: string
   stock_location_id: number
   stock_location_name?: string
+  quantity: number
+  uom: Uom
   raw_qty: number
   date: string
   remarks: string

@@ -230,6 +230,8 @@ CREATE TABLE IF NOT EXISTS productions (
   production_no     TEXT NOT NULL UNIQUE,
   plant_id          INTEGER NOT NULL REFERENCES plants(id),
   stock_location_id INTEGER NOT NULL REFERENCES stock_locations(id),
+  uom               TEXT NOT NULL DEFAULT 'CM',
+  quantity          REAL NOT NULL DEFAULT 0,
   raw_qty           REAL NOT NULL,
   date              TEXT NOT NULL,
   remarks           TEXT NOT NULL DEFAULT '',

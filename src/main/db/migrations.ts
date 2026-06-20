@@ -250,6 +250,8 @@ CREATE TABLE IF NOT EXISTS productions (
   production_no     VARCHAR(191) NOT NULL UNIQUE,
   plant_id          INT NOT NULL,
   stock_location_id INT NOT NULL,
+  uom               VARCHAR(8) NOT NULL DEFAULT 'CM',
+  quantity          DOUBLE NOT NULL DEFAULT 0,
   raw_qty           DOUBLE NOT NULL,
   date              VARCHAR(32) NOT NULL,
   remarks           TEXT,
@@ -888,6 +890,13 @@ CREATE TABLE IF NOT EXISTS spare_part_movements (
 CREATE INDEX idx_spare_parts_plant ON spare_parts(plant_id);
 CREATE INDEX idx_part_moves_part ON spare_part_movements(part_id);
 CREATE INDEX idx_part_moves_asset ON spare_part_movements(asset_id)`
+  },
+  {
+    // Preserve the entered UOM while raw_qty remains normalized to cubic metres.
+    id: '020_production_uom',
+    sql: `ALTER TABLE productions ADD COLUMN uom VARCHAR(8) NOT NULL DEFAULT 'CM';
+ALTER TABLE productions ADD COLUMN quantity DOUBLE NOT NULL DEFAULT 0;
+UPDATE productions SET quantity = raw_qty WHERE quantity = 0`
   }
 ]
 
@@ -973,6 +982,9 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   // Logbook rate→income (asset_plants & asset_plant_moves come from SCHEMA on SQLite).
   await addColumn('machine_logs', 'rate', 'REAL')
   await addColumn('machine_logs', 'amount', 'REAL')
+  await addColumn('productions', 'uom', `TEXT NOT NULL DEFAULT 'CM'`)
+  await addColumn('productions', 'quantity', 'REAL NOT NULL DEFAULT 0')
+  await adapter.execRaw(`UPDATE productions SET quantity = raw_qty WHERE quantity = 0`)
 }
 
 /**
