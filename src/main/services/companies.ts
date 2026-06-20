@@ -30,13 +30,32 @@ export async function createCompany(p: {
   contact: string
   address: string
   remarks: string
+  /** Auto-create a linked party of each type (default true for all). */
+  as_supplier?: boolean
+  as_customer?: boolean
+  as_transporter?: boolean
 }): Promise<Company> {
   const d = getDb()
   if (!p.name?.trim()) throw new Error('Company name is required.')
-  const info = await d
-    .prepare(`INSERT INTO companies (name, contact, address, remarks) VALUES (?, ?, ?, ?)`)
-    .run(properCase(p.name), p.contact ?? '', p.address ?? '', p.remarks ?? '')
-  return (await d.prepare(`SELECT * FROM companies WHERE id = ?`).get(info.lastInsertRowid)) as Company
+  const name = properCase(p.name)
+  const contact = p.contact ?? ''
+  const address = p.address ?? ''
+  return (await d.transaction(async () => {
+    const info = await d
+      .prepare(`INSERT INTO companies (name, contact, address, remarks) VALUES (?, ?, ?, ?)`)
+      .run(name, contact, address, p.remarks ?? '')
+    const companyId = Number(info.lastInsertRowid)
+    // Back-fill linked parties so the company is instantly usable in each role.
+    const mk = async (table: 'suppliers' | 'customers' | 'transporters'): Promise<void> => {
+      await d
+        .prepare(`INSERT INTO ${table} (name, contact, address, remarks, company_id) VALUES (?, ?, ?, '', ?)`)
+        .run(name, contact, address, companyId)
+    }
+    if (p.as_supplier !== false) await mk('suppliers')
+    if (p.as_customer !== false) await mk('customers')
+    if (p.as_transporter !== false) await mk('transporters')
+    return (await d.prepare(`SELECT * FROM companies WHERE id = ?`).get(companyId)) as Company
+  }))
 }
 
 export async function updateCompany(p: {

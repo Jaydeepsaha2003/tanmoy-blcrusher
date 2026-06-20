@@ -30,13 +30,16 @@ export function Companies(): React.JSX.Element {
   const nav = useNavigate()
   const { data = [] } = useQuery({ queryKey: ['companies'], queryFn: api.companies.list })
   const [open, setOpen] = React.useState(false)
-  const [form, setForm] = React.useState<Partial<Company>>({})
+  type CompanyForm = Partial<Company> & { as_supplier?: boolean; as_customer?: boolean; as_transporter?: boolean }
+  const [form, setForm] = React.useState<CompanyForm>({})
 
   const save = useMutation({
-    mutationFn: (p: Partial<Company>) =>
-      p.id ? api.companies.update(p) : api.companies.create(p),
+    mutationFn: (p: CompanyForm) => (p.id ? api.companies.update(p) : api.companies.create(p)),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['companies'] })
+      qc.invalidateQueries({ queryKey: ['suppliers'] })
+      qc.invalidateQueries({ queryKey: ['customers'] })
+      qc.invalidateQueries({ queryKey: ['transporters'] })
       setOpen(false)
       toast.success('Company saved.')
     },
@@ -78,7 +81,7 @@ export function Companies(): React.JSX.Element {
             <Button variant="outline" onClick={exportExcel} disabled={!data.length}>
               <FileSpreadsheet size={16} /> Excel
             </Button>
-            <Button onClick={() => { setForm({}); setOpen(true) }}>
+            <Button onClick={() => { setForm({ as_supplier: true, as_customer: true, as_transporter: true }); setOpen(true) }}>
               <Plus size={16} /> New Company
             </Button>
           </>
@@ -148,6 +151,36 @@ export function Companies(): React.JSX.Element {
           <Field label="Company Name">
             <Input value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Brijesh Ltd." />
           </Field>
+          {!form.id && (
+            <Field label="Create as" hint="Auto-creates a linked record for each role so you can use this company straight away. Uncheck any you don't need.">
+              <div className="flex flex-wrap gap-2">
+                {([
+                  ['as_supplier', 'Supplier'],
+                  ['as_customer', 'Customer'],
+                  ['as_transporter', 'Transporter']
+                ] as const).map(([key, label]) => {
+                  const checked = form[key] !== false
+                  return (
+                    <label
+                      key={key}
+                      className={
+                        'flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ' +
+                        (checked ? 'border-primary bg-primary/5 text-foreground' : 'border-input text-muted-foreground hover:bg-accent')
+                      }
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={checked}
+                        onChange={(e) => setForm({ ...form, [key]: e.target.checked })}
+                      />
+                      {label}
+                    </label>
+                  )
+                })}
+              </div>
+            </Field>
+          )}
           <Field label="Contact Details">
             <Input value={form.contact || ''} onChange={(e) => setForm({ ...form, contact: e.target.value })} placeholder="Phone / email" />
           </Field>

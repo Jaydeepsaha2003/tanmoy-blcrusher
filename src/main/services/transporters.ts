@@ -27,7 +27,7 @@ export async function listTransporters(payload: { plant_id?: number } = {}): Pro
            SELECT trips, total_cm, amount, diesel_amount FROM rack_loadings WHERE transporter_id = @id
            UNION ALL
            SELECT trips, total_cm, amount, diesel_amount FROM rack_unloadings WHERE transporter_id = @id
-         )`
+         ) AS u`
       )
       .get({ id: t.id })) as { trips: number; cm: number; amt: number; diesel: number }
     const pay = (await d

@@ -112,18 +112,14 @@ export function fromCm(qtyCm: number, uom: Uom, f?: UomFactors): number {
 }
 
 /**
- * Title-case a name/label for consistent storage and display.
- * "brijesh ltd" -> "Brijesh Ltd", "abc traders" -> "Abc Traders".
- * Capitalizes the first letter after a space, hyphen, slash, dot, ampersand or paren;
- * collapses repeated whitespace; leaves digits untouched. Returns '' for empty input.
+ * Normalize a name/identifier for consistent storage and display. Per business
+ * preference all names are stored in UPPERCASE; whitespace is collapsed.
+ * "brijesh ltd" -> "BRIJESH LTD". Returns '' for empty input.
+ * (Kept named properCase as it's the single name-normalizer used app-wide.)
  */
 export function properCase(s: string | null | undefined): string {
   if (!s) return ''
-  return s
-    .trim()
-    .replace(/\s+/g, ' ')
-    .toLowerCase()
-    .replace(/(^|[\s\-/().&])([a-z])/g, (_m, sep: string, ch: string) => sep + ch.toUpperCase())
+  return s.trim().replace(/\s+/g, ' ').toUpperCase()
 }
 
 /** Decide payment status from the amount paid against a total. */

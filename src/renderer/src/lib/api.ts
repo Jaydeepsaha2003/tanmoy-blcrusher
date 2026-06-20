@@ -212,7 +212,8 @@ export const api = {
   },
   companies: {
     list: () => call<Company[]>('companies.list'),
-    create: (p: Partial<Company>) => call<Company>('companies.create', p),
+    create: (p: Partial<Company> & { as_supplier?: boolean; as_customer?: boolean; as_transporter?: boolean }) =>
+      call<Company>('companies.create', p),
     update: (p: Partial<Company>) => call<Company>('companies.update', p),
     delete: (id: number) => call<{ ok: boolean; error?: string }>('companies.delete', { id })
   },

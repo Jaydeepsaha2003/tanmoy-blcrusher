@@ -693,6 +693,40 @@ async function importProductsFromSettings(adapter: Adapter): Promise<void> {
   }
 }
 
+/**
+ * One-time: uppercase existing name/identifier values so they match the new
+ * UPPERCASE normalization (esp. product_name, which is matched exactly for
+ * finished-goods/rack stock). Gated by a settings flag so it runs once.
+ */
+async function uppercaseExistingNames(adapter: Adapter, kind: DbKind): Promise<void> {
+  const flag = 'names_upper_v1'
+  const done = (await adapter.exec('SELECT value FROM settings WHERE `key` = ?', [flag], null)).rows
+  if (done.length > 0) return
+  const cols: [string, string][] = [
+    ['companies', 'name'], ['suppliers', 'name'], ['customers', 'name'], ['transporters', 'name'],
+    ['plants', 'name'], ['plants', 'code'], ['businesses', 'name'], ['outsource', 'name'], ['outsource', 'head'],
+    ['products', 'name'], ['stock_locations', 'name'], ['employees', 'name'], ['employees', 'designation'],
+    ['assets', 'name'], ['plant_expenses', 'title'],
+    ['production_settings', 'product_name'], ['production_outputs', 'product_name'],
+    ['stock_movements', 'product_name'], ['dispatches', 'product_name'], ['purchases', 'product_name'],
+    ['rack_loadings', 'product_name'], ['rack_unloadings', 'product_name'], ['rack_sales', 'product_name'],
+    ['finished_goods_opening', 'product_name'], ['customer_rates', 'product_name'], ['rate_chart', 'product_name'],
+    ['transport_charges', 'vehicle_type']
+  ]
+  for (const [t, c] of cols) {
+    try {
+      await adapter.exec(`UPDATE ${t} SET ${c} = UPPER(${c})`, undefined, null)
+    } catch {
+      /* table/column may be absent on an older DB, or a rare PK clash — skip it */
+    }
+  }
+  const ins =
+    kind === 'mysql'
+      ? "INSERT INTO settings (`key`, value) VALUES (?, '1') ON DUPLICATE KEY UPDATE value = '1'"
+      : "INSERT INTO settings (`key`, value) VALUES (?, '1') ON CONFLICT(`key`) DO UPDATE SET value = '1'"
+  await adapter.exec(ins, [flag], null)
+}
+
 async function seedDefaults(adapter: Adapter): Promise<void> {
   const pwRow = (
     await adapter.exec("SELECT value FROM settings WHERE `key` = 'admin_password'", undefined, null)
@@ -752,4 +786,5 @@ export async function runMigrations(adapter: Adapter, kind: DbKind): Promise<voi
   }
   await seedDefaults(adapter)
   await importProductsFromSettings(adapter)
+  await uppercaseExistingNames(adapter, kind)
 }
