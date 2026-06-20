@@ -201,16 +201,23 @@ export function Purchases(): React.JSX.Element {
       />
       <Page>
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <Select className="w-full sm:w-48" value={filter.supplier_id ?? ''} onChange={(e) => setFilter({ ...filter, supplier_id: e.target.value ? Number(e.target.value) : undefined })}>
-            <option value="">All suppliers</option>
-            {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </Select>
-          <Select className="w-full sm:w-44" value={filter.payment_status ?? ''} onChange={(e) => setFilter({ ...filter, payment_status: e.target.value || undefined })}>
-            <option value="">All payments</option>
-            <option value="paid">Paid</option>
-            <option value="partial">Partial</option>
-            <option value="unpaid">Unpaid</option>
-          </Select>
+          <SearchSelect
+            className="w-full sm:w-48"
+            value={filter.supplier_id ?? ''}
+            onChange={(v) => setFilter({ ...filter, supplier_id: v ? Number(v) : undefined })}
+            options={[{ value: '', label: 'All suppliers' }, ...suppliers.map((s) => ({ value: s.id, label: s.name }))]}
+          />
+          <SearchSelect
+            className="w-full sm:w-44"
+            value={filter.payment_status ?? ''}
+            onChange={(v) => setFilter({ ...filter, payment_status: v || undefined })}
+            options={[
+              { value: '', label: 'All payments' },
+              { value: 'paid', label: 'Paid' },
+              { value: 'partial', label: 'Partial' },
+              { value: 'unpaid', label: 'Unpaid' }
+            ]}
+          />
         </div>
 
         {data.length === 0 ? (
@@ -315,9 +322,12 @@ export function Purchases(): React.JSX.Element {
                   <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
                 </Field>
                 <Field label="Plant" required hint={plantId ? 'Active plant' : undefined}>
-                  <Select value={form.plant_id || ''} disabled={!!plantId} onChange={(e) => setForm({ ...form, plant_id: Number(e.target.value), stock_location_id: undefined })}>
-                    {plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </Select>
+                  <SearchSelect
+                    value={form.plant_id || ''}
+                    disabled={!!plantId}
+                    onChange={(v) => setForm({ ...form, plant_id: Number(v), stock_location_id: undefined })}
+                    options={plants.map((p) => ({ value: p.id, label: p.name }))}
+                  />
                 </Field>
                 {mk === 'finished' ? (
                   <Field label="Product" required className="sm:col-span-2" hint="Added to this product's finished-goods stock">
@@ -352,9 +362,11 @@ export function Purchases(): React.JSX.Element {
             <Section title={mk === 'mining' ? 'Quantity & Royalty Rate' : 'Quantity & Rate'}>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                 <Field label="Unit (UOM)" required>
-                  <Select value={form.uom || 'CM'} onChange={(e) => setForm({ ...form, uom: e.target.value })}>
-                    {UOMS.map((u) => <option key={u} value={u}>{u}</option>)}
-                  </Select>
+                  <SearchSelect
+                    value={form.uom || 'CM'}
+                    onChange={(v) => setForm({ ...form, uom: v })}
+                    options={UOMS.map((u) => ({ value: u, label: u }))}
+                  />
                 </Field>
                 <Field label={`Quantity (${form.uom || 'CM'})`} required hint={form.uom !== 'CM' ? `= ${fmtQty(toCm(Number(form.quantity) || 0, form.uom, formPlant))} m³` : 'm³'}>
                   <Input type="number" step="0.001" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
@@ -389,11 +401,15 @@ export function Purchases(): React.JSX.Element {
                             placeholder="Transporter…"
                           />
                           <Input value={t.vehicle_no} onChange={(e) => setTransporter(i, { vehicle_no: e.target.value })} placeholder="JH01AB1234" />
-                          <Select value={t.basis || 'flat'} onChange={(e) => setTransporter(i, { basis: e.target.value })}>
-                            <option value="flat">Flat</option>
-                            <option value="trip">Per Trip</option>
-                            <option value="uom">Per {form.uom || 'UOM'}</option>
-                          </Select>
+                          <SearchSelect
+                            value={t.basis || 'flat'}
+                            onChange={(v) => setTransporter(i, { basis: v })}
+                            options={[
+                              { value: 'flat', label: 'Flat' },
+                              { value: 'trip', label: 'Per Trip' },
+                              { value: 'uom', label: `Per ${form.uom || 'UOM'}` }
+                            ]}
+                          />
                           <Input type="number" step="0.01" value={computed ? t.qty : ''} disabled={!computed}
                             placeholder={computed ? '' : '—'} onChange={(e) => setTransporter(i, { qty: e.target.value })} />
                           <Input type="number" step="0.01" value={computed ? t.rate : ''} disabled={!computed}
@@ -434,10 +450,14 @@ export function Purchases(): React.JSX.Element {
                           options={assets.map((a) => ({ value: a.id, label: a.name }))}
                           placeholder="Machine…"
                         />
-                        <Select value={m.basis || 'hour'} onChange={(e) => setMachine(i, { basis: e.target.value as MachineBasis })}>
-                          <option value="hour">Per Hour</option>
-                          <option value="cm">Per m³</option>
-                        </Select>
+                        <SearchSelect
+                          value={m.basis || 'hour'}
+                          onChange={(v) => setMachine(i, { basis: v as MachineBasis })}
+                          options={[
+                            { value: 'hour', label: 'Per Hour' },
+                            { value: 'cm', label: 'Per m³' }
+                          ]}
+                        />
                         <Input type="number" step="0.01" value={m.qty} onChange={(e) => setMachine(i, { qty: e.target.value })} />
                         <Input type="number" step="0.01" value={m.rate} onChange={(e) => setMachine(i, { rate: e.target.value })} />
                         <SearchSelect

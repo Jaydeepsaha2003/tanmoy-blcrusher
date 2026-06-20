@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, Save } from 'lucide-react'
 import { api } from '@/lib/api'
 import { PageHeader, Page } from '@/components/layout'
-import { Button, Input, Select, Card, CardContent, EmptyState } from '@/components/ui'
+import { Button, Input, Select, SearchSelect, Card, CardContent, EmptyState } from '@/components/ui'
 import { useToast } from '@/components/toast'
 import { usePlant } from '@/lib/plant'
 import { cn } from '@/lib/utils'
@@ -76,9 +76,13 @@ export function ProductionSettings(): React.JSX.Element {
           <EmptyState message="Create a plant first." />
         ) : (
           <div className="max-w-2xl space-y-4">
-            <Select className="w-full sm:w-72" value={plantId || ''} disabled={!!globalPlant} onChange={(e) => setPlantId(Number(e.target.value))}>
-              {plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </Select>
+            <SearchSelect
+              className="w-full sm:w-72"
+              value={plantId || ''}
+              disabled={!!globalPlant}
+              onChange={(v) => setPlantId(Number(v))}
+              options={plants.map((p) => ({ value: p.id, label: p.name }))}
+            />
 
             <Card>
               <CardContent className="pt-5">
@@ -90,14 +94,18 @@ export function ProductionSettings(): React.JSX.Element {
                   </div>
                   {rows.map((r, i) => (
                     <div key={i} className="grid grid-cols-[1fr_140px_40px] gap-2">
-                      <Select value={r.product_name} onChange={(e) => update(i, { product_name: e.target.value })}>
-                        <option value="">Select product…</option>
-                        {/* Keep a stale value selectable so an existing setting still shows. */}
-                        {r.product_name && !products.some((p) => p.name === r.product_name) && (
-                          <option value={r.product_name}>{r.product_name}</option>
-                        )}
-                        {products.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}
-                      </Select>
+                      <SearchSelect
+                        value={r.product_name}
+                        onChange={(v) => update(i, { product_name: v })}
+                        placeholder="Select product…"
+                        options={[
+                          /* Keep a stale value selectable so an existing setting still shows. */
+                          ...(r.product_name && !products.some((p) => p.name === r.product_name)
+                            ? [{ value: r.product_name, label: r.product_name }]
+                            : []),
+                          ...products.map((p) => ({ value: p.name, label: p.name }))
+                        ]}
+                      />
                       <Input type="number" step="0.01" value={r.output_percentage} onChange={(e) => update(i, { output_percentage: e.target.value })} />
                       <Button variant="ghost" size="icon" onClick={() => setRows((rs) => rs.filter((_, idx) => idx !== i))}>
                         <Trash2 size={15} className="text-destructive" />

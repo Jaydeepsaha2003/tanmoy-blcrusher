@@ -8,6 +8,7 @@ import {
   Button,
   Input,
   Select,
+  SearchSelect,
   Field,
   Badge,
   Modal,
@@ -138,10 +139,7 @@ export function Assets(): React.JSX.Element {
             <Input value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Crusher Unit 1" />
           </Field>
           <Field label="Type">
-            <Select value={form.asset_type || 'machine'} onChange={(e) => setForm({ ...form, asset_type: e.target.value as Asset['asset_type'] })}>
-              <option value="machine">Machine</option>
-              <option value="vehicle">Vehicle</option>
-            </Select>
+            <SearchSelect value={form.asset_type || 'machine'} onChange={(v) => setForm({ ...form, asset_type: v as Asset['asset_type'] })} options={[{ value: 'machine', label: 'Machine' }, { value: 'vehicle', label: 'Vehicle' }]} />
           </Field>
           <Field label="Category">
             <Input list="asset-cats" value={form.category || ''} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Crusher, Tipper, JCB…" />
@@ -153,22 +151,13 @@ export function Assets(): React.JSX.Element {
             <Input value={form.identifier || ''} onChange={(e) => setForm({ ...form, identifier: e.target.value })} placeholder="e.g. JH-01-AB-1234" />
           </Field>
           <Field label="Plant" hint="Common = shared by all plants">
-            <Select value={form.plant_id ?? ''} onChange={(e) => setForm({ ...form, plant_id: e.target.value ? Number(e.target.value) : null })}>
-              <option value="">Common (all plants)</option>
-              {plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </Select>
+            <SearchSelect value={form.plant_id ?? ''} onChange={(v) => setForm({ ...form, plant_id: v ? Number(v) : null })} options={[{ value: '', label: 'Common (all plants)' }, ...plants.map((p) => ({ value: p.id, label: p.name }))]} />
           </Field>
           <Field label="Owning Business / Firm" hint="Costs & rent of this machine roll up here">
-            <Select value={form.business_id ?? ''} onChange={(e) => setForm({ ...form, business_id: e.target.value ? Number(e.target.value) : null })}>
-              <option value="">— None —</option>
-              {businesses.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </Select>
+            <SearchSelect value={form.business_id ?? ''} onChange={(v) => setForm({ ...form, business_id: v ? Number(v) : null })} options={[{ value: '', label: '— None —' }, ...businesses.map((b) => ({ value: b.id, label: b.name }))]} />
           </Field>
           <Field label="Status">
-            <Select value={form.status || 'active'} onChange={(e) => setForm({ ...form, status: e.target.value as Asset['status'] })}>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </Select>
+            <SearchSelect value={form.status || 'active'} onChange={(v) => setForm({ ...form, status: v as Asset['status'] })} options={[{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }]} />
           </Field>
           <div className="col-span-2">
             <Field label="Remarks">

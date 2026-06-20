@@ -8,6 +8,7 @@ import {
   Button,
   Input,
   Select,
+  SearchSelect,
   Field,
   Badge,
   Modal,
@@ -126,25 +127,9 @@ export function Movements(): React.JSX.Element {
       />
       <Page>
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <Select className="w-full sm:w-44" value={(filter.stock_location_id as number) ?? ''} onChange={(e) => set('stock_location_id', e.target.value ? Number(e.target.value) : '')}>
-            <option value="">All locations</option>
-            {formLocations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-          </Select>
-          <Select className="w-full sm:w-40" value={(filter.material_type as string) ?? ''} onChange={(e) => set('material_type', e.target.value)}>
-            <option value="">All material</option>
-            <option value="raw">Raw</option>
-            <option value="finished">Finished</option>
-          </Select>
-          <Select className="w-full sm:w-40" value={(filter.type as string) ?? ''} onChange={(e) => set('type', e.target.value)}>
-            <option value="">All types</option>
-            <option value="opening">Opening</option>
-            <option value="purchase">Purchase</option>
-            <option value="production_consume">Consumed</option>
-            <option value="production_output">Produced</option>
-            <option value="dispatch">Dispatch</option>
-            <option value="rack_load">To Rack</option>
-            <option value="transfer">Transfer</option>
-          </Select>
+          <SearchSelect className="w-full sm:w-44" value={(filter.stock_location_id as number) ?? ''} onChange={(v) => set('stock_location_id', v ? Number(v) : '')} options={[{ value: '', label: 'All locations' }, ...formLocations.map((l) => ({ value: l.id, label: l.name }))]} placeholder="All locations" />
+          <SearchSelect className="w-full sm:w-40" value={(filter.material_type as string) ?? ''} onChange={(v) => set('material_type', v)} options={[{ value: '', label: 'All material' }, { value: 'raw', label: 'Raw' }, { value: 'finished', label: 'Finished' }]} placeholder="All material" />
+          <SearchSelect className="w-full sm:w-40" value={(filter.type as string) ?? ''} onChange={(v) => set('type', v)} options={[{ value: '', label: 'All types' }, { value: 'opening', label: 'Opening' }, { value: 'purchase', label: 'Purchase' }, { value: 'production_consume', label: 'Consumed' }, { value: 'production_output', label: 'Produced' }, { value: 'dispatch', label: 'Dispatch' }, { value: 'rack_load', label: 'To Rack' }, { value: 'transfer', label: 'Transfer' }]} placeholder="All types" />
           <Input type="date" className="w-full sm:w-36" value={(filter.from as string) ?? ''} onChange={(e) => set('from', e.target.value)} />
           <span className="text-muted-foreground">to</span>
           <Input type="date" className="w-full sm:w-36" value={(filter.to as string) ?? ''} onChange={(e) => set('to', e.target.value)} />
@@ -196,16 +181,10 @@ export function Movements(): React.JSX.Element {
         <Modal open onClose={() => setXfer(null)} title="Transfer Raw Stock" width="max-w-lg">
           <div className="space-y-4">
             <Field label="From Location" required hint={`Available: ${fmtQty(fromBalance)} m³`}>
-              <Select value={xfer.from_location_id} onChange={(e) => setXfer({ ...xfer, from_location_id: e.target.value ? Number(e.target.value) : '' })}>
-                <option value="">Select source…</option>
-                {locations.map((l) => <option key={l.id} value={l.id}>{l.plant_name} — {l.name} ({fmtQty(l.balance_qty)} m³)</option>)}
-              </Select>
+              <SearchSelect value={xfer.from_location_id} onChange={(v) => setXfer({ ...xfer, from_location_id: v ? Number(v) : '' })} options={locations.map((l) => ({ value: l.id, label: `${l.plant_name} — ${l.name} (${fmtQty(l.balance_qty)} m³)` }))} placeholder="Select source…" />
             </Field>
             <Field label="To Location" required>
-              <Select value={xfer.to_location_id} onChange={(e) => setXfer({ ...xfer, to_location_id: e.target.value ? Number(e.target.value) : '' })}>
-                <option value="">Select destination…</option>
-                {locations.filter((l) => l.id !== Number(xfer.from_location_id)).map((l) => <option key={l.id} value={l.id}>{l.plant_name} — {l.name}</option>)}
-              </Select>
+              <SearchSelect value={xfer.to_location_id} onChange={(v) => setXfer({ ...xfer, to_location_id: v ? Number(v) : '' })} options={locations.filter((l) => l.id !== Number(xfer.from_location_id)).map((l) => ({ value: l.id, label: `${l.plant_name} — ${l.name}` }))} placeholder="Select destination…" />
             </Field>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Quantity (m³)" required>

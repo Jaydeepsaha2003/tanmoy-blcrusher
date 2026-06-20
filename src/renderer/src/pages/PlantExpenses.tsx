@@ -8,6 +8,7 @@ import {
   Button,
   Input,
   Select,
+  SearchSelect,
   Textarea,
   Field,
   Badge,
@@ -200,10 +201,12 @@ export function PlantExpenses(): React.JSX.Element {
         </div>
 
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <Select className="w-full sm:w-52" value={catFilter} onChange={(e) => setCatFilter(e.target.value as ExpenseCategory | '')}>
-            <option value="">All categories</option>
-            {CATS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-          </Select>
+          <SearchSelect
+            className="w-full sm:w-52"
+            value={catFilter}
+            onChange={(v) => setCatFilter(v as ExpenseCategory | '')}
+            options={[{ value: '', label: 'All categories' }, ...CATS.map((c) => ({ value: c.value, label: c.label }))]}
+          />
           <Input type="date" className="w-full sm:w-36" value={from} onChange={(e) => setFrom(e.target.value)} />
           <span className="text-muted-foreground">to</span>
           <Input type="date" className="w-full sm:w-36" value={to} onChange={(e) => setTo(e.target.value)} />
@@ -248,14 +251,19 @@ export function PlantExpenses(): React.JSX.Element {
         <Modal open={open} onClose={() => setOpen(false)} title={form.id ? `Edit ${form.expense_no}` : 'New Plant Expense'} width="max-w-2xl">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Plant" required hint={plantId ? 'Locked to active plant' : undefined}>
-              <Select value={form.plant_id || ''} disabled={!!plantId} onChange={(e) => setForm({ ...form, plant_id: Number(e.target.value) })}>
-                {plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </Select>
+              <SearchSelect
+                value={form.plant_id || ''}
+                disabled={!!plantId}
+                onChange={(v) => setForm({ ...form, plant_id: Number(v) })}
+                options={plants.map((p) => ({ value: p.id, label: p.name }))}
+              />
             </Field>
             <Field label="Category" required>
-              <Select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                {CATS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </Select>
+              <SearchSelect
+                value={form.category}
+                onChange={(v) => setForm({ ...form, category: v })}
+                options={CATS.map((c) => ({ value: c.value, label: c.label }))}
+              />
             </Field>
 
             {/* Electricity */}
@@ -301,10 +309,14 @@ export function PlantExpenses(): React.JSX.Element {
             {form.category === 'maintenance' && (
               <>
                 <Field label="Machine / Vehicle">
-                  <Select value={form.asset_id ?? ''} onChange={(e) => setForm({ ...form, asset_id: e.target.value ? Number(e.target.value) : null })}>
-                    <option value="">— Select —</option>
-                    {assets.map((a) => <option key={a.id} value={a.id}>{a.name}{a.identifier ? ` (${a.identifier})` : ''}</option>)}
-                  </Select>
+                  <SearchSelect
+                    value={form.asset_id ?? ''}
+                    onChange={(v) => setForm({ ...form, asset_id: v ? Number(v) : null })}
+                    options={[
+                      { value: '', label: '— Select —' },
+                      ...assets.map((a) => ({ value: a.id, label: `${a.name}${a.identifier ? ` (${a.identifier})` : ''}` }))
+                    ]}
+                  />
                 </Field>
                 <Field label="Amount" required>
                   <Input type="number" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
@@ -326,17 +338,25 @@ export function PlantExpenses(): React.JSX.Element {
                   </Field>
                 ) : (
                   <Field label="Vehicle">
-                    <Select value={form.asset_id ?? ''} onChange={(e) => setForm({ ...form, asset_id: e.target.value ? Number(e.target.value) : null })}>
-                      <option value="">— Select —</option>
-                      {assets.map((a) => <option key={a.id} value={a.id}>{a.name}{a.identifier ? ` (${a.identifier})` : ''}</option>)}
-                    </Select>
+                    <SearchSelect
+                      value={form.asset_id ?? ''}
+                      onChange={(v) => setForm({ ...form, asset_id: v ? Number(v) : null })}
+                      options={[
+                        { value: '', label: '— Select —' },
+                        ...assets.map((a) => ({ value: a.id, label: `${a.name}${a.identifier ? ` (${a.identifier})` : ''}` }))
+                      ]}
+                    />
                   </Field>
                 )}
                 <Field label="Basis">
-                  <Select value={form.basis} onChange={(e) => setForm({ ...form, basis: e.target.value })}>
-                    <option value="lumpsum">Lump sum</option>
-                    <option value="hourly">Per hour</option>
-                  </Select>
+                  <SearchSelect
+                    value={form.basis}
+                    onChange={(v) => setForm({ ...form, basis: v })}
+                    options={[
+                      { value: 'lumpsum', label: 'Lump sum' },
+                      { value: 'hourly', label: 'Per hour' }
+                    ]}
+                  />
                 </Field>
                 {rentHourly ? (
                   <>
@@ -384,10 +404,14 @@ export function PlantExpenses(): React.JSX.Element {
               </div>
             </Field>
             <Field label="Outsourced From (optional)" hint="Posts to the vendor's ledger as payable">
-              <Select value={form.outsource_id ?? ''} onChange={(e) => setForm({ ...form, outsource_id: e.target.value ? Number(e.target.value) : null })}>
-                <option value="">— None —</option>
-                {outsourceVendors.map((o) => <option key={o.id} value={o.id}>{o.name}{o.head ? ` (${o.head})` : ''}</option>)}
-              </Select>
+              <SearchSelect
+                value={form.outsource_id ?? ''}
+                onChange={(v) => setForm({ ...form, outsource_id: v ? Number(v) : null })}
+                options={[
+                  { value: '', label: '— None —' },
+                  ...outsourceVendors.map((o) => ({ value: o.id, label: `${o.name}${o.head ? ` (${o.head})` : ''}` }))
+                ]}
+              />
             </Field>
             <Field label="Remarks">
               <Input value={form.remarks || ''} onChange={(e) => setForm({ ...form, remarks: e.target.value })} />

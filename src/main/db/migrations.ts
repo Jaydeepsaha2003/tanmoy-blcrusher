@@ -104,7 +104,8 @@ CREATE TABLE IF NOT EXISTS suppliers (
   remarks    TEXT,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   company_id INT,
-  plant_id   INT
+  plant_id   INT,
+  plant_ref_id INT
 );
 CREATE TABLE IF NOT EXISTS customers (
   id          INT AUTO_INCREMENT PRIMARY KEY,
@@ -115,7 +116,8 @@ CREATE TABLE IF NOT EXISTS customers (
   created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   company_id  INT,
   plant_id    INT,
-  share_token VARCHAR(64)
+  share_token VARCHAR(64),
+  plant_ref_id INT
 );
 CREATE TABLE IF NOT EXISTS transporters (
   id         INT AUTO_INCREMENT PRIMARY KEY,
@@ -160,6 +162,8 @@ CREATE TABLE IF NOT EXISTS purchases (
   purchase_mode     VARCHAR(16) NOT NULL DEFAULT 'purchase',
   product_name      VARCHAR(255) NOT NULL DEFAULT '',
   outsource_id      INT,
+  from_plant_id     INT,
+  linked_dispatch_id INT,
   quantity          DOUBLE NOT NULL,
   rate              DOUBLE,
   amount            DOUBLE,
@@ -183,6 +187,28 @@ CREATE TABLE IF NOT EXISTS purchase_transporters (
 CREATE TABLE IF NOT EXISTS purchase_machines (
   id           INT AUTO_INCREMENT PRIMARY KEY,
   purchase_id  INT NOT NULL,
+  asset_id     INT NOT NULL,
+  basis        VARCHAR(8) NOT NULL DEFAULT 'hour',
+  qty          DOUBLE NOT NULL DEFAULT 0,
+  rate         DOUBLE NOT NULL DEFAULT 0,
+  amount       DOUBLE NOT NULL DEFAULT 0,
+  outsource_id INT,
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS dispatch_transporters (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  dispatch_id    INT NOT NULL,
+  transporter_id INT NOT NULL,
+  vehicle_no     VARCHAR(64) NOT NULL DEFAULT '',
+  basis          VARCHAR(8) NOT NULL DEFAULT 'flat',
+  qty            DOUBLE NOT NULL DEFAULT 0,
+  rate           DOUBLE NOT NULL DEFAULT 0,
+  charge         DOUBLE NOT NULL DEFAULT 0,
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS dispatch_machines (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  dispatch_id  INT NOT NULL,
   asset_id     INT NOT NULL,
   basis        VARCHAR(8) NOT NULL DEFAULT 'hour',
   qty          DOUBLE NOT NULL DEFAULT 0,
@@ -247,6 +273,8 @@ CREATE TABLE IF NOT EXISTS dispatches (
   dispatch_status  VARCHAR(32) NOT NULL DEFAULT 'pending',
   payment_status   VARCHAR(32) NOT NULL DEFAULT 'unpaid',
   paid_amount      DOUBLE NOT NULL DEFAULT 0,
+  to_plant_id      INT,
+  linked_purchase_id INT,
   date             VARCHAR(32) NOT NULL,
   remarks          TEXT,
   created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -645,6 +673,41 @@ CREATE INDEX idx_pmach_purchase ON purchase_machines(purchase_id)`
     sql: `ALTER TABLE purchase_transporters ADD COLUMN basis VARCHAR(8) NOT NULL DEFAULT 'flat';
 ALTER TABLE purchase_transporters ADD COLUMN qty DOUBLE NOT NULL DEFAULT 0;
 ALTER TABLE purchase_transporters ADD COLUMN rate DOUBLE NOT NULL DEFAULT 0`
+  },
+  {
+    // Direct-sale transporter + machine cost lines, and inter-plant sale ↔ purchase linkage.
+    id: '014_dispatch_lines_interplant',
+    sql: `CREATE TABLE IF NOT EXISTS dispatch_transporters (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  dispatch_id    INT NOT NULL,
+  transporter_id INT NOT NULL,
+  vehicle_no     VARCHAR(64) NOT NULL DEFAULT '',
+  basis          VARCHAR(8) NOT NULL DEFAULT 'flat',
+  qty            DOUBLE NOT NULL DEFAULT 0,
+  rate           DOUBLE NOT NULL DEFAULT 0,
+  charge         DOUBLE NOT NULL DEFAULT 0,
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS dispatch_machines (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  dispatch_id  INT NOT NULL,
+  asset_id     INT NOT NULL,
+  basis        VARCHAR(8) NOT NULL DEFAULT 'hour',
+  qty          DOUBLE NOT NULL DEFAULT 0,
+  rate         DOUBLE NOT NULL DEFAULT 0,
+  amount       DOUBLE NOT NULL DEFAULT 0,
+  outsource_id INT,
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+ALTER TABLE dispatches ADD COLUMN to_plant_id INT;
+ALTER TABLE dispatches ADD COLUMN linked_purchase_id INT;
+ALTER TABLE purchases ADD COLUMN from_plant_id INT;
+ALTER TABLE purchases ADD COLUMN linked_dispatch_id INT;
+ALTER TABLE suppliers ADD COLUMN plant_ref_id INT;
+ALTER TABLE customers ADD COLUMN plant_ref_id INT;
+CREATE INDEX idx_dtrans_dispatch ON dispatch_transporters(dispatch_id);
+CREATE INDEX idx_dtrans_transporter ON dispatch_transporters(transporter_id);
+CREATE INDEX idx_dmach_dispatch ON dispatch_machines(dispatch_id)`
   }
 ]
 
@@ -716,6 +779,14 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   await addColumn('purchase_transporters', 'basis', `TEXT NOT NULL DEFAULT 'flat'`)
   await addColumn('purchase_transporters', 'qty', 'REAL NOT NULL DEFAULT 0')
   await addColumn('purchase_transporters', 'rate', 'REAL NOT NULL DEFAULT 0')
+  // Direct-sale transporter/machine cost lines + inter-plant sale↔purchase linkage.
+  // (dispatch_transporters / dispatch_machines come from SCHEMA on the SQLite path.)
+  await addColumn('dispatches', 'to_plant_id', 'INTEGER')
+  await addColumn('dispatches', 'linked_purchase_id', 'INTEGER')
+  await addColumn('purchases', 'from_plant_id', 'INTEGER')
+  await addColumn('purchases', 'linked_dispatch_id', 'INTEGER')
+  await addColumn('suppliers', 'plant_ref_id', 'INTEGER')
+  await addColumn('customers', 'plant_ref_id', 'INTEGER')
 }
 
 /**

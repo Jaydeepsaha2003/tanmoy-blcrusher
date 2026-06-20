@@ -104,6 +104,7 @@ export const handlers: Record<string, (payload: any) => unknown> = {
   'finished.setOpening': finished.setOpening,
 
   'dispatches.list': dispatches.listDispatches,
+  'dispatches.detail': dispatches.getDispatchDetail,
   'dispatches.create': dispatches.createDispatch,
   'dispatches.update': dispatches.updateDispatch,
   'dispatches.setRate': dispatches.setRate,

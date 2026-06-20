@@ -465,6 +465,42 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
           credit: 0
         })
 
+    // Direct-sale transport + machine costs.
+    const dtrans = (await d
+      .prepare(
+        `SELECT di.dispatch_no, di.date, di.created_at, COALESCE(dt.charge,0) AS charge, t.name AS tname
+         FROM dispatch_transporters dt JOIN dispatches di ON di.id = dt.dispatch_id
+         JOIN transporters t ON t.id = dt.transporter_id WHERE di.plant_id = ?`
+      )
+      .all(partyId)) as { dispatch_no: string; date: string; created_at: string; charge: number; tname: string }[]
+    for (const x of dtrans)
+      if (x.charge > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Sale transport — ${x.tname}`,
+          ref: x.dispatch_no,
+          debit: x.charge,
+          credit: 0
+        })
+    const dmach = (await d
+      .prepare(
+        `SELECT di.dispatch_no, di.date, di.created_at, COALESCE(dm.amount,0) AS amount, a.name AS aname
+         FROM dispatch_machines dm JOIN dispatches di ON di.id = dm.dispatch_id
+         JOIN assets a ON a.id = dm.asset_id WHERE di.plant_id = ?`
+      )
+      .all(partyId)) as { dispatch_no: string; date: string; created_at: string; amount: number; aname: string }[]
+    for (const x of dmach)
+      if (x.amount > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Machine — ${x.aname}`,
+          ref: x.dispatch_no,
+          debit: x.amount,
+          credit: 0
+        })
+
     const dieselCost = (await d
       .prepare(
         `SELECT purchase_no, date, created_at, COALESCE(amount,0) AS amount, litres
@@ -685,6 +721,24 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
           created_at: x.created_at,
           particulars: `Machine hire — ${x.aname}`,
           ref: x.purchase_no,
+          debit: 0,
+          credit: x.amount
+        })
+    // Machine-usage lines on direct sales hired from this vendor — payable.
+    const dmach = (await d
+      .prepare(
+        `SELECT di.dispatch_no, di.date, di.created_at, COALESCE(dm.amount,0) AS amount, a.name AS aname
+         FROM dispatch_machines dm JOIN dispatches di ON di.id = dm.dispatch_id
+         JOIN assets a ON a.id = dm.asset_id WHERE dm.outsource_id = ?`
+      )
+      .all(partyId)) as { dispatch_no: string; date: string; created_at: string; amount: number; aname: string }[]
+    for (const x of dmach)
+      if (x.amount > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Machine hire — ${x.aname}`,
+          ref: x.dispatch_no,
           debit: 0,
           credit: x.amount
         })
@@ -939,6 +993,24 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
           created_at: x.created_at,
           particulars: `Transport — purchase inward${x.vno ? ` (${x.vno})` : ''}`,
           ref: x.purchase_no,
+          debit: 0,
+          credit: x.charge
+        })
+    // Transporter cost lines on direct sales — payable.
+    const dtin = (await d
+      .prepare(
+        `SELECT di.dispatch_no, di.date, di.created_at, COALESCE(dt.charge,0) AS charge, COALESCE(dt.vehicle_no,'') AS vno
+         FROM dispatch_transporters dt JOIN dispatches di ON di.id = dt.dispatch_id
+         WHERE dt.transporter_id = ?`
+      )
+      .all(partyId)) as { dispatch_no: string; date: string; created_at: string; charge: number; vno: string }[]
+    for (const x of dtin)
+      if (x.charge > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Transport — direct sale${x.vno ? ` (${x.vno})` : ''}`,
+          ref: x.dispatch_no,
           debit: 0,
           credit: x.charge
         })

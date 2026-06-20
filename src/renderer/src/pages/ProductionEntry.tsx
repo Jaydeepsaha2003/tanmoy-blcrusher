@@ -8,6 +8,7 @@ import {
   Button,
   Input,
   Select,
+  SearchSelect,
   Field,
   Modal,
   Card,
@@ -137,9 +138,12 @@ export function ProductionEntry(): React.JSX.Element {
         <Modal open={open} onClose={() => setOpen(false)} title="New Production" width="max-w-2xl">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Plant" hint={plantId ? 'Locked to active plant' : undefined}>
-              <Select value={form.plant_id || ''} disabled={!!plantId} onChange={(e) => setForm({ ...form, plant_id: Number(e.target.value), stock_location_id: undefined })}>
-                {plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </Select>
+              <SearchSelect
+                value={form.plant_id || ''}
+                disabled={!!plantId}
+                onChange={(v) => setForm({ ...form, plant_id: Number(v), stock_location_id: undefined })}
+                options={plants.map((p) => ({ value: p.id, label: p.name }))}
+              />
             </Field>
             <Field label="Production Date">
               <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
@@ -152,15 +156,13 @@ export function ProductionEntry(): React.JSX.Element {
                   : 'Leave blank to use the plant itself as the default location'
               }
             >
-              <Select
+              <SearchSelect
                 value={form.stock_location_id || ''}
-                onChange={(e) =>
-                  setForm({ ...form, stock_location_id: e.target.value ? Number(e.target.value) : undefined })
+                onChange={(v) =>
+                  setForm({ ...form, stock_location_id: v ? Number(v) : undefined })
                 }
-              >
-                <option value="">Plant default (auto)</option>
-                {formLocations.map((l) => <option key={l.id} value={l.id}>{l.name} ({fmtQty(l.balance_qty)} m³)</option>)}
-              </Select>
+                options={[{ value: '', label: 'Plant default (auto)' }, ...formLocations.map((l) => ({ value: l.id, label: `${l.name} (${fmtQty(l.balance_qty)} m³)` }))]}
+              />
             </Field>
             <Field label="Raw Material Qty (m³)">
               <Input type="number" step="0.001" value={form.raw_qty} onChange={(e) => setForm({ ...form, raw_qty: e.target.value })} />

@@ -9,6 +9,7 @@ import {
   Button,
   Input,
   Select,
+  SearchSelect,
   Field,
   Badge,
   Modal,
@@ -185,18 +186,28 @@ export function Payments(): React.JSX.Element {
         </div>
 
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <Select className="w-44" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as PartyType | '')}>
-            <option value="">All parties</option>
-            <option value="customer">Customers</option>
-            <option value="supplier">Suppliers</option>
-            <option value="transporter">Transporters</option>
-            <option value="outsource">Outsource</option>
-          </Select>
-          <Select className="w-44" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as '' | 'outstanding' | 'settled')}>
-            <option value="">All statuses</option>
-            <option value="outstanding">Outstanding</option>
-            <option value="settled">Settled</option>
-          </Select>
+          <SearchSelect
+            className="w-44"
+            value={typeFilter}
+            onChange={(v) => setTypeFilter(v as PartyType | '')}
+            options={[
+              { value: '', label: 'All parties' },
+              { value: 'customer', label: 'Customers' },
+              { value: 'supplier', label: 'Suppliers' },
+              { value: 'transporter', label: 'Transporters' },
+              { value: 'outsource', label: 'Outsource' }
+            ]}
+          />
+          <SearchSelect
+            className="w-44"
+            value={statusFilter}
+            onChange={(v) => setStatusFilter(v as '' | 'outstanding' | 'settled')}
+            options={[
+              { value: '', label: 'All statuses' },
+              { value: 'outstanding', label: 'Outstanding' },
+              { value: 'settled', label: 'Settled' }
+            ]}
+          />
         </div>
 
         {rows.length === 0 ? (
@@ -255,55 +266,62 @@ export function Payments(): React.JSX.Element {
             {payForm.pick && (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label="Party type">
-                  <Select
+                  <SearchSelect
                     value={payForm.party_type}
-                    onChange={(e) =>
-                      setPayForm({ ...payForm, party_type: e.target.value as PartyType, party_id: 0, party_name: '' })
+                    onChange={(v) =>
+                      setPayForm({ ...payForm, party_type: v as PartyType, party_id: 0, party_name: '' })
                     }
-                  >
-                    <option value="supplier">Supplier</option>
-                    <option value="customer">Customer</option>
-                    <option value="transporter">Transporter</option>
-                    <option value="outsource">Outsource</option>
-                  </Select>
+                    options={[
+                      { value: 'supplier', label: 'Supplier' },
+                      { value: 'customer', label: 'Customer' },
+                      { value: 'transporter', label: 'Transporter' },
+                      { value: 'outsource', label: 'Outsource' }
+                    ]}
+                  />
                 </Field>
                 <Field label="Party">
-                  <Select
+                  <SearchSelect
                     value={payForm.party_id || ''}
-                    onChange={(e) => {
-                      const id = Number(e.target.value)
+                    onChange={(v) => {
+                      const id = Number(v)
                       const p = partyList(payForm.party_type).find((x) => x.id === id)
                       setPayForm({ ...payForm, party_id: id, party_name: p?.name ?? '' })
                     }}
-                  >
-                    <option value="">Select {typeLabel[payForm.party_type as PartyType]}…</option>
-                    {partyList(payForm.party_type).map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}{p.head ? ` — ${p.head}` : ''}
-                      </option>
-                    ))}
-                  </Select>
+                    options={partyList(payForm.party_type).map((p) => ({
+                      value: p.id,
+                      label: `${p.name}${p.head ? ` — ${p.head}` : ''}`
+                    }))}
+                    placeholder={`Select ${typeLabel[payForm.party_type as PartyType]}…`}
+                  />
                 </Field>
               </div>
             )}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Direction">
-                <Select value={payForm.direction} onChange={(e) => setPayForm({ ...payForm, direction: e.target.value })}>
-                  <option value="in">Received from party</option>
-                  <option value="out">Paid to party</option>
-                </Select>
+                <SearchSelect
+                  value={payForm.direction}
+                  onChange={(v) => setPayForm({ ...payForm, direction: v })}
+                  options={[
+                    { value: 'in', label: 'Received from party' },
+                    { value: 'out', label: 'Paid to party' }
+                  ]}
+                />
               </Field>
               <Field label="Amount">
                 <Input type="number" step="0.01" autoFocus value={payForm.amount} onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })} />
               </Field>
               <Field label="Mode">
-                <Select value={payForm.mode} onChange={(e) => setPayForm({ ...payForm, mode: e.target.value })}>
-                  <option value="cash">Cash</option>
-                  <option value="bank">Bank Transfer</option>
-                  <option value="upi">UPI</option>
-                  <option value="cheque">Cheque</option>
-                  <option value="other">Other</option>
-                </Select>
+                <SearchSelect
+                  value={payForm.mode}
+                  onChange={(v) => setPayForm({ ...payForm, mode: v })}
+                  options={[
+                    { value: 'cash', label: 'Cash' },
+                    { value: 'bank', label: 'Bank Transfer' },
+                    { value: 'upi', label: 'UPI' },
+                    { value: 'cheque', label: 'Cheque' },
+                    { value: 'other', label: 'Other' }
+                  ]}
+                />
               </Field>
               <Field label="Date">
                 <Input type="date" value={payForm.date} onChange={(e) => setPayForm({ ...payForm, date: e.target.value })} />

@@ -7,6 +7,7 @@ import {
   Button,
   Input,
   Select,
+  SearchSelect,
   Badge,
   Table,
   THead,
@@ -80,13 +81,8 @@ export function Reports(): React.JSX.Element {
       />
       <Page>
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <Select className="w-full sm:w-72" value={type} onChange={(e) => setType(e.target.value as ReportType)}>
-            {REPORTS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-          </Select>
-          <Select className="w-full sm:w-44" value={plantId} disabled={!!globalPlant} onChange={(e) => setPlantId(e.target.value ? Number(e.target.value) : '')}>
-            <option value="">All plants</option>
-            {plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </Select>
+          <SearchSelect className="w-full sm:w-72" value={type} onChange={(v) => setType(v as ReportType)} options={REPORTS.map((r) => ({ value: r.value, label: r.label }))} />
+          <SearchSelect className="w-full sm:w-44" value={plantId} disabled={!!globalPlant} onChange={(v) => setPlantId(v ? Number(v) : '')} options={[{ value: '', label: 'All plants' }, ...plants.map((p) => ({ value: p.id, label: p.name }))]} />
           {usesDate && (
             <>
               <Input type="date" className="w-full sm:w-36" value={from} onChange={(e) => setFrom(e.target.value)} />

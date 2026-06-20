@@ -9,6 +9,7 @@ import {
   Button,
   Input,
   Select,
+  SearchSelect,
   Field,
   Badge,
   Modal,
@@ -106,17 +107,18 @@ export function Racks(): React.JSX.Element {
       />
       <Page>
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <Select
+          <SearchSelect
             className="w-full sm:w-44"
             value={filter.status ?? ''}
-            onChange={(e) => setFilter({ status: e.target.value || undefined })}
-          >
-            <option value="">All statuses</option>
-            <option value="loading">Loading</option>
-            <option value="in_transit">In Transit</option>
-            <option value="reached">Reached</option>
-            <option value="closed">Closed</option>
-          </Select>
+            onChange={(v) => setFilter({ status: v || undefined })}
+            options={[
+              { value: '', label: 'All statuses' },
+              { value: 'loading', label: 'Loading' },
+              { value: 'in_transit', label: 'In Transit' },
+              { value: 'reached', label: 'Reached' },
+              { value: 'closed', label: 'Closed' }
+            ]}
+          />
         </div>
 
         {data.length === 0 ? (

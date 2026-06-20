@@ -10,6 +10,7 @@ import {
   Button,
   Input,
   Select,
+  SearchSelect,
   Field,
   Badge,
   Modal,
@@ -207,10 +208,7 @@ export function UsersPage(): React.JSX.Element {
                 />
               </Field>
               <Field label="Role">
-                <Select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })}>
-                  <option value="staff">Staff (scoped access)</option>
-                  <option value="admin">Admin (full access)</option>
-                </Select>
+                <SearchSelect value={form.role} onChange={(v) => setForm({ ...form, role: v as Role })} options={[{ value: 'staff', label: 'Staff (scoped access)' }, { value: 'admin', label: 'Admin (full access)' }]} />
               </Field>
             </div>
 
@@ -237,15 +235,12 @@ export function UsersPage(): React.JSX.Element {
                     {STAFF_MODULES.map((m) => (
                       <div key={m.key} className="flex items-center justify-between gap-2">
                         <span className="text-sm">{m.label}</span>
-                        <Select
+                        <SearchSelect
                           className="w-28 shrink-0"
                           value={modState(m.key)}
-                          onChange={(e) => setModState(m.key, e.target.value as ModState)}
-                        >
-                          <option value="none">No access</option>
-                          <option value="view">View</option>
-                          <option value="edit">Edit</option>
-                        </Select>
+                          onChange={(v) => setModState(m.key, v as ModState)}
+                          options={[{ value: 'none', label: 'No access' }, { value: 'view', label: 'View' }, { value: 'edit', label: 'Edit' }]}
+                        />
                       </div>
                     ))}
                   </div>

@@ -8,6 +8,7 @@ import {
   Button,
   Input,
   Select,
+  SearchSelect,
   Field,
   Badge,
   Modal,
@@ -137,13 +138,14 @@ export function Plants(): React.JSX.Element {
             />
           </Field>
           <Field label="Status">
-            <Select
+            <SearchSelect
               value={form.status || 'active'}
-              onChange={(e) => setForm({ ...form, status: e.target.value as Plant['status'] })}
-            >
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </Select>
+              onChange={(v) => setForm({ ...form, status: v as Plant['status'] })}
+              options={[
+                { value: 'active', label: 'Active' },
+                { value: 'inactive', label: 'Inactive' }
+              ]}
+            />
           </Field>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setOpen(false)}>

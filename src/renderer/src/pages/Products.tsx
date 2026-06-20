@@ -8,6 +8,7 @@ import {
   Button,
   Input,
   Select,
+  SearchSelect,
   Textarea,
   Field,
   Badge,
@@ -113,13 +114,11 @@ export function Products(): React.JSX.Element {
             />
           </Field>
           <Field label="Status">
-            <Select
+            <SearchSelect
               value={form.status || 'active'}
-              onChange={(e) => setForm({ ...form, status: e.target.value as Product['status'] })}
-            >
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </Select>
+              onChange={(v) => setForm({ ...form, status: v as Product['status'] })}
+              options={[{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }]}
+            />
           </Field>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>

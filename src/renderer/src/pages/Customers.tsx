@@ -9,6 +9,7 @@ import {
   Button,
   Input,
   Select,
+  SearchSelect,
   Textarea,
   Field,
   Modal,
@@ -159,22 +160,18 @@ export function Customers(): React.JSX.Element {
           </Field>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Company / Group (optional)" hint="For a combined company ledger">
-              <Select
+              <SearchSelect
                 value={form.company_id ?? ''}
-                onChange={(e) => setForm({ ...form, company_id: e.target.value ? Number(e.target.value) : null })}
-              >
-                <option value="">— None —</option>
-                {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </Select>
+                onChange={(v) => setForm({ ...form, company_id: v ? Number(v) : null })}
+                options={[{ value: '', label: '— None —' }, ...companies.map((c) => ({ value: c.id, label: c.name }))]}
+              />
             </Field>
             <Field label="Plant" hint="Common = available to all plants">
-              <Select
+              <SearchSelect
                 value={form.plant_id ?? ''}
-                onChange={(e) => setForm({ ...form, plant_id: e.target.value ? Number(e.target.value) : null })}
-              >
-                <option value="">Common (all plants)</option>
-                {plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </Select>
+                onChange={(v) => setForm({ ...form, plant_id: v ? Number(v) : null })}
+                options={[{ value: '', label: 'Common (all plants)' }, ...plants.map((p) => ({ value: p.id, label: p.name }))]}
+              />
             </Field>
           </div>
           <Field label="Contact Details">
@@ -350,17 +347,23 @@ function RatesModal({
               </div>
               {rows.map((r, i) => (
                 <div key={i} className="grid grid-cols-[1fr_96px_120px_36px] gap-2">
-                  <Select value={r.product_name} onChange={(e) => update(i, { product_name: e.target.value })}>
-                    <option value="">Select product…</option>
-                    {/* keep a stale value selectable */}
-                    {r.product_name && !products.some((p) => p.name === r.product_name) && (
-                      <option value={r.product_name}>{r.product_name}</option>
-                    )}
-                    {products.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}
-                  </Select>
-                  <Select value={r.uom} onChange={(e) => update(i, { uom: e.target.value as Uom })}>
-                    {UOMS.map((u) => <option key={u} value={u}>{u}</option>)}
-                  </Select>
+                  <SearchSelect
+                    value={r.product_name}
+                    onChange={(v) => update(i, { product_name: v })}
+                    placeholder="Select product…"
+                    options={[
+                      // keep a stale value selectable
+                      ...(r.product_name && !products.some((p) => p.name === r.product_name)
+                        ? [{ value: r.product_name, label: r.product_name }]
+                        : []),
+                      ...products.map((p) => ({ value: p.name, label: p.name }))
+                    ]}
+                  />
+                  <SearchSelect
+                    value={r.uom}
+                    onChange={(v) => update(i, { uom: v as Uom })}
+                    options={UOMS.map((u) => ({ value: u, label: u }))}
+                  />
                   <Input
                     type="number"
                     step="0.01"

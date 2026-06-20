@@ -132,6 +132,8 @@ CREATE TABLE IF NOT EXISTS purchases (
   purchase_mode     TEXT NOT NULL DEFAULT 'purchase',
   product_name      TEXT NOT NULL DEFAULT '',
   outsource_id      INTEGER,
+  from_plant_id     INTEGER,
+  linked_dispatch_id INTEGER,
   uom               TEXT NOT NULL DEFAULT 'CM',
   quantity          REAL NOT NULL,
   qty_cm            REAL NOT NULL DEFAULT 0,
@@ -159,6 +161,30 @@ CREATE TABLE IF NOT EXISTS purchase_transporters (
 CREATE TABLE IF NOT EXISTS purchase_machines (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   purchase_id  INTEGER NOT NULL REFERENCES purchases(id),
+  asset_id     INTEGER NOT NULL REFERENCES assets(id),
+  basis        TEXT NOT NULL DEFAULT 'hour',
+  qty          REAL NOT NULL DEFAULT 0,
+  rate         REAL NOT NULL DEFAULT 0,
+  amount       REAL NOT NULL DEFAULT 0,
+  outsource_id INTEGER,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS dispatch_transporters (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  dispatch_id    INTEGER NOT NULL REFERENCES dispatches(id),
+  transporter_id INTEGER NOT NULL REFERENCES transporters(id),
+  vehicle_no     TEXT NOT NULL DEFAULT '',
+  basis          TEXT NOT NULL DEFAULT 'flat',
+  qty            REAL NOT NULL DEFAULT 0,
+  rate           REAL NOT NULL DEFAULT 0,
+  charge         REAL NOT NULL DEFAULT 0,
+  created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS dispatch_machines (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  dispatch_id  INTEGER NOT NULL REFERENCES dispatches(id),
   asset_id     INTEGER NOT NULL REFERENCES assets(id),
   basis        TEXT NOT NULL DEFAULT 'hour',
   qty          REAL NOT NULL DEFAULT 0,
@@ -227,6 +253,8 @@ CREATE TABLE IF NOT EXISTS dispatches (
   dispatch_status TEXT NOT NULL DEFAULT 'pending',
   payment_status  TEXT NOT NULL DEFAULT 'unpaid',
   paid_amount     REAL NOT NULL DEFAULT 0,
+  to_plant_id     INTEGER,
+  linked_purchase_id INTEGER,
   date            TEXT NOT NULL,
   remarks         TEXT NOT NULL DEFAULT '',
   created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime'))
@@ -528,4 +556,7 @@ CREATE INDEX IF NOT EXISTS idx_budget_plant ON budgets(plant_id);
 CREATE INDEX IF NOT EXISTS idx_ptrans_purchase ON purchase_transporters(purchase_id);
 CREATE INDEX IF NOT EXISTS idx_ptrans_transporter ON purchase_transporters(transporter_id);
 CREATE INDEX IF NOT EXISTS idx_pmach_purchase ON purchase_machines(purchase_id);
+CREATE INDEX IF NOT EXISTS idx_dtrans_dispatch ON dispatch_transporters(dispatch_id);
+CREATE INDEX IF NOT EXISTS idx_dtrans_transporter ON dispatch_transporters(transporter_id);
+CREATE INDEX IF NOT EXISTS idx_dmach_dispatch ON dispatch_machines(dispatch_id);
 `

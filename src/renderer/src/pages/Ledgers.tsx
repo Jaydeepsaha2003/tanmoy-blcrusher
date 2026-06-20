@@ -9,6 +9,7 @@ import {
   Button,
   Input,
   Select,
+  SearchSelect,
   Field,
   Badge,
   Modal,
@@ -246,32 +247,42 @@ export function Ledgers(): React.JSX.Element {
       />
       <Page>
         <div className="no-print mb-4 flex flex-wrap items-center gap-2">
-          <Select className="w-full sm:w-44" value={partyType} onChange={(e) => switchType(e.target.value as LedgerType)}>
-            <option value="customer">Customers</option>
-            <option value="supplier">Suppliers</option>
-            <option value="transporter">Transporters</option>
-            <option value="outsource">Outsource Vendors</option>
-            <option value="company">Companies</option>
-            <option value="business">Businesses (P&amp;L)</option>
-            <option value="plant">Plants (P&amp;L)</option>
-            <option value="rack">Racks</option>
-          </Select>
-          <Select
+          <SearchSelect
+            className="w-full sm:w-44"
+            value={partyType}
+            onChange={(v) => switchType(v as LedgerType)}
+            options={[
+              { value: 'customer', label: 'Customers' },
+              { value: 'supplier', label: 'Suppliers' },
+              { value: 'transporter', label: 'Transporters' },
+              { value: 'outsource', label: 'Outsource Vendors' },
+              { value: 'company', label: 'Companies' },
+              { value: 'business', label: 'Businesses (P&L)' },
+              { value: 'plant', label: 'Plants (P&L)' },
+              { value: 'rack', label: 'Racks' }
+            ]}
+          />
+          <SearchSelect
             className="w-full sm:w-56"
             value={partyId ?? ''}
-            onChange={(e) => setPartyId(e.target.value ? Number(e.target.value) : undefined)}
-          >
-            <option value="">— Select {partyLabel[partyType].toLowerCase()} —</option>
-            {balances.map((b) => (
-              <option key={b.party_id} value={b.party_id}>{b.name}</option>
-            ))}
-          </Select>
+            onChange={(v) => setPartyId(v ? Number(v) : undefined)}
+            options={[
+              { value: '', label: `— Select ${partyLabel[partyType].toLowerCase()} —` },
+              ...balances.map((b) => ({ value: b.party_id, label: b.name }))
+            ]}
+            placeholder={`— Select ${partyLabel[partyType].toLowerCase()} —`}
+          />
           {partyId && (
             <>
-              <Select className="w-full sm:w-36" value={fy === '' ? '' : String(fy)} onChange={(e) => selectFy(e.target.value)} title="Financial year">
-                <option value="">All time</option>
-                {fyYears.map((y) => <option key={y} value={y}>FY {fyLabel(y)}</option>)}
-              </Select>
+              <SearchSelect
+                className="w-full sm:w-36"
+                value={fy === '' ? '' : String(fy)}
+                onChange={(v) => selectFy(v)}
+                options={[
+                  { value: '', label: 'All time' },
+                  ...fyYears.map((y) => ({ value: y, label: `FY ${fyLabel(y)}` }))
+                ]}
+              />
               <Input type="date" className="w-full sm:w-36" value={from} onChange={(e) => { setFrom(e.target.value); setFy('') }} />
               <span className="text-muted-foreground">to</span>
               <Input type="date" className="w-full sm:w-36" value={to} onChange={(e) => { setTo(e.target.value); setFy('') }} />
@@ -403,23 +414,31 @@ export function Ledgers(): React.JSX.Element {
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Direction">
-                <Select value={payForm.direction} onChange={(e) => setPayForm({ ...payForm, direction: e.target.value })}>
-                  <option value="in">Received from party</option>
-                  <option value="out">Paid to party</option>
-                </Select>
+                <SearchSelect
+                  value={payForm.direction}
+                  onChange={(v) => setPayForm({ ...payForm, direction: v })}
+                  options={[
+                    { value: 'in', label: 'Received from party' },
+                    { value: 'out', label: 'Paid to party' }
+                  ]}
+                />
               </Field>
               <Field label="Amount">
                 <Input type="number" step="0.01" value={payForm.amount} onChange={(e) =>
                   setPayForm({ ...payForm, amount: e.target.value })} />
               </Field>
               <Field label="Mode">
-                <Select value={payForm.mode} onChange={(e) => setPayForm({ ...payForm, mode: e.target.value })}>
-                  <option value="cash">Cash</option>
-                  <option value="bank">Bank Transfer</option>
-                  <option value="upi">UPI</option>
-                  <option value="cheque">Cheque</option>
-                  <option value="other">Other</option>
-                </Select>
+                <SearchSelect
+                  value={payForm.mode}
+                  onChange={(v) => setPayForm({ ...payForm, mode: v })}
+                  options={[
+                    { value: 'cash', label: 'Cash' },
+                    { value: 'bank', label: 'Bank Transfer' },
+                    { value: 'upi', label: 'UPI' },
+                    { value: 'cheque', label: 'Cheque' },
+                    { value: 'other', label: 'Other' }
+                  ]}
+                />
               </Field>
               <Field label="Date">
                 <Input type="date" value={payForm.date} onChange={(e) => setPayForm({ ...payForm, date: e.target.value })} />
@@ -462,10 +481,14 @@ export function Ledgers(): React.JSX.Element {
                 label="Type"
                 hint={partyType === 'customer' ? 'Dr = they owe you · Cr = advance from them' : 'Cr = you owe them · Dr = advance you paid'}
               >
-                <Select value={openingForm.direction} onChange={(e) => setOpeningForm({ ...openingForm, direction: e.target.value })}>
-                  <option value="debit">Debit (Dr)</option>
-                  <option value="credit">Credit (Cr)</option>
-                </Select>
+                <SearchSelect
+                  value={openingForm.direction}
+                  onChange={(v) => setOpeningForm({ ...openingForm, direction: v })}
+                  options={[
+                    { value: 'debit', label: 'Debit (Dr)' },
+                    { value: 'credit', label: 'Credit (Cr)' }
+                  ]}
+                />
               </Field>
               <Field label="Remarks">
                 <Input value={openingForm.remarks} onChange={(e) => setOpeningForm({ ...openingForm, remarks: e.target.value })} />

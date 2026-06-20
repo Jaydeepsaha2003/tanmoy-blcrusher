@@ -9,6 +9,7 @@ import {
   Button,
   Input,
   Select,
+  SearchSelect,
   Field,
   Badge,
   Modal,
@@ -206,26 +207,16 @@ export function RateChart(): React.JSX.Element {
           <div className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Field label="Product">
-                <Select value={rateForm.product_name || ''} onChange={(e) => setRateForm({ ...rateForm, product_name: e.target.value })}>
-                  <option value="">Select…</option>
-                  {rateForm.product_name && !products.some((p) => p.name === rateForm.product_name) && (
-                    <option value={rateForm.product_name}>{rateForm.product_name}</option>
-                  )}
-                  {products.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}
-                </Select>
+                <SearchSelect value={rateForm.product_name || ''} onChange={(v) => setRateForm({ ...rateForm, product_name: v })} options={[...(rateForm.product_name && !products.some((p) => p.name === rateForm.product_name) ? [{ value: rateForm.product_name, label: rateForm.product_name }] : []), ...products.map((p) => ({ value: p.name, label: p.name }))]} placeholder="Select…" />
               </Field>
               <Field label="Location" className="sm:col-span-2">
-                <Select value={rateForm.stock_location_id || ''} onChange={(e) => setRateForm({ ...rateForm, stock_location_id: Number(e.target.value) })}>
-                  <option value="">Select…</option>
-                  {formLocations.map((l) => <option key={l.id} value={l.id}>{l.plant_name} · {l.name}</option>)}
-                </Select>
+                <SearchSelect value={rateForm.stock_location_id || ''} onChange={(v) => setRateForm({ ...rateForm, stock_location_id: Number(v) })} options={formLocations.map((l) => ({ value: l.id, label: `${l.plant_name} · ${l.name}` }))} placeholder="Select…" />
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               <Field label="Unit">
-                <Select value={rateForm.uom || 'CM'} onChange={(e) => setRateForm({ ...rateForm, uom: e.target.value as Uom })}>
-                  {UOMS.map((u) => <option key={u} value={u}>{u}</option>)}
-                </Select>
+                <SearchSelect value={rateForm.uom || 'CM'} onChange={(v) => setRateForm({ ...rateForm, uom: v as Uom })} options={UOMS.map((u) => ({ value: u, label: u }))} />
+
               </Field>
               <Field label="Wholesale ₹">
                 <Input type="number" step="0.01" value={rateForm.rate_wholesale ?? ''} onChange={(e) => setRateForm({ ...rateForm, rate_wholesale: Number(e.target.value) })} />
@@ -255,17 +246,11 @@ export function RateChart(): React.JSX.Element {
                 <datalist id="lorry-types">{LORRY_TYPES.map((v) => <option key={v} value={v} />)}</datalist>
               </Field>
               <Field label="Location">
-                <Select value={tForm.stock_location_id || ''} onChange={(e) => setTForm({ ...tForm, stock_location_id: Number(e.target.value) })}>
-                  <option value="">Select…</option>
-                  {formLocations.map((l) => <option key={l.id} value={l.id}>{l.plant_name} · {l.name}</option>)}
-                </Select>
+                <SearchSelect value={tForm.stock_location_id || ''} onChange={(v) => setTForm({ ...tForm, stock_location_id: Number(v) })} options={formLocations.map((l) => ({ value: l.id, label: `${l.plant_name} · ${l.name}` }))} placeholder="Select…" />
               </Field>
               <Field label="Basis">
-                <Select value={tForm.basis || 'trip'} onChange={(e) => setTForm({ ...tForm, basis: e.target.value as TransportBasis })}>
-                  <option value="trip">Per Trip</option>
-                  <option value="cm">Per m³</option>
-                  <option value="ton">Per Ton</option>
-                </Select>
+                <SearchSelect value={tForm.basis || 'trip'} onChange={(v) => setTForm({ ...tForm, basis: v as TransportBasis })} options={[{ value: 'trip', label: 'Per Trip' }, { value: 'cm', label: 'Per m³' }, { value: 'ton', label: 'Per Ton' }]} />
+
               </Field>
               <Field label="Charge ₹">
                 <Input type="number" step="0.01" value={tForm.charge ?? ''} onChange={(e) => setTForm({ ...tForm, charge: Number(e.target.value) })} />

@@ -120,7 +120,7 @@ export async function listPurchases(filter: PurchaseFilter = {}): Promise<Purcha
   return (await d
     .prepare(
       `SELECT pu.*, s.name AS supplier_name, p.name AS plant_name, l.name AS stock_location_name,
-        o.name AS outsource_name, o.head AS outsource_head,
+        o.name AS outsource_name, o.head AS outsource_head, fp.name AS from_plant_name,
         (SELECT COALESCE(SUM(charge),0) FROM purchase_transporters pt WHERE pt.purchase_id = pu.id) AS transport_total,
         (SELECT COALESCE(SUM(amount),0) FROM purchase_machines pm WHERE pm.purchase_id = pu.id) AS machine_total
        FROM purchases pu
@@ -128,6 +128,7 @@ export async function listPurchases(filter: PurchaseFilter = {}): Promise<Purcha
        JOIN plants p ON p.id = pu.plant_id
        JOIN stock_locations l ON l.id = pu.stock_location_id
        LEFT JOIN outsource o ON o.id = pu.outsource_id
+       LEFT JOIN plants fp ON fp.id = pu.from_plant_id
        ${clause}
        ORDER BY pu.date DESC, pu.id DESC`
     )
@@ -156,6 +157,10 @@ export interface PurchaseInput {
   outsource_id?: number | null
   /** 'purchase' (default) buys from supplier; 'mining' extracts from supplier's land (royalty rate). */
   purchase_mode?: PurchaseMode
+  /** Inter-plant: source plant this stock came from (set when mirroring a direct sale). */
+  from_plant_id?: number | null
+  /** The direct sale that created this purchase (inter-plant mirror). */
+  linked_dispatch_id?: number | null
   /** Transporter lines (transport for bringing the material in). */
   transporters?: TransporterInput[]
   /** Machine-usage lines (cost posts as a plant equipment-rent cost; optional vendor payable). */
@@ -188,8 +193,8 @@ export async function createPurchase(p: PurchaseInput): Promise<Purchase> {
     const info = await d
       .prepare(
         `INSERT INTO purchases
-          (purchase_no, supplier_id, plant_id, stock_location_id, material_type, purchase_mode, product_name, outsource_id, uom, quantity, qty_cm, rate, amount, paid_amount, payment_status, date, remarks)
-         VALUES (@purchase_no,@supplier_id,@plant_id,@stock_location_id,@material_type,@purchase_mode,@product_name,@outsource_id,@uom,@quantity,@qty_cm,@rate,@amount,@paid_amount,@payment_status,@date,@remarks)`
+          (purchase_no, supplier_id, plant_id, stock_location_id, material_type, purchase_mode, product_name, outsource_id, from_plant_id, linked_dispatch_id, uom, quantity, qty_cm, rate, amount, paid_amount, payment_status, date, remarks)
+         VALUES (@purchase_no,@supplier_id,@plant_id,@stock_location_id,@material_type,@purchase_mode,@product_name,@outsource_id,@from_plant_id,@linked_dispatch_id,@uom,@quantity,@qty_cm,@rate,@amount,@paid_amount,@payment_status,@date,@remarks)`
       )
       .run({
         purchase_no: no,
@@ -200,6 +205,8 @@ export async function createPurchase(p: PurchaseInput): Promise<Purchase> {
         purchase_mode: mode,
         product_name: product,
         outsource_id: p.outsource_id ?? null,
+        from_plant_id: p.from_plant_id ?? null,
+        linked_dispatch_id: p.linked_dispatch_id ?? null,
         uom,
         quantity: p.quantity,
         qty_cm: qtyCm,
@@ -245,6 +252,8 @@ export async function updatePurchase(p: PurchaseInput): Promise<Purchase> {
   if (!(p.quantity > 0)) throw new Error('Quantity must be greater than 0.')
   const old = (await d.prepare(`SELECT * FROM purchases WHERE id = ?`).get(p.id)) as Purchase
   if (!old) throw new Error('Purchase not found.')
+  if (old.linked_dispatch_id)
+    throw new Error('This purchase was created by an inter-plant sale — edit that sale instead.')
   const mode: PurchaseMode = p.purchase_mode === 'mining' ? 'mining' : 'purchase'
   const kind: MaterialType = mode === 'purchase' && p.material_type === 'finished' ? 'finished' : 'raw'
   const product = kind === 'finished' ? properCase(p.product_name || '') : ''
@@ -323,6 +332,8 @@ export async function deletePurchase(payload: { id: number }): Promise<{ ok: boo
   const d = getDb()
   const old = (await d.prepare(`SELECT * FROM purchases WHERE id = ?`).get(payload.id)) as Purchase
   if (!old) return { ok: false, error: 'Purchase not found.' }
+  if (old.linked_dispatch_id)
+    return { ok: false, error: 'This purchase was created by an inter-plant sale — delete that sale instead.' }
   try {
     await d.transaction(async () => {
       await d.prepare(`DELETE FROM stock_movements WHERE ref_no=? AND type='purchase'`).run(
@@ -342,6 +353,27 @@ export async function deletePurchase(payload: { id: number }): Promise<{ ok: boo
   } catch (e) {
     return { ok: false, error: (e as Error).message }
   }
+}
+
+/**
+ * Remove a purchase that mirrors an inter-plant sale (reverses its finished stock).
+ * Used by the dispatch service; runs inside the caller's transaction. Skips the
+ * linked-dispatch guard (the dispatch owns this row), but still protects stock.
+ */
+export async function removeLinkedPurchase(id: number): Promise<void> {
+  const d = getDb()
+  const old = (await d.prepare(`SELECT * FROM purchases WHERE id = ?`).get(id)) as Purchase | undefined
+  if (!old) return
+  await d.prepare(`DELETE FROM stock_movements WHERE ref_no=? AND type='purchase'`).run(old.purchase_no)
+  if (
+    old.material_type === 'finished' &&
+    old.product_name &&
+    (await finishedBalance(d, old.plant_id, old.product_name)) < 0
+  )
+    throw new Error('Cannot reverse: the received goods have already been sold/dispatched at the destination plant.')
+  await d.prepare(`DELETE FROM purchase_transporters WHERE purchase_id = ?`).run(id)
+  await d.prepare(`DELETE FROM purchase_machines WHERE purchase_id = ?`).run(id)
+  await d.prepare(`DELETE FROM purchases WHERE id = ?`).run(id)
 }
 
 export async function setPurchasePayment(payload: {

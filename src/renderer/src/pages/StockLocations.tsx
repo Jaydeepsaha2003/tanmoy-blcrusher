@@ -8,6 +8,7 @@ import {
   Button,
   Input,
   Select,
+  SearchSelect,
   Field,
   Modal,
   Table,
@@ -126,17 +127,12 @@ export function StockLocations(): React.JSX.Element {
       >
         <div className="space-y-4">
           <Field label="Plant" hint={plantId && !form.id ? 'Locked to active plant' : undefined}>
-            <Select
+            <SearchSelect
               value={form.plant_id || ''}
               disabled={!!form.id || !!plantId}
-              onChange={(e) => setForm({ ...form, plant_id: Number(e.target.value) })}
-            >
-              {plants.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </Select>
+              onChange={(v) => setForm({ ...form, plant_id: Number(v) })}
+              options={plants.map((p) => ({ value: p.id, label: p.name }))}
+            />
           </Field>
           <Field label="Location Name">
             <Input

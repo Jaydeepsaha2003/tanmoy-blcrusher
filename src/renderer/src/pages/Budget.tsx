@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Save, Wallet } from 'lucide-react'
 import { api } from '@/lib/api'
 import { PageHeader, Page } from '@/components/layout'
-import { Button, Input, Select, Card, CardContent, Table, THead, TBody, TR, TH, TD, EmptyState } from '@/components/ui'
+import { Button, Input, Select, SearchSelect, Card, CardContent, Table, THead, TBody, TR, TH, TD, EmptyState } from '@/components/ui'
 import { useToast } from '@/components/toast'
 import { usePlant } from '@/lib/plant'
 import { fmtMoney, cn } from '@/lib/utils'
@@ -82,9 +82,13 @@ export function Budget(): React.JSX.Element {
       <PageHeader title="Plant Budget" description="Plan spend per head and track it against actual, for any period" />
       <Page>
         <div className="mb-4 flex flex-wrap items-end gap-2">
-          <Select className="w-full sm:w-52" value={plant ?? ''} disabled={!!plantId} onChange={(e) => setPlant(Number(e.target.value))}>
-            {plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </Select>
+          <SearchSelect
+            className="w-full sm:w-52"
+            value={plant ?? ''}
+            disabled={!!plantId}
+            onChange={(v) => setPlant(Number(v))}
+            options={plants.map((p) => ({ value: p.id, label: p.name }))}
+          />
           <Button variant="outline" size="sm" onClick={() => setRange(monthRange(new Date()))}>This Month</Button>
           <Button variant="outline" size="sm" onClick={() => setRange(fyRange(new Date()))}>This FY</Button>
           <div className="flex items-center gap-1">

@@ -63,6 +63,14 @@ export async function getBudget(payload: {
        WHERE pu.plant_id = ? AND pu.date >= ? AND pu.date <= ?`
     )
     .get(plant_id, from, to)) as { amt: number }
+  // Machine-usage costs from direct sales also count towards Equipment Rent.
+  const saleMachine = (await d
+    .prepare(
+      `SELECT COALESCE(SUM(dm.amount),0) AS amt FROM dispatch_machines dm
+       JOIN dispatches di ON di.id = dm.dispatch_id
+       WHERE di.plant_id = ? AND di.date >= ? AND di.date <= ?`
+    )
+    .get(plant_id, from, to)) as { amt: number }
 
   const items: BudgetItem[] = HEADS.map((h) => {
     const budget = budgetByHead.get(h.head) ?? 0
@@ -72,7 +80,7 @@ export async function getBudget(payload: {
         : h.source === 'payroll'
           ? money(payroll.amt)
           : expByCat.get(h.head) ?? 0
-    if (h.head === 'equipment_rent') actual = money(actual + money(machine.amt))
+    if (h.head === 'equipment_rent') actual = money(actual + money(machine.amt) + money(saleMachine.amt))
     return { head: h.head, label: h.label, budget, actual, variance: money(budget - actual) }
   })
 

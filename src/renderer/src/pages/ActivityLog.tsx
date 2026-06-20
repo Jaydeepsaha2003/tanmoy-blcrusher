@@ -7,6 +7,7 @@ import {
   Button,
   Input,
   Select,
+  SearchSelect,
   Field,
   Badge,
   Table,
@@ -58,14 +59,11 @@ export function ActivityLog(): React.JSX.Element {
       <Page>
         <div className="mb-4 flex flex-wrap items-end gap-3">
           <Field label="User" className="w-48">
-            <Select value={userId} onChange={(e) => setUserId(e.target.value)}>
-              <option value="">All users</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.username}
-                </option>
-              ))}
-            </Select>
+            <SearchSelect
+              value={userId}
+              onChange={(v) => setUserId(v)}
+              options={[{ value: '', label: 'All users' }, ...users.map((u) => ({ value: u.id, label: u.username }))]}
+            />
           </Field>
           <Field label="From" className="w-40">
             <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />

@@ -8,6 +8,7 @@ import {
   Button,
   Input,
   Select,
+  SearchSelect,
   Field,
   Badge,
   Modal,
@@ -200,18 +201,21 @@ export function Payroll(): React.JSX.Element {
         <Modal open onClose={() => setForm(null)} title={form.id ? `Edit ${form.entry_no}` : 'Add Wages'} width="max-w-2xl">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Employee" required>
-              <Select value={form.employee_id || ''} onChange={(e) => setForm({ ...form, employee_id: Number(e.target.value) })}>
-                {employees.map((x) => <option key={x.id} value={x.id}>{x.name} ({x.wage_type === 'monthly' ? `${fmtMoney(x.monthly_salary)}/mo` : `${fmtMoney(x.daily_wage)}/day`})</option>)}
-              </Select>
+              <SearchSelect
+                value={form.employee_id || ''}
+                onChange={(v) => setForm({ ...form, employee_id: Number(v) })}
+                options={employees.map((x) => ({ value: x.id, label: `${x.name} (${x.wage_type === 'monthly' ? `${fmtMoney(x.monthly_salary)}/mo` : `${fmtMoney(x.daily_wage)}/day`})` }))}
+              />
             </Field>
             <Field label="Pay Period" required>
               <Input type="month" value={form.period} onChange={(e) => setForm({ ...form, period: e.target.value })} />
             </Field>
             <Field label="Operate Machine (optional)" hint="Rolls this wage to the machine's business">
-              <Select value={form.asset_id ?? ''} onChange={(e) => setForm({ ...form, asset_id: e.target.value ? Number(e.target.value) : null })}>
-                <option value="">— None —</option>
-                {assets.map((a) => <option key={a.id} value={a.id}>{a.name}{a.identifier ? ` (${a.identifier})` : ''}</option>)}
-              </Select>
+              <SearchSelect
+                value={form.asset_id ?? ''}
+                onChange={(v) => setForm({ ...form, asset_id: v ? Number(v) : null })}
+                options={[{ value: '', label: '— None —' }, ...assets.map((a) => ({ value: a.id, label: `${a.name}${a.identifier ? ` (${a.identifier})` : ''}` }))]}
+              />
             </Field>
             <Field label="Working Days" hint={`In ${form.period || 'month'} (excl. weekly offs)`}>
               <Input value={fmtQty(workingDays)} disabled />

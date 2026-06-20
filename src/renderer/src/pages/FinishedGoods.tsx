@@ -7,6 +7,7 @@ import {
   Button,
   Input,
   Select,
+  SearchSelect,
   Field,
   Modal,
   Table,
@@ -73,10 +74,12 @@ export function FinishedGoods(): React.JSX.Element {
       />
       <Page>
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <Select className="w-full sm:w-44" value={filter.product_name ?? ''} onChange={(e) => setFilter({ ...filter, product_name: e.target.value || undefined })}>
-            <option value="">All products</option>
-            {products.map((p) => <option key={p} value={p}>{p}</option>)}
-          </Select>
+          <SearchSelect
+            className="w-full sm:w-44"
+            value={filter.product_name ?? ''}
+            onChange={(v) => setFilter({ ...filter, product_name: v || undefined })}
+            options={[{ value: '', label: 'All products' }, ...products.map((p) => ({ value: p, label: p }))]}
+          />
           <Input type="date" className="w-full sm:w-40" value={filter.from ?? ''} onChange={(e) => setFilter({ ...filter, from: e.target.value || undefined })} />
           <span className="text-muted-foreground">to</span>
           <Input type="date" className="w-full sm:w-40" value={filter.to ?? ''} onChange={(e) => setFilter({ ...filter, to: e.target.value || undefined })} />
@@ -119,9 +122,12 @@ export function FinishedGoods(): React.JSX.Element {
       <Modal open={open} onClose={() => setOpen(false)} title="Set Opening Finished Goods">
         <div className="space-y-4">
           <Field label="Plant" hint={plantId ? 'Locked to active plant' : undefined}>
-            <Select value={form.plant_id || ''} disabled={!!plantId} onChange={(e) => setForm({ ...form, plant_id: Number(e.target.value) })}>
-              {plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </Select>
+            <SearchSelect
+              value={form.plant_id || ''}
+              disabled={!!plantId}
+              onChange={(v) => setForm({ ...form, plant_id: Number(v) })}
+              options={plants.map((p) => ({ value: p.id, label: p.name }))}
+            />
           </Field>
           <Field label="Product Name">
             <Input value={form.product_name} onChange={(e) => setForm({ ...form, product_name: e.target.value })} placeholder="e.g. 30/40" />

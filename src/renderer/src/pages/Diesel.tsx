@@ -8,6 +8,7 @@ import {
   Button,
   Input,
   Select,
+  SearchSelect,
   Field,
   Badge,
   Modal,
@@ -214,14 +215,19 @@ export function Diesel(): React.JSX.Element {
         <Modal open onClose={() => setPForm(null)} title={pForm.id ? `Edit ${pForm.purchase_no}` : 'New Diesel Purchase'} width="max-w-2xl">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Creditor (Supplier)" required>
-              <Select value={pForm.supplier_id || ''} onChange={(e) => setPForm({ ...pForm, supplier_id: Number(e.target.value) })}>
-                {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </Select>
+              <SearchSelect
+                value={pForm.supplier_id || ''}
+                onChange={(v) => setPForm({ ...pForm, supplier_id: Number(v) })}
+                options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
+              />
             </Field>
             <Field label="Plant" required hint={plantId ? 'Locked to active plant' : undefined}>
-              <Select value={pForm.plant_id || ''} disabled={!!plantId} onChange={(e) => setPForm({ ...pForm, plant_id: Number(e.target.value) })}>
-                {plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </Select>
+              <SearchSelect
+                value={pForm.plant_id || ''}
+                disabled={!!plantId}
+                onChange={(v) => setPForm({ ...pForm, plant_id: Number(v) })}
+                options={plants.map((p) => ({ value: p.id, label: p.name }))}
+              />
             </Field>
             <Field label="Litres" required>
               <Input type="number" step="0.01" value={pForm.litres} onChange={(e) => setPForm({ ...pForm, litres: e.target.value })} />
@@ -265,10 +271,14 @@ export function Diesel(): React.JSX.Element {
         <Modal open onClose={() => setIForm(null)} title={iForm.id ? `Edit ${iForm.issue_no}` : 'Issue Diesel'}>
           <div className="space-y-4">
             <Field label="Machine / Vehicle">
-              <Select value={iForm.asset_id ?? ''} onChange={(e) => setIForm({ ...iForm, asset_id: e.target.value ? Number(e.target.value) : null })}>
-                <option value="">— Unassigned —</option>
-                {assets.map((a) => <option key={a.id} value={a.id}>{a.name}{a.identifier ? ` (${a.identifier})` : ''}</option>)}
-              </Select>
+              <SearchSelect
+                value={iForm.asset_id ?? ''}
+                onChange={(v) => setIForm({ ...iForm, asset_id: v ? Number(v) : null })}
+                options={[
+                  { value: '', label: '— Unassigned —' },
+                  ...assets.map((a) => ({ value: a.id, label: `${a.name}${a.identifier ? ` (${a.identifier})` : ''}` }))
+                ]}
+              />
             </Field>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Litres" required>

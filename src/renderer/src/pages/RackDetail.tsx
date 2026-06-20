@@ -21,6 +21,7 @@ import {
   Button,
   Input,
   Select,
+  SearchSelect,
   Field,
   Badge,
   Modal,
@@ -650,28 +651,33 @@ export function RackDetail(): React.JSX.Element {
           width="max-w-2xl">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Plant">
-              <Select value={loadingForm.plant_id || ''} onChange={(e) =>
-                setLoadingForm({ ...loadingForm, plant_id: Number(e.target.value), product_name: '' })}>
-                {plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </Select>
+              <SearchSelect
+                value={loadingForm.plant_id || ''}
+                onChange={(v) =>
+                  setLoadingForm({ ...loadingForm, plant_id: Number(v), product_name: '' })}
+                options={plants.map((p) => ({ value: p.id, label: p.name }))}
+              />
             </Field>
             <Field label="Product">
               {loadingForm.outsourced ? (
                 <Input value={loadingForm.product_name} onChange={(e) =>
                   setLoadingForm({ ...loadingForm, product_name: e.target.value })} placeholder="Outsourced product name" />
               ) : (
-                <Select value={loadingForm.product_name} onChange={(e) =>
-                  setLoadingForm({ ...loadingForm, product_name: e.target.value })}>
-                  <option value="">Select product…</option>
-                  {availableFg.map((f) => (
-                    <option key={f.product_name} value={f.product_name}>
-                      {f.product_name} ({fmtQty(f.balance_qty)} m³ available)
-                    </option>
-                  ))}
-                  {loadingForm.id && !availableFg.some((f) => f.product_name === loadingForm.product_name) && (
-                    <option value={loadingForm.product_name}>{loadingForm.product_name}</option>
-                  )}
-                </Select>
+                <SearchSelect
+                  value={loadingForm.product_name}
+                  onChange={(v) =>
+                    setLoadingForm({ ...loadingForm, product_name: v })}
+                  options={[
+                    ...availableFg.map((f) => ({
+                      value: f.product_name,
+                      label: `${f.product_name} (${fmtQty(f.balance_qty)} m³ available)`
+                    })),
+                    ...(loadingForm.id && !availableFg.some((f) => f.product_name === loadingForm.product_name)
+                      ? [{ value: loadingForm.product_name, label: loadingForm.product_name }]
+                      : [])
+                  ]}
+                  placeholder="Select product…"
+                />
               )}
             </Field>
             <div className="col-span-2 -mt-1">
@@ -682,10 +688,12 @@ export function RackDetail(): React.JSX.Element {
               </label>
             </div>
             <Field label="Transporter">
-              <Select value={loadingForm.transporter_id || ''} onChange={(e) =>
-                setLoadingForm({ ...loadingForm, transporter_id: Number(e.target.value) })}>
-                {transporters.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </Select>
+              <SearchSelect
+                value={loadingForm.transporter_id || ''}
+                onChange={(v) =>
+                  setLoadingForm({ ...loadingForm, transporter_id: Number(v) })}
+                options={transporters.map((t) => ({ value: t.id, label: t.name }))}
+              />
             </Field>
             <Field label="Vehicle No.">
               <Input value={loadingForm.vehicle_no || ''} onChange={(e) =>
@@ -755,24 +763,29 @@ export function RackDetail(): React.JSX.Element {
           width="max-w-2xl">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Product">
-              <Select value={unloadForm.product_name} onChange={(e) =>
-                setUnloadForm({ ...unloadForm, product_name: e.target.value })}>
-                <option value="">Select product…</option>
-                {products
+              <SearchSelect
+                value={unloadForm.product_name}
+                onChange={(v) =>
+                  setUnloadForm({ ...unloadForm, product_name: v })}
+                options={products
                   .filter((p) => p.transit_shortage_cm > 0 || p.product_name === unloadForm.product_name)
-                  .map((p) => (
-                    <option key={p.product_name} value={p.product_name}>
-                      {p.product_name} ({fmtQty(p.transit_shortage_cm)} m³ on rake)
-                    </option>
-                  ))}
-              </Select>
+                  .map((p) => ({
+                    value: p.product_name,
+                    label: `${p.product_name} (${fmtQty(p.transit_shortage_cm)} m³ on rake)`
+                  }))}
+                placeholder="Select product…"
+              />
             </Field>
             <Field label="Transporter">
-              <Select value={unloadForm.transporter_id ?? ''} onChange={(e) =>
-                setUnloadForm({ ...unloadForm, transporter_id: e.target.value ? Number(e.target.value) : null })}>
-                <option value="">— Select —</option>
-                {transporters.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </Select>
+              <SearchSelect
+                value={unloadForm.transporter_id ?? ''}
+                onChange={(v) =>
+                  setUnloadForm({ ...unloadForm, transporter_id: v ? Number(v) : null })}
+                options={[
+                  { value: '', label: '— Select —' },
+                  ...transporters.map((t) => ({ value: t.id, label: t.name }))
+                ]}
+              />
             </Field>
             <Field label="Vehicle No.">
               <Input value={unloadForm.vehicle_no || ''} onChange={(e) =>
@@ -886,30 +899,36 @@ export function RackDetail(): React.JSX.Element {
           title={saleForm.id ? `Edit ${saleForm.sale_no}` : 'New Sale from Rack'} width="max-w-2xl">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Customer">
-              <Select value={saleForm.customer_id || ''} onChange={(e) =>
-                setSaleForm({ ...saleForm, customer_id: Number(e.target.value) })}>
-                {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </Select>
+              <SearchSelect
+                value={saleForm.customer_id || ''}
+                onChange={(v) =>
+                  setSaleForm({ ...saleForm, customer_id: Number(v) })}
+                options={customers.map((c) => ({ value: c.id, label: c.name }))}
+              />
             </Field>
             <Field label="Product">
-              <Select value={saleForm.product_name} onChange={(e) =>
-                setSaleForm({ ...saleForm, product_name: e.target.value })}>
-                {products
+              <SearchSelect
+                value={saleForm.product_name}
+                onChange={(v) =>
+                  setSaleForm({ ...saleForm, product_name: v })}
+                options={products
                   .filter((p) => p.balance_cm > 0 || p.product_name === saleForm.product_name)
-                  .map((p) => (
-                    <option key={p.product_name} value={p.product_name}>
-                      {p.product_name} ({fmtQty(p.balance_cm)} m³ in rack)
-                    </option>
-                  ))}
-              </Select>
+                  .map((p) => ({
+                    value: p.product_name,
+                    label: `${p.product_name} (${fmtQty(p.balance_cm)} m³ in rack)`
+                  }))}
+              />
             </Field>
             <Field label="Unit of Measure" hint="1 m³ = 1.6 ton = 35.31 cft">
-              <Select value={saleForm.uom} onChange={(e) =>
-                setSaleForm({ ...saleForm, uom: e.target.value as Uom })}>
-                {UOMS.map((u) => (
-                  <option key={u} value={u}>{u === 'CM' ? 'Cubic Meter (m³)' : u === 'TON' ? 'Ton' : 'Cubic Feet (CFT)'}</option>
-                ))}
-              </Select>
+              <SearchSelect
+                value={saleForm.uom}
+                onChange={(v) =>
+                  setSaleForm({ ...saleForm, uom: v as Uom })}
+                options={UOMS.map((u) => ({
+                  value: u,
+                  label: u === 'CM' ? 'Cubic Meter (m³)' : u === 'TON' ? 'Ton' : 'Cubic Feet (CFT)'
+                }))}
+              />
             </Field>
             <Field label={`Quantity (${saleForm.uom})`}
               hint={saleQtyCm > 0 ? `= ${fmtQty(saleQtyCm)} m³ · ${fmtQty(fromCm(saleQtyCm, 'TON', rackFactors))} ton · ${fmtQty(fromCm(saleQtyCm, 'CFT', rackFactors))} cft` : undefined}>

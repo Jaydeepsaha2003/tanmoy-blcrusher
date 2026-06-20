@@ -8,6 +8,7 @@ import {
   Button,
   Input,
   Select,
+  SearchSelect,
   Field,
   Badge,
   Modal,
@@ -141,10 +142,14 @@ export function Employees(): React.JSX.Element {
               <datalist id="desigs">{DESIGNATIONS.map((x) => <option key={x} value={x} />)}</datalist>
             </Field>
             <Field label="Wage Type" required>
-              <Select value={form.wage_type} onChange={(e) => setForm({ ...form, wage_type: e.target.value })}>
-                <option value="monthly">Monthly Salary</option>
-                <option value="daily">Daily Wage</option>
-              </Select>
+              <SearchSelect
+                value={form.wage_type}
+                onChange={(v) => setForm({ ...form, wage_type: v })}
+                options={[
+                  { value: 'monthly', label: 'Monthly Salary' },
+                  { value: 'daily', label: 'Daily Wage' }
+                ]}
+              />
             </Field>
             {form.wage_type === 'monthly' ? (
               <Field label="Monthly Salary" required>
@@ -159,19 +164,24 @@ export function Employees(): React.JSX.Element {
               <Input type="number" step="0.01" value={form.ot_rate} onChange={(e) => setForm({ ...form, ot_rate: e.target.value })} placeholder="Optional" />
             </Field>
             <Field label="Plant" hint="Common = shared by all plants">
-              <Select value={form.plant_id ?? ''} onChange={(e) => setForm({ ...form, plant_id: e.target.value ? Number(e.target.value) : null })}>
-                <option value="">Common (all plants)</option>
-                {plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </Select>
+              <SearchSelect
+                value={form.plant_id ?? ''}
+                onChange={(v) => setForm({ ...form, plant_id: v ? Number(v) : null })}
+                options={[{ value: '', label: 'Common (all plants)' }, ...plants.map((p) => ({ value: p.id, label: p.name }))]}
+              />
             </Field>
             <Field label="Contact">
               <Input value={form.contact} onChange={(e) => setForm({ ...form, contact: e.target.value })} />
             </Field>
             <Field label="Status">
-              <Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </Select>
+              <SearchSelect
+                value={form.status}
+                onChange={(v) => setForm({ ...form, status: v })}
+                options={[
+                  { value: 'active', label: 'Active' },
+                  { value: 'inactive', label: 'Inactive' }
+                ]}
+              />
             </Field>
             <div className="col-span-2">
               <Field label="Remarks">

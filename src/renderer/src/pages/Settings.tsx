@@ -8,6 +8,7 @@ import {
   Button,
   Input,
   Select,
+  SearchSelect,
   Field,
   Card,
   CardContent,
@@ -359,10 +360,7 @@ export function SettingsPage(): React.JSX.Element {
                 />
               </Field>
               <Field label="Status">
-                <Select value={plantForm.status || 'active'} onChange={(e) => setPlantForm({ ...plantForm, status: e.target.value as Plant['status'] })}>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </Select>
+                <SearchSelect value={plantForm.status || 'active'} onChange={(v) => setPlantForm({ ...plantForm, status: v as Plant['status'] })} options={[{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }]} />
               </Field>
             </div>
             <div className="flex items-end gap-2">

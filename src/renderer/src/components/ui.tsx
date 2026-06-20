@@ -118,12 +118,14 @@ export function SearchSelect({
   const sel = options.find((o) => String(o.value) === String(value ?? ''))
   const ql = q.trim().toLowerCase()
   const filtered = ql ? options.filter((o) => o.label.toLowerCase().includes(ql)) : options
+  // Short lists don't need a search box — keep them as a clean dropdown.
+  const showSearch = options.length > 7
   return (
     <div ref={ref} className={cn('relative', className)}>
       <button
         type="button"
         disabled={disabled}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => { setQ(''); setOpen((v) => !v) }}
         className="flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-input bg-card px-3 text-left text-sm shadow-sm transition-all focus-visible:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-50"
       >
         <span className={cn('truncate', !sel && 'text-muted-foreground')}>{sel ? sel.label : placeholder}</span>
@@ -131,16 +133,18 @@ export function SearchSelect({
       </button>
       {open && (
         <div className="absolute z-[60] mt-1 w-full overflow-hidden rounded-lg border bg-card shadow-xl">
-          <div className="flex items-center gap-2 border-b px-2.5 py-1.5">
-            <Search size={14} className="text-muted-foreground" />
-            <input
-              autoFocus
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search…"
-              className="w-full bg-transparent text-sm outline-none"
-            />
-          </div>
+          {showSearch && (
+            <div className="flex items-center gap-2 border-b px-2.5 py-1.5">
+              <Search size={14} className="text-muted-foreground" />
+              <input
+                autoFocus
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search…"
+                className="w-full bg-transparent text-sm outline-none"
+              />
+            </div>
+          )}
           <div className="max-h-56 overflow-auto py-1">
             {filtered.length === 0 ? (
               <div className="px-3 py-2 text-sm text-muted-foreground">No matches</div>

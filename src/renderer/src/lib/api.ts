@@ -182,6 +182,7 @@ export const api = {
   },
   dispatches: {
     list: (filter?: Record<string, unknown>) => call<Dispatch[]>('dispatches.list', filter),
+    detail: (id: number) => call<Dispatch | null>('dispatches.detail', { id }),
     create: (p: unknown) => call<Dispatch>('dispatches.create', p),
     update: (p: unknown) => call<Dispatch>('dispatches.update', p),
     setRate: (id: number, rate: number) => call<Dispatch>('dispatches.setRate', { id, rate }),

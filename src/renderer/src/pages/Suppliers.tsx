@@ -8,6 +8,7 @@ import {
   Button,
   Input,
   Select,
+  SearchSelect,
   Textarea,
   Field,
   Modal,
@@ -139,22 +140,18 @@ export function Suppliers(): React.JSX.Element {
           </Field>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Company / Group (optional)" hint="For a combined company ledger">
-              <Select
+              <SearchSelect
                 value={form.company_id ?? ''}
-                onChange={(e) => setForm({ ...form, company_id: e.target.value ? Number(e.target.value) : null })}
-              >
-                <option value="">— None —</option>
-                {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </Select>
+                onChange={(v) => setForm({ ...form, company_id: v ? Number(v) : null })}
+                options={[{ value: '', label: '— None —' }, ...companies.map((c) => ({ value: c.id, label: c.name }))]}
+              />
             </Field>
             <Field label="Plant" hint="Common = available to all plants">
-              <Select
+              <SearchSelect
                 value={form.plant_id ?? ''}
-                onChange={(e) => setForm({ ...form, plant_id: e.target.value ? Number(e.target.value) : null })}
-              >
-                <option value="">Common (all plants)</option>
-                {plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </Select>
+                onChange={(v) => setForm({ ...form, plant_id: v ? Number(v) : null })}
+                options={[{ value: '', label: 'Common (all plants)' }, ...plants.map((p) => ({ value: p.id, label: p.name }))]}
+              />
             </Field>
           </div>
           <Field label="Contact Details">

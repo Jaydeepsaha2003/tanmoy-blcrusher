@@ -237,6 +237,8 @@ export interface Supplier {
   company_name?: string
   plant_id: number | null
   plant_name?: string
+  /** Set when this supplier is an internal stand-in for another plant (inter-plant trade). */
+  plant_ref_id?: number | null
   created_at: string
   // computed
   total_purchased?: number
@@ -257,6 +259,8 @@ export interface Customer {
   plant_name?: string
   /** Random token for the public, no-login rate-list URL (/rates/:token). */
   share_token?: string | null
+  /** Set when this customer is an internal stand-in for another plant (inter-plant trade). */
+  plant_ref_id?: number | null
   created_at: string
   // computed
   total_dispatched?: number
@@ -322,6 +326,11 @@ export interface Purchase {
   outsource_id: number | null
   outsource_name?: string
   outsource_head?: string
+  /** Inter-plant: the source plant this stock was bought from (mirror of a direct sale). */
+  from_plant_id?: number | null
+  from_plant_name?: string
+  /** The direct sale (in the source plant) that created this purchase. */
+  linked_dispatch_id?: number | null
   uom: Uom
   quantity: number
   qty_cm: number
@@ -613,11 +622,48 @@ export interface Dispatch {
   dispatch_status: DispatchStatus
   payment_status: PaymentStatus
   paid_amount: number
+  /** Inter-plant sale: the destination plant that receives the goods as a purchase. */
+  to_plant_id: number | null
+  to_plant_name?: string
+  /** The mirror finished-goods purchase created in the destination plant. */
+  linked_purchase_id: number | null
   date: string
   remarks: string
   created_at: string
+  /** Loaded on detail: transporter and machine cost lines. */
+  transporters?: DispatchTransporter[]
+  machines?: DispatchMachine[]
   // computed
   billed_total?: number
+  transport_total?: number
+  machine_total?: number
+}
+
+/** A transporter cost line on a direct sale (mirrors PurchaseTransporter). */
+export interface DispatchTransporter {
+  id?: number
+  dispatch_id?: number
+  transporter_id: number
+  transporter_name?: string
+  vehicle_no: string
+  basis: PurchaseTransportBasis
+  qty: number
+  rate: number
+  charge: number
+}
+
+/** A machine-usage cost line on a direct sale (mirrors PurchaseMachine). */
+export interface DispatchMachine {
+  id?: number
+  dispatch_id?: number
+  asset_id: number
+  asset_name?: string
+  basis: MachineBasis
+  qty: number
+  rate: number
+  amount: number
+  outsource_id: number | null
+  outsource_name?: string
 }
 
 export interface StockMovement {
