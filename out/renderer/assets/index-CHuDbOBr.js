@@ -60982,6 +60982,7 @@ const vehicleLabel = {
   own: "Own Vehicle",
   rented: "Rented"
 };
+const uomLabel = (u2) => u2 === "CM" ? "m³" : u2 === "TON" ? "Ton" : "CFT";
 function Dispatch() {
   const qc2 = useQueryClient();
   const toast = useToast();
@@ -61362,14 +61363,22 @@ function Dispatch() {
             ) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: form.date, onChange: (e3) => setForm({ ...form, date: e3.target.value }) }) })
           ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-3", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sm:col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product", required: true, hint: !form.outsourced && selProduct ? `Available: ${fmtQty(selProduct.balance_qty)} m³` : void 0, children: form.outsourced ? /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.product_name, onChange: (e3) => setForm({ ...form, product_name: e3.target.value }), placeholder: "Outsourced product name" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-4", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Unit (UOM)", required: true, hint: "Pick the selling unit first", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
+              {
+                value: form.uom,
+                onChange: (v2) => setForm({ ...form, uom: v2 }),
+                options: UOMS.map((u2) => ({ value: u2, label: uomLabel(u2) }))
+              }
+            ) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sm:col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product", required: true, hint: !form.outsourced && selProduct ? `Available: ${fmtQty(fromCm(selProduct.balance_qty, form.uom))} ${uomLabel(form.uom)}` : void 0, children: form.outsourced ? /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.product_name, onChange: (e3) => setForm({ ...form, product_name: e3.target.value }), placeholder: "Outsourced product name" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(
               SearchSelect,
               {
                 value: form.product_name,
                 onChange: (v2) => setForm({ ...form, product_name: v2 }),
                 options: [
-                  ...avail.map((a2) => ({ value: a2.product_name, label: `${a2.product_name} (${fmtQty(a2.balance_qty)} m³)` })),
+                  ...avail.map((a2) => ({ value: a2.product_name, label: `${a2.product_name} (${fmtQty(fromCm(a2.balance_qty, form.uom))} ${uomLabel(form.uom)})` })),
                   ...form.id && form.product_name && !avail.some((a2) => a2.product_name === form.product_name) ? [{ value: form.product_name, label: form.product_name }] : []
                 ],
                 placeholder: "Select product…"
@@ -61410,15 +61419,7 @@ function Dispatch() {
             }
           ) }) })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Section, { title: "Quantity & Rate", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4 sm:grid-cols-4", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Unit (UOM)", required: true, hint: "1 m³ = 1.6 ton = 35.31 cft", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-            SearchSelect,
-            {
-              value: form.uom,
-              onChange: (v2) => setForm({ ...form, uom: v2 }),
-              options: UOMS.map((u2) => ({ value: u2, label: u2 === "CM" ? "m³" : u2 === "TON" ? "Ton" : "CFT" }))
-            }
-          ) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Section, { title: "Quantity & Rate", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4 sm:grid-cols-3", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `Actual Qty (${form.uom})`, required: true, hint: qtyCm > 0 ? `${fmtQty(qtyCm)} m³ off stock` : "Dispatched from plant", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.quantity, onChange: (e3) => setForm({ ...form, quantity: e3.target.value }) }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             Field,
@@ -65592,18 +65593,7 @@ function RackDetail() {
                 options: customers.map((c2) => ({ value: c2.id, label: c2.name }))
               }
             ) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-              SearchSelect,
-              {
-                value: saleForm.product_name,
-                onChange: (v2) => setSaleForm({ ...saleForm, product_name: v2 }),
-                options: products.filter((p2) => p2.balance_cm > 0 || p2.product_name === saleForm.product_name).map((p2) => ({
-                  value: p2.product_name,
-                  label: `${p2.product_name} (${fmtQty(p2.balance_cm)} m³ in rack)`
-                }))
-              }
-            ) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Unit of Measure", hint: "1 m³ = 1.6 ton = 35.31 cft", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Unit of Measure", hint: "Pick the selling unit first — stock shows in this unit", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
               SearchSelect,
               {
                 value: saleForm.uom,
@@ -65611,6 +65601,17 @@ function RackDetail() {
                 options: UOMS.map((u2) => ({
                   value: u2,
                   label: u2 === "CM" ? "Cubic Meter (m³)" : u2 === "TON" ? "Ton" : "Cubic Feet (CFT)"
+                }))
+              }
+            ) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
+              {
+                value: saleForm.product_name,
+                onChange: (v2) => setSaleForm({ ...saleForm, product_name: v2 }),
+                options: products.filter((p2) => p2.balance_cm > 0 || p2.product_name === saleForm.product_name).map((p2) => ({
+                  value: p2.product_name,
+                  label: `${p2.product_name} (${fmtQty(fromCm(p2.balance_cm, saleForm.uom))} ${saleForm.uom === "CM" ? "m³" : saleForm.uom === "TON" ? "ton" : "cft"} in rack)`
                 }))
               }
             ) }),
