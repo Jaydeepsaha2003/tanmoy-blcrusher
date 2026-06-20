@@ -85,6 +85,7 @@ export const handlers: Record<string, (payload: any) => unknown> = {
   'transportCharges.delete': rateChart.deleteTransportCharge,
 
   'purchases.list': purchases.listPurchases,
+  'purchases.detail': purchases.getPurchaseDetail,
   'purchases.create': purchases.createPurchase,
   'purchases.update': purchases.updatePurchase,
   'purchases.delete': purchases.deletePurchase,

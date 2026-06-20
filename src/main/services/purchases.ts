@@ -1,9 +1,71 @@
-import { getDb, nextNumber } from '../db'
-import type { Purchase, PaymentStatus, Uom, MaterialType } from '@shared/types'
+import { getDb, nextNumber, type Db } from '../db'
+import type {
+  Purchase,
+  PaymentStatus,
+  Uom,
+  MaterialType,
+  PurchaseMode,
+  MachineBasis,
+  PurchaseTransporter,
+  PurchaseMachine
+} from '@shared/types'
 import { derivePaymentStatus, toCm, properCase } from '@shared/types'
 import { addMovement, rawLocationBalance, finishedBalance } from './movements'
 import { ensureDefaultLocation } from './stockLocations'
 import { plantUomFactors } from './plants'
+
+function round2(n: number): number {
+  return Math.round((Number(n) + Number.EPSILON) * 100) / 100
+}
+
+/** Replace the transporter + machine lines for a purchase. */
+async function writeChildLines(
+  d: Db,
+  purchaseId: number,
+  transporters?: { transporter_id: number; vehicle_no?: string; charge?: number }[],
+  machines?: { asset_id: number; basis?: MachineBasis; qty?: number; rate?: number; outsource_id?: number | null }[]
+): Promise<void> {
+  await d.prepare(`DELETE FROM purchase_transporters WHERE purchase_id = ?`).run(purchaseId)
+  await d.prepare(`DELETE FROM purchase_machines WHERE purchase_id = ?`).run(purchaseId)
+  const tStmt = d.prepare(
+    `INSERT INTO purchase_transporters (purchase_id, transporter_id, vehicle_no, charge) VALUES (?, ?, ?, ?)`
+  )
+  for (const t of transporters ?? []) {
+    if (!t.transporter_id) continue
+    await tStmt.run(purchaseId, t.transporter_id, properCase(t.vehicle_no || ''), round2(Number(t.charge) || 0))
+  }
+  const mStmt = d.prepare(
+    `INSERT INTO purchase_machines (purchase_id, asset_id, basis, qty, rate, amount, outsource_id) VALUES (?, ?, ?, ?, ?, ?, ?)`
+  )
+  for (const m of machines ?? []) {
+    if (!m.asset_id) continue
+    const basis: MachineBasis = m.basis === 'cm' ? 'cm' : 'hour'
+    const qty = Number(m.qty) || 0
+    const rate = Number(m.rate) || 0
+    await mStmt.run(purchaseId, m.asset_id, basis, qty, rate, round2(qty * rate), m.outsource_id ?? null)
+  }
+}
+
+/** Full purchase with its transporter + machine lines (for the edit modal). */
+export async function getPurchaseDetail(payload: { id: number }): Promise<Purchase | null> {
+  const d = getDb()
+  const pu = (await d.prepare(`SELECT * FROM purchases WHERE id = ?`).get(payload.id)) as Purchase | undefined
+  if (!pu) return null
+  pu.transporters = (await d
+    .prepare(
+      `SELECT pt.*, t.name AS transporter_name FROM purchase_transporters pt
+       JOIN transporters t ON t.id = pt.transporter_id WHERE pt.purchase_id = ? ORDER BY pt.id`
+    )
+    .all(payload.id)) as PurchaseTransporter[]
+  pu.machines = (await d
+    .prepare(
+      `SELECT pm.*, a.name AS asset_name, o.name AS outsource_name FROM purchase_machines pm
+       JOIN assets a ON a.id = pm.asset_id
+       LEFT JOIN outsource o ON o.id = pm.outsource_id WHERE pm.purchase_id = ? ORDER BY pm.id`
+    )
+    .all(payload.id)) as PurchaseMachine[]
+  return pu
+}
 
 export interface PurchaseFilter {
   supplier_id?: number
@@ -41,7 +103,9 @@ export async function listPurchases(filter: PurchaseFilter = {}): Promise<Purcha
   return (await d
     .prepare(
       `SELECT pu.*, s.name AS supplier_name, p.name AS plant_name, l.name AS stock_location_name,
-        o.name AS outsource_name, o.head AS outsource_head
+        o.name AS outsource_name, o.head AS outsource_head,
+        (SELECT COALESCE(SUM(charge),0) FROM purchase_transporters pt WHERE pt.purchase_id = pu.id) AS transport_total,
+        (SELECT COALESCE(SUM(amount),0) FROM purchase_machines pm WHERE pm.purchase_id = pu.id) AS machine_total
        FROM purchases pu
        JOIN suppliers s ON s.id = pu.supplier_id
        JOIN plants p ON p.id = pu.plant_id
@@ -73,6 +137,12 @@ export interface PurchaseInput {
   product_name?: string
   /** Optional outsource vendor this purchase came through. */
   outsource_id?: number | null
+  /** 'purchase' (default) buys from supplier; 'mining' extracts from supplier's land (royalty rate). */
+  purchase_mode?: PurchaseMode
+  /** Transporter lines (transport for bringing the material in). */
+  transporters?: { transporter_id: number; vehicle_no?: string; charge?: number }[]
+  /** Machine-usage lines (cost posts as a plant equipment-rent cost; optional vendor payable). */
+  machines?: { asset_id: number; basis?: MachineBasis; qty?: number; rate?: number; outsource_id?: number | null }[]
   uom: Uom
   quantity: number
   rate: number | null
@@ -85,7 +155,9 @@ export interface PurchaseInput {
 export async function createPurchase(p: PurchaseInput): Promise<Purchase> {
   const d = getDb()
   if (!(p.quantity > 0)) throw new Error('Quantity must be greater than 0.')
-  const kind: MaterialType = p.material_type === 'finished' ? 'finished' : 'raw'
+  const mode: PurchaseMode = p.purchase_mode === 'mining' ? 'mining' : 'purchase'
+  // Mining always yields raw material; only a straight purchase can be finished goods.
+  const kind: MaterialType = mode === 'purchase' && p.material_type === 'finished' ? 'finished' : 'raw'
   const product = kind === 'finished' ? properCase(p.product_name || '') : ''
   if (kind === 'finished' && !product) throw new Error('Select a product to purchase.')
   // A stock-location is always stored (NOT NULL); for finished purchases it is the
@@ -99,8 +171,8 @@ export async function createPurchase(p: PurchaseInput): Promise<Purchase> {
     const info = await d
       .prepare(
         `INSERT INTO purchases
-          (purchase_no, supplier_id, plant_id, stock_location_id, material_type, product_name, outsource_id, uom, quantity, qty_cm, rate, amount, paid_amount, payment_status, date, remarks)
-         VALUES (@purchase_no,@supplier_id,@plant_id,@stock_location_id,@material_type,@product_name,@outsource_id,@uom,@quantity,@qty_cm,@rate,@amount,@paid_amount,@payment_status,@date,@remarks)`
+          (purchase_no, supplier_id, plant_id, stock_location_id, material_type, purchase_mode, product_name, outsource_id, uom, quantity, qty_cm, rate, amount, paid_amount, payment_status, date, remarks)
+         VALUES (@purchase_no,@supplier_id,@plant_id,@stock_location_id,@material_type,@purchase_mode,@product_name,@outsource_id,@uom,@quantity,@qty_cm,@rate,@amount,@paid_amount,@payment_status,@date,@remarks)`
       )
       .run({
         purchase_no: no,
@@ -108,6 +180,7 @@ export async function createPurchase(p: PurchaseInput): Promise<Purchase> {
         plant_id: p.plant_id,
         stock_location_id: locId,
         material_type: kind,
+        purchase_mode: mode,
         product_name: product,
         outsource_id: p.outsource_id ?? null,
         uom,
@@ -120,6 +193,7 @@ export async function createPurchase(p: PurchaseInput): Promise<Purchase> {
         date: p.date,
         remarks: p.remarks ?? ''
       })
+    await writeChildLines(d, Number(info.lastInsertRowid), p.transporters, p.machines)
     if (kind === 'finished') {
       await addMovement(d, {
         type: 'purchase',
@@ -154,7 +228,8 @@ export async function updatePurchase(p: PurchaseInput): Promise<Purchase> {
   if (!(p.quantity > 0)) throw new Error('Quantity must be greater than 0.')
   const old = (await d.prepare(`SELECT * FROM purchases WHERE id = ?`).get(p.id)) as Purchase
   if (!old) throw new Error('Purchase not found.')
-  const kind: MaterialType = p.material_type === 'finished' ? 'finished' : 'raw'
+  const mode: PurchaseMode = p.purchase_mode === 'mining' ? 'mining' : 'purchase'
+  const kind: MaterialType = mode === 'purchase' && p.material_type === 'finished' ? 'finished' : 'raw'
   const product = kind === 'finished' ? properCase(p.product_name || '') : ''
   if (kind === 'finished' && !product) throw new Error('Select a product to purchase.')
   const locId = p.stock_location_id || old.stock_location_id || (await ensureDefaultLocation(p.plant_id))
@@ -164,7 +239,7 @@ export async function updatePurchase(p: PurchaseInput): Promise<Purchase> {
   await d.transaction(async () => {
     await d.prepare(
       `UPDATE purchases SET supplier_id=@supplier_id, plant_id=@plant_id, stock_location_id=@stock_location_id,
-         material_type=@material_type, product_name=@product_name, outsource_id=@outsource_id,
+         material_type=@material_type, purchase_mode=@purchase_mode, product_name=@product_name, outsource_id=@outsource_id,
          uom=@uom, quantity=@quantity, qty_cm=@qty_cm, rate=@rate, amount=@amount, paid_amount=@paid_amount,
          payment_status=@payment_status, date=@date, remarks=@remarks WHERE id=@id`
     ).run({
@@ -173,6 +248,7 @@ export async function updatePurchase(p: PurchaseInput): Promise<Purchase> {
       plant_id: p.plant_id,
       stock_location_id: locId,
       material_type: kind,
+      purchase_mode: mode,
       product_name: product,
       outsource_id: p.outsource_id ?? null,
       uom,
@@ -185,6 +261,7 @@ export async function updatePurchase(p: PurchaseInput): Promise<Purchase> {
       date: p.date,
       remarks: p.remarks ?? ''
     })
+    await writeChildLines(d, p.id!, p.transporters, p.machines)
     // Rebuild the linked stock movement (kind may have changed on edit).
     await d.prepare(`DELETE FROM stock_movements WHERE ref_no=? AND type='purchase'`).run(old.purchase_no)
     if (kind === 'finished') {
@@ -240,6 +317,8 @@ export async function deletePurchase(payload: { id: number }): Promise<{ ok: boo
       } else if ((await rawLocationBalance(d, old.stock_location_id)) < 0) {
         throw new Error('Cannot delete: this material has already been consumed in production.')
       }
+      await d.prepare(`DELETE FROM purchase_transporters WHERE purchase_id = ?`).run(payload.id)
+      await d.prepare(`DELETE FROM purchase_machines WHERE purchase_id = ?`).run(payload.id)
       await d.prepare(`DELETE FROM purchases WHERE id = ?`).run(payload.id)
     })
     return { ok: true }

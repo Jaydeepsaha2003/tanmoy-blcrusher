@@ -129,6 +129,7 @@ CREATE TABLE IF NOT EXISTS purchases (
   plant_id          INTEGER NOT NULL REFERENCES plants(id),
   stock_location_id INTEGER NOT NULL REFERENCES stock_locations(id),
   material_type     TEXT NOT NULL DEFAULT 'raw',
+  purchase_mode     TEXT NOT NULL DEFAULT 'purchase',
   product_name      TEXT NOT NULL DEFAULT '',
   outsource_id      INTEGER,
   uom               TEXT NOT NULL DEFAULT 'CM',
@@ -141,6 +142,27 @@ CREATE TABLE IF NOT EXISTS purchases (
   date              TEXT NOT NULL,
   remarks           TEXT NOT NULL DEFAULT '',
   created_at        TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS purchase_transporters (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  purchase_id    INTEGER NOT NULL REFERENCES purchases(id),
+  transporter_id INTEGER NOT NULL REFERENCES transporters(id),
+  vehicle_no     TEXT NOT NULL DEFAULT '',
+  charge         REAL NOT NULL DEFAULT 0,
+  created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS purchase_machines (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  purchase_id  INTEGER NOT NULL REFERENCES purchases(id),
+  asset_id     INTEGER NOT NULL REFERENCES assets(id),
+  basis        TEXT NOT NULL DEFAULT 'hour',
+  qty          REAL NOT NULL DEFAULT 0,
+  rate         REAL NOT NULL DEFAULT 0,
+  amount       REAL NOT NULL DEFAULT 0,
+  outsource_id INTEGER,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS production_settings (
@@ -500,4 +522,7 @@ CREATE INDEX IF NOT EXISTS idx_opening_party ON opening_balances(party_type, par
 CREATE INDEX IF NOT EXISTS idx_ratechart_loc ON rate_chart(stock_location_id);
 CREATE INDEX IF NOT EXISTS idx_transport_loc ON transport_charges(stock_location_id);
 CREATE INDEX IF NOT EXISTS idx_budget_plant ON budgets(plant_id);
+CREATE INDEX IF NOT EXISTS idx_ptrans_purchase ON purchase_transporters(purchase_id);
+CREATE INDEX IF NOT EXISTS idx_ptrans_transporter ON purchase_transporters(transporter_id);
+CREATE INDEX IF NOT EXISTS idx_pmach_purchase ON purchase_machines(purchase_id);
 `

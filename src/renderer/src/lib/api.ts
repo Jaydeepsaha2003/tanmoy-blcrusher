@@ -151,6 +151,7 @@ export const api = {
   },
   purchases: {
     list: (filter?: Record<string, unknown>) => call<Purchase[]>('purchases.list', filter),
+    detail: (id: number) => call<Purchase | null>('purchases.detail', { id }),
     create: (p: unknown) => call<Purchase>('purchases.create', p),
     update: (p: unknown) => call<Purchase>('purchases.update', p),
     delete: (id: number) => call<{ ok: boolean; error?: string }>('purchases.delete', { id }),
@@ -214,7 +215,8 @@ export const api = {
     list: () => call<Company[]>('companies.list'),
     create: (p: Partial<Company> & { as_supplier?: boolean; as_customer?: boolean; as_transporter?: boolean }) =>
       call<Company>('companies.create', p),
-    update: (p: Partial<Company>) => call<Company>('companies.update', p),
+    update: (p: Partial<Company> & { as_supplier?: boolean; as_customer?: boolean; as_transporter?: boolean }) =>
+      call<Company>('companies.update', p),
     delete: (id: number) => call<{ ok: boolean; error?: string }>('companies.delete', { id })
   },
   racks: {

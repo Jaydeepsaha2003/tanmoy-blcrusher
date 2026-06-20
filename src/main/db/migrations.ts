@@ -157,6 +157,7 @@ CREATE TABLE IF NOT EXISTS purchases (
   plant_id          INT NOT NULL,
   stock_location_id INT NOT NULL,
   material_type     VARCHAR(16) NOT NULL DEFAULT 'raw',
+  purchase_mode     VARCHAR(16) NOT NULL DEFAULT 'purchase',
   product_name      VARCHAR(255) NOT NULL DEFAULT '',
   outsource_id      INT,
   quantity          DOUBLE NOT NULL,
@@ -167,6 +168,25 @@ CREATE TABLE IF NOT EXISTS purchases (
   date              VARCHAR(32) NOT NULL,
   remarks           TEXT,
   created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS purchase_transporters (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  purchase_id    INT NOT NULL,
+  transporter_id INT NOT NULL,
+  vehicle_no     VARCHAR(64) NOT NULL DEFAULT '',
+  charge         DOUBLE NOT NULL DEFAULT 0,
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS purchase_machines (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  purchase_id  INT NOT NULL,
+  asset_id     INT NOT NULL,
+  basis        VARCHAR(8) NOT NULL DEFAULT 'hour',
+  qty          DOUBLE NOT NULL DEFAULT 0,
+  rate         DOUBLE NOT NULL DEFAULT 0,
+  amount       DOUBLE NOT NULL DEFAULT 0,
+  outsource_id INT,
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS production_settings (
   id                INT AUTO_INCREMENT PRIMARY KEY,
@@ -588,6 +608,33 @@ CREATE INDEX idx_budget_plant ON budgets(plant_id)`
     // Select a transporter on a direct sale (auto-links the transporter ledger).
     id: '011_dispatch_transporter',
     sql: `ALTER TABLE dispatches ADD COLUMN transporter_id INT`
+  },
+  {
+    // Mining mode + multi-transporter / multi-machine lines on a purchase.
+    id: '012_purchase_mining_lines',
+    sql: `ALTER TABLE purchases ADD COLUMN purchase_mode VARCHAR(16) NOT NULL DEFAULT 'purchase';
+CREATE TABLE IF NOT EXISTS purchase_transporters (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  purchase_id    INT NOT NULL,
+  transporter_id INT NOT NULL,
+  vehicle_no     VARCHAR(64) NOT NULL DEFAULT '',
+  charge         DOUBLE NOT NULL DEFAULT 0,
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS purchase_machines (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  purchase_id  INT NOT NULL,
+  asset_id     INT NOT NULL,
+  basis        VARCHAR(8) NOT NULL DEFAULT 'hour',
+  qty          DOUBLE NOT NULL DEFAULT 0,
+  rate         DOUBLE NOT NULL DEFAULT 0,
+  amount       DOUBLE NOT NULL DEFAULT 0,
+  outsource_id INT,
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_ptrans_purchase ON purchase_transporters(purchase_id);
+CREATE INDEX idx_ptrans_transporter ON purchase_transporters(transporter_id);
+CREATE INDEX idx_pmach_purchase ON purchase_machines(purchase_id)`
   }
 ]
 
@@ -653,6 +700,8 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   // Outsource vendor tag on sales and purchases.
   await addColumn('dispatches', 'outsource_id', 'INTEGER')
   await addColumn('purchases', 'outsource_id', 'INTEGER')
+  // Mining mode on purchases (child tables come from SCHEMA on the SQLite path).
+  await addColumn('purchases', 'purchase_mode', `TEXT NOT NULL DEFAULT 'purchase'`)
 }
 
 /**

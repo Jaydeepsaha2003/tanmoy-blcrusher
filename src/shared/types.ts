@@ -262,6 +262,33 @@ export interface Customer {
   total_dispatched?: number
 }
 
+export type PurchaseMode = 'purchase' | 'mining'
+export type MachineBasis = 'hour' | 'cm'
+
+/** A transporter line on a purchase (transport for bringing the material in). */
+export interface PurchaseTransporter {
+  id?: number
+  purchase_id?: number
+  transporter_id: number
+  transporter_name?: string
+  vehicle_no: string
+  charge: number
+}
+
+/** A machine-usage line on a purchase/mining; cost posts as a plant equipment-rent cost. */
+export interface PurchaseMachine {
+  id?: number
+  purchase_id?: number
+  asset_id: number
+  asset_name?: string
+  basis: MachineBasis
+  qty: number
+  rate: number
+  amount: number
+  outsource_id: number | null
+  outsource_name?: string
+}
+
 export interface Purchase {
   id: number
   purchase_no: string
@@ -273,8 +300,15 @@ export interface Purchase {
   stock_location_name?: string
   /** 'raw' = raw material into a location; 'finished' = a product into finished-goods stock. */
   material_type: MaterialType
+  /** 'purchase' = buy from supplier; 'mining' = extract from supplier's land (royalty). */
+  purchase_mode: PurchaseMode
   /** Product name when material_type = 'finished' (else ''). */
   product_name: string
+  /** Loaded on detail: transporter and machine lines. */
+  transporters?: PurchaseTransporter[]
+  machines?: PurchaseMachine[]
+  transport_total?: number
+  machine_total?: number
   /** Optional outsource vendor this purchase came through. */
   outsource_id: number | null
   outsource_name?: string

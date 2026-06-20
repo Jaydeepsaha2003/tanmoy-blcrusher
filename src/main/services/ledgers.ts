@@ -429,6 +429,42 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
         credit: 0
       })
 
+    // Purchase transport + machine (mining/purchase) costs.
+    const ptrans = (await d
+      .prepare(
+        `SELECT pu.purchase_no, pu.date, pu.created_at, COALESCE(pt.charge,0) AS charge, t.name AS tname
+         FROM purchase_transporters pt JOIN purchases pu ON pu.id = pt.purchase_id
+         JOIN transporters t ON t.id = pt.transporter_id WHERE pu.plant_id = ?`
+      )
+      .all(partyId)) as { purchase_no: string; date: string; created_at: string; charge: number; tname: string }[]
+    for (const x of ptrans)
+      if (x.charge > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Purchase transport — ${x.tname}`,
+          ref: x.purchase_no,
+          debit: x.charge,
+          credit: 0
+        })
+    const pmach = (await d
+      .prepare(
+        `SELECT pu.purchase_no, pu.date, pu.created_at, COALESCE(pm.amount,0) AS amount, a.name AS aname
+         FROM purchase_machines pm JOIN purchases pu ON pu.id = pm.purchase_id
+         JOIN assets a ON a.id = pm.asset_id WHERE pu.plant_id = ?`
+      )
+      .all(partyId)) as { purchase_no: string; date: string; created_at: string; amount: number; aname: string }[]
+    for (const x of pmach)
+      if (x.amount > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Machine — ${x.aname}`,
+          ref: x.purchase_no,
+          debit: x.amount,
+          credit: 0
+        })
+
     const dieselCost = (await d
       .prepare(
         `SELECT purchase_no, date, created_at, COALESCE(amount,0) AS amount, litres
@@ -634,6 +670,24 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
           credit: 0
         })
     }
+    // Machine-usage lines on purchases hired from this vendor — payable.
+    const mach = (await d
+      .prepare(
+        `SELECT pu.purchase_no, pu.date, pu.created_at, COALESCE(pm.amount,0) AS amount, a.name AS aname
+         FROM purchase_machines pm JOIN purchases pu ON pu.id = pm.purchase_id
+         JOIN assets a ON a.id = pm.asset_id WHERE pm.outsource_id = ?`
+      )
+      .all(partyId)) as { purchase_no: string; date: string; created_at: string; amount: number; aname: string }[]
+    for (const x of mach)
+      if (x.amount > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Machine hire — ${x.aname}`,
+          ref: x.purchase_no,
+          debit: 0,
+          credit: x.amount
+        })
   }
 
   if (partyType === 'customer') {
@@ -870,6 +924,24 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
         debit: 0,
         credit: x.charge
       })
+    // Transport charged on purchases (bringing material in) — payable.
+    const pin = (await d
+      .prepare(
+        `SELECT pu.purchase_no, pu.date, pu.created_at, COALESCE(pt.charge,0) AS charge, COALESCE(pt.vehicle_no,'') AS vno
+         FROM purchase_transporters pt JOIN purchases pu ON pu.id = pt.purchase_id
+         WHERE pt.transporter_id = ?`
+      )
+      .all(partyId)) as { purchase_no: string; date: string; created_at: string; charge: number; vno: string }[]
+    for (const x of pin)
+      if (x.charge > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Transport — purchase inward${x.vno ? ` (${x.vno})` : ''}`,
+          ref: x.purchase_no,
+          debit: 0,
+          credit: x.charge
+        })
   }
 
   const payments = (await getDb()

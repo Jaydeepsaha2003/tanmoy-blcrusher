@@ -132,7 +132,7 @@ export function Companies(): React.JSX.Element {
                     >
                       <BookOpen size={15} />
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={() => { setForm(c); setOpen(true) }}>
+                    <Button variant="ghost" size="icon" onClick={() => { setForm({ ...c, as_supplier: (c.roles ?? []).includes('Supplier'), as_customer: (c.roles ?? []).includes('Customer'), as_transporter: (c.roles ?? []).includes('Transporter') }); setOpen(true) }}>
                       <Pencil size={15} />
                     </Button>
                     <Button variant="ghost" size="icon" onClick={() => remove(c)}>
@@ -151,8 +151,8 @@ export function Companies(): React.JSX.Element {
           <Field label="Company Name">
             <Input value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Brijesh Ltd." />
           </Field>
-          {!form.id && (
-            <Field label="Create as" hint="Auto-creates a linked record for each role so you can use this company straight away. Uncheck any you don't need.">
+          {(
+            <Field label="Roles" hint={form.id ? 'Tick to add a linked record for that role; untick to remove it (kept if it has transactions).' : "Auto-creates a linked record for each role so you can use this company straight away. Uncheck any you don't need."}>
               <div className="flex flex-wrap gap-2">
                 {([
                   ['as_supplier', 'Supplier'],

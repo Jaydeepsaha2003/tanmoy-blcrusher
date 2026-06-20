@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { cva, type VariantProps } from 'class-variance-authority'
-import { X } from 'lucide-react'
+import { X, ChevronDown, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 /* ---------------- Button ---------------- */
@@ -84,6 +84,87 @@ export const Select = React.forwardRef<
   </select>
 ))
 Select.displayName = 'Select'
+
+/* ---------------- SearchSelect (searchable dropdown) ---------------- */
+export interface SearchOption {
+  value: number | string
+  label: string
+}
+export function SearchSelect({
+  value,
+  onChange,
+  options,
+  placeholder = 'Select…',
+  disabled,
+  className
+}: {
+  value: number | string | '' | null | undefined
+  onChange: (value: string) => void
+  options: SearchOption[]
+  placeholder?: string
+  disabled?: boolean
+  className?: string
+}): React.JSX.Element {
+  const [open, setOpen] = React.useState(false)
+  const [q, setQ] = React.useState('')
+  const ref = React.useRef<HTMLDivElement>(null)
+  React.useEffect(() => {
+    function onDoc(e: MouseEvent): void {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    if (open) document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+  const sel = options.find((o) => String(o.value) === String(value ?? ''))
+  const ql = q.trim().toLowerCase()
+  const filtered = ql ? options.filter((o) => o.label.toLowerCase().includes(ql)) : options
+  return (
+    <div ref={ref} className={cn('relative', className)}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-input bg-card px-3 text-left text-sm shadow-sm transition-all focus-visible:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-50"
+      >
+        <span className={cn('truncate', !sel && 'text-muted-foreground')}>{sel ? sel.label : placeholder}</span>
+        <ChevronDown size={15} className="shrink-0 text-muted-foreground" />
+      </button>
+      {open && (
+        <div className="absolute z-[60] mt-1 w-full overflow-hidden rounded-lg border bg-card shadow-xl">
+          <div className="flex items-center gap-2 border-b px-2.5 py-1.5">
+            <Search size={14} className="text-muted-foreground" />
+            <input
+              autoFocus
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search…"
+              className="w-full bg-transparent text-sm outline-none"
+            />
+          </div>
+          <div className="max-h-56 overflow-auto py-1">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-2 text-sm text-muted-foreground">No matches</div>
+            ) : (
+              filtered.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => { onChange(String(o.value)); setOpen(false); setQ('') }}
+                  className={cn(
+                    'block w-full truncate px-3 py-1.5 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground',
+                    String(o.value) === String(value ?? '') && 'bg-accent/60 font-medium'
+                  )}
+                >
+                  {o.label}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 /* ---------------- Label ---------------- */
 export function Label({

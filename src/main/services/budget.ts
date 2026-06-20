@@ -55,15 +55,24 @@ export async function getBudget(payload: {
        WHERE plant_id = ? AND date >= ? AND date <= ?`
     )
     .get(plant_id, from, to)) as { amt: number }
+  // Machine-usage costs from purchases/mining count towards Equipment Rent.
+  const machine = (await d
+    .prepare(
+      `SELECT COALESCE(SUM(pm.amount),0) AS amt FROM purchase_machines pm
+       JOIN purchases pu ON pu.id = pm.purchase_id
+       WHERE pu.plant_id = ? AND pu.date >= ? AND pu.date <= ?`
+    )
+    .get(plant_id, from, to)) as { amt: number }
 
   const items: BudgetItem[] = HEADS.map((h) => {
     const budget = budgetByHead.get(h.head) ?? 0
-    const actual =
+    let actual =
       h.source === 'diesel'
         ? money(diesel.amt)
         : h.source === 'payroll'
           ? money(payroll.amt)
           : expByCat.get(h.head) ?? 0
+    if (h.head === 'equipment_rent') actual = money(actual + money(machine.amt))
     return { head: h.head, label: h.label, budget, actual, variance: money(budget - actual) }
   })
 

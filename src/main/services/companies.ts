@@ -1,6 +1,45 @@
-import { getDb } from '../db'
+import { getDb, type Db } from '../db'
 import type { Company } from '@shared/types'
 import { properCase } from '@shared/types'
+import { deleteSupplier } from './suppliers'
+import { deleteCustomer } from './customers'
+import { deleteTransporter } from './transporters'
+
+type RoleTable = 'suppliers' | 'customers' | 'transporters'
+const ROLE_DELETE: Record<RoleTable, (p: { id: number }) => Promise<{ ok: boolean; error?: string }>> = {
+  suppliers: deleteSupplier,
+  customers: deleteCustomer,
+  transporters: deleteTransporter
+}
+
+/**
+ * Sync one role for a company against a checkbox flag:
+ *  flag undefined → leave as-is; true → create a linked party if none exists;
+ *  false → remove the linked parties that have no transactions (in-use ones stay).
+ */
+async function syncRole(
+  d: Db,
+  companyId: number,
+  table: RoleTable,
+  flag: boolean | undefined,
+  name: string,
+  contact: string,
+  address: string
+): Promise<void> {
+  if (flag === undefined) return
+  const existing = (await d
+    .prepare(`SELECT id FROM ${table} WHERE company_id = ?`)
+    .all(companyId)) as { id: number }[]
+  if (flag) {
+    if (existing.length === 0) {
+      await d
+        .prepare(`INSERT INTO ${table} (name, contact, address, remarks, company_id) VALUES (?, ?, ?, '', ?)`)
+        .run(name, contact, address, companyId)
+    }
+  } else {
+    for (const e of existing) await ROLE_DELETE[table]({ id: e.id })
+  }
+}
 
 /** A company can be linked from suppliers, customers and transporters (multiple roles). */
 export async function listCompanies(): Promise<Company[]> {
@@ -64,16 +103,26 @@ export async function updateCompany(p: {
   contact: string
   address: string
   remarks: string
+  as_supplier?: boolean
+  as_customer?: boolean
+  as_transporter?: boolean
 }): Promise<Company> {
   const d = getDb()
   if (!p.name?.trim()) throw new Error('Company name is required.')
+  const name = properCase(p.name)
+  const contact = p.contact ?? ''
+  const address = p.address ?? ''
   await d.prepare(`UPDATE companies SET name=?, contact=?, address=?, remarks=? WHERE id=?`).run(
-    properCase(p.name),
-    p.contact ?? '',
-    p.address ?? '',
+    name,
+    contact,
+    address,
     p.remarks ?? '',
     p.id
   )
+  // Add/remove linked parties to match the role checkboxes.
+  await syncRole(d, p.id, 'suppliers', p.as_supplier, name, contact, address)
+  await syncRole(d, p.id, 'customers', p.as_customer, name, contact, address)
+  await syncRole(d, p.id, 'transporters', p.as_transporter, name, contact, address)
   return (await d.prepare(`SELECT * FROM companies WHERE id = ?`).get(p.id)) as Company
 }
 
