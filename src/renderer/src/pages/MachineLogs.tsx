@@ -154,8 +154,8 @@ export function MachineLogs(): React.JSX.Element {
                 <TH>Type</TH>
                 <TH className="text-right">Usage</TH>
                 <TH className="text-right">Fuel (L)</TH>
-                <TH className="text-right">Actual / unit</TH>
-                <TH className="text-right">Standard</TH>
+                <TH className="text-right">Actual fuel</TH>
+                <TH className="text-right">Standard fuel</TH>
                 <TH>Status</TH>
               </TR>
             </THead>
@@ -168,8 +168,8 @@ export function MachineLogs(): React.JSX.Element {
                     <TD className="capitalize text-muted-foreground">{m.asset_type}</TD>
                     <TD className="tnum text-right">{fmtQty(m.usage_qty)} <span className="text-xs text-muted-foreground">{unit}</span></TD>
                     <TD className="tnum text-right">{fmtQty(m.fuel_litres)}</TD>
-                    <TD className="tnum text-right">{m.actual_consumption == null ? '-' : `${fmtQty(m.actual_consumption)}/${unit}`}</TD>
-                    <TD className="tnum text-right text-muted-foreground">{m.standard_consumption == null ? '-' : `${fmtQty(m.standard_consumption)}/${unit}`}</TD>
+                    <TD className="tnum text-right">{m.actual_consumption == null ? '-' : `${fmtQty(m.actual_consumption)} L/${unit}`}</TD>
+                    <TD className="tnum text-right text-muted-foreground">{m.standard_consumption == null ? '-' : `${fmtQty(m.standard_consumption)} L/${unit}`}</TD>
                     <TD>
                       {m.standard_consumption == null || m.actual_consumption == null ? (
                         <span className="text-xs text-muted-foreground">—</span>

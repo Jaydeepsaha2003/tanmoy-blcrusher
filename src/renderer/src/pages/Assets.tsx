@@ -78,7 +78,10 @@ export function Assets(): React.JSX.Element {
     setOpen(true)
   }
   function openEdit(a: Asset): void {
-    setForm({ ...a, plant_ids: a.plant_ids ?? [] })
+    // The form edits efficiency (distance/run per litre); convert from the stored
+    // consumption (litres per unit) for display.
+    const perLitre = a.standard_consumption && a.standard_consumption > 0 ? Math.round((1 / a.standard_consumption) * 1000) / 1000 : ''
+    setForm({ ...a, plant_ids: a.plant_ids ?? [], std_per_litre: perLitre })
     setOpen(true)
   }
   function togglePlant(arr: number[], id: number): number[] {
@@ -95,6 +98,9 @@ export function Assets(): React.JSX.Element {
       rows.map((a) => [a.name, a.asset_type, a.category, a.identifier, plantsLabel(a), a.business_name ?? '', a.status])
     )
   }
+
+  const meterUnit = (form.meter_type || (form.asset_type === 'vehicle' ? 'km' : 'hour')) === 'km' ? 'km' : 'hr'
+  const stdEff = Number(form.std_per_litre)
 
   return (
     <>
@@ -210,8 +216,21 @@ export function Assets(): React.JSX.Element {
           <Field label="Meter" hint="Machines run on hours; vehicles on km">
             <SearchSelect value={form.meter_type || (form.asset_type === 'vehicle' ? 'km' : 'hour')} onChange={(v) => setForm({ ...form, meter_type: v as Asset['meter_type'] })} options={[{ value: 'hour', label: 'Hours' }, { value: 'km', label: 'Kilometres' }]} />
           </Field>
-          <Field label="Standard fuel" hint={`Litres per ${(form.meter_type || (form.asset_type === 'vehicle' ? 'km' : 'hour')) === 'km' ? 'km' : 'hour'} (over-use check)`}>
-            <Input type="number" step="0.01" value={form.standard_consumption ?? ''} onChange={(e) => setForm({ ...form, standard_consumption: e.target.value === '' ? null : Number(e.target.value) })} placeholder="Optional" />
+          <Field
+            label={`Standard ${meterUnit === 'km' ? 'mileage (km / L)' : 'run (hr / L)'}`}
+            hint={
+              form.std_per_litre !== '' && form.std_per_litre != null && stdEff > 0
+                ? `For 1 litre it runs ${meterUnit} · ≈ ${fmtQty(1 / stdEff)} L/${meterUnit} (over-use check)`
+                : `How many ${meterUnit} 1 litre runs (over-use check)`
+            }
+          >
+            <Input
+              type="number"
+              step="0.01"
+              value={form.std_per_litre ?? ''}
+              onChange={(e) => setForm({ ...form, std_per_litre: e.target.value })}
+              placeholder={meterUnit === 'km' ? 'e.g. 4 = 4 km per litre' : 'e.g. 0.06 = hr per litre'}
+            />
           </Field>
           <Field label="Status">
             <SearchSelect value={form.status || 'active'} onChange={(v) => setForm({ ...form, status: v as Asset['status'] })} options={[{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }]} />
@@ -229,7 +248,20 @@ export function Assets(): React.JSX.Element {
         </div>
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={() => save.mutate(form)} disabled={!form.name?.trim()}>Save</Button>
+          <Button
+            onClick={() => {
+              const { std_per_litre, ...rest } = form
+              const eff = Number(std_per_litre)
+              const standard_consumption =
+                std_per_litre !== '' && std_per_litre != null && eff > 0
+                  ? Math.round((1 / eff) * 100000) / 100000
+                  : null
+              save.mutate({ ...rest, standard_consumption })
+            }}
+            disabled={!form.name?.trim()}
+          >
+            Save
+          </Button>
         </div>
       </Modal>
 
