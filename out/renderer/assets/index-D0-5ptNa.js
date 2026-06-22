@@ -59536,6 +59536,7 @@ function Purchases() {
   });
   const [open, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState(null);
+  const [exportUom, setExportUom] = reactExports.useState("default");
   const formLocations = locations.filter((l2) => l2.plant_id === form?.plant_id);
   plants.find((pl2) => pl2.id === form?.plant_id);
   const mk2 = form ? modeKey(form) : "raw";
@@ -59633,6 +59634,13 @@ function Purchases() {
       machines: (form.machines ?? []).filter((m2) => m2.asset_id).map((m2) => ({ asset_id: Number(m2.asset_id), basis: m2.basis || "hour", qty: Number(m2.qty) || 0, rate: Number(m2.rate) || 0, outsource_id: m2.outsource_id ? Number(m2.outsource_id) : null }))
     });
   }
+  function exportRowUom(p2) {
+    return exportUom === "default" ? p2.uom : exportUom;
+  }
+  function exportRowQty(p2) {
+    if (exportUom === "default") return p2.quantity;
+    return fromCm(p2.qty_cm, exportUom, plants.find((pl2) => pl2.id === p2.plant_id));
+  }
   function exportExcel() {
     downloadExcel(
       "purchases",
@@ -59645,8 +59653,8 @@ function Purchases() {
         p2.supplier_name,
         p2.plant_name,
         p2.material_type === "finished" ? p2.product_name : p2.stock_location_name,
-        p2.uom,
-        p2.quantity,
+        exportRowUom(p2),
+        exportRowQty(p2),
         p2.qty_cm,
         p2.rate ?? "",
         p2.amount ?? "",
@@ -59669,6 +59677,20 @@ function Purchases() {
         title: "Purchases / Inward",
         description: "Buy raw material, mine on a supplier's land, or buy finished products — with transport & machine costs",
         actions: /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SearchSelect,
+            {
+              className: "w-full sm:w-44",
+              value: exportUom,
+              onChange: (v2) => setExportUom(v2),
+              options: [
+                { value: "default", label: "Excel UOM: As purchased" },
+                { value: "CM", label: "Excel UOM: m³" },
+                { value: "TON", label: "Excel UOM: Ton" },
+                { value: "CFT", label: "Excel UOM: CFT" }
+              ]
+            }
+          ),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", onClick: exportExcel, disabled: !data.length, children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(FileSpreadsheet, { size: 16 }),
             " Excel"
