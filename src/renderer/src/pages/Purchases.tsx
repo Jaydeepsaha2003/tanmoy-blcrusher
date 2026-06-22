@@ -2,7 +2,7 @@ import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, FileSpreadsheet, Mountain, Boxes, Pickaxe, X } from 'lucide-react'
 import { api } from '@/lib/api'
-import type { Purchase, PaymentStatus, MachineBasis } from '@shared/types'
+import type { Purchase, PaymentStatus, MachineBasis, Uom } from '@shared/types'
 import { PageHeader, Page } from '@/components/layout'
 import {
   Button,
@@ -23,7 +23,7 @@ import {
 import { useToast } from '@/components/toast'
 import { confirmDialog } from '@/components/confirm'
 import { usePlant } from '@/lib/plant'
-import { derivePaymentStatus, toCm, UOMS } from '@shared/types'
+import { derivePaymentStatus, toCm, fromCm, UOMS } from '@shared/types'
 import { fmtQty, fmtMoney, fmtDate, today, downloadExcel } from '@/lib/utils'
 
 const payBadge: Record<PaymentStatus, 'success' | 'warning' | 'destructive'> = {
@@ -64,6 +64,9 @@ export function Purchases(): React.JSX.Element {
 
   const [open, setOpen] = React.useState(false)
   const [form, setForm] = React.useState<any>(null)
+  // UOM the Excel export is expressed in: 'default' keeps each row's own purchase
+  // unit; CM/TON/CFT converts every row to that single unit (via the plant factors).
+  const [exportUom, setExportUom] = React.useState<'default' | Uom>('default')
 
   const formLocations = locations.filter((l) => l.plant_id === form?.plant_id)
   const formPlant = plants.find((pl) => pl.id === form?.plant_id)
@@ -164,6 +167,16 @@ export function Purchases(): React.JSX.Element {
     })
   }
 
+  // Quantity column for the export: 'default' shows the row's own purchase unit;
+  // otherwise convert the base m³ to the chosen unit using that row's plant factors.
+  function exportRowUom(p: Purchase): string {
+    return exportUom === 'default' ? p.uom : exportUom
+  }
+  function exportRowQty(p: Purchase): number {
+    if (exportUom === 'default') return p.quantity
+    return fromCm(p.qty_cm, exportUom, plants.find((pl) => pl.id === p.plant_id))
+  }
+
   function exportExcel(): void {
     downloadExcel(
       'purchases',
@@ -172,7 +185,7 @@ export function Purchases(): React.JSX.Element {
       data.map((p) => [
         p.purchase_no, fmtDate(p.date), p.purchase_mode === 'mining' ? 'Mining' : p.material_type === 'finished' ? 'Finished' : 'Raw',
         p.supplier_name, p.plant_name, p.material_type === 'finished' ? p.product_name : p.stock_location_name,
-        p.uom, p.quantity, p.qty_cm, p.rate ?? '', p.amount ?? '', p.transport_total ?? 0, p.machine_total ?? 0, p.paid_amount, p.payment_status, p.remarks ?? ''
+        exportRowUom(p), exportRowQty(p), p.qty_cm, p.rate ?? '', p.amount ?? '', p.transport_total ?? 0, p.machine_total ?? 0, p.paid_amount, p.payment_status, p.remarks ?? ''
       ])
     )
   }
@@ -190,6 +203,17 @@ export function Purchases(): React.JSX.Element {
         description="Buy raw material, mine on a supplier's land, or buy finished products — with transport & machine costs"
         actions={
           <>
+            <SearchSelect
+              className="w-full sm:w-44"
+              value={exportUom}
+              onChange={(v) => setExportUom(v as 'default' | Uom)}
+              options={[
+                { value: 'default', label: 'Excel UOM: As purchased' },
+                { value: 'CM', label: 'Excel UOM: m³' },
+                { value: 'TON', label: 'Excel UOM: Ton' },
+                { value: 'CFT', label: 'Excel UOM: CFT' }
+              ]}
+            />
             <Button variant="outline" onClick={exportExcel} disabled={!data.length}>
               <FileSpreadsheet size={16} /> Excel
             </Button>
