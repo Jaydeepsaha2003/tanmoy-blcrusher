@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, Cog } from 'lucide-react'
+import { Plus, Trash2, Cog, AlertTriangle } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { Production } from '@shared/types'
 import { toCm, UOMS } from '@shared/types'
@@ -43,6 +43,9 @@ export function ProductionEntry(): React.JSX.Element {
   const selectedLoc = locations.find((l) => l.id === form?.stock_location_id)
   const formPlant = plants.find((p) => p.id === form?.plant_id)
   const rawQtyCm = form ? toCm(Number(form.quantity) || 0, form.uom || 'CM', formPlant) : 0
+  // Can't consume more raw material than the chosen location actually holds.
+  const locAvailable = selectedLoc?.balance_qty ?? null
+  const overStock = locAvailable != null && rawQtyCm > locAvailable + 1e-6
 
   React.useEffect(() => {
     let active = true
@@ -220,12 +223,22 @@ export function ProductionEntry(): React.JSX.Element {
               No production settings for this plant. Set them up in Production Settings first.
             </p>
           )}
+          {overStock && (
+            <div className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-2.5 text-sm text-destructive">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+              <span>
+                This consumes <b>{fmtQty(rawQtyCm)} m³</b> but only <b>{fmtQty(locAvailable)} m³</b> is available in {selectedLoc?.name}.
+                {(form.uom || 'CM') !== 'CM' && ` (You entered ${fmtQty(Number(form.quantity) || 0)} ${form.uom}.)`}{' '}
+                Record a raw purchase into this location first — or check the unit (a TON purchase is far less volume than the same number in m³).
+              </span>
+            </div>
+          )}
 
           <div className="mt-5 flex justify-end gap-2">
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
             <Button
               onClick={() => save.mutate({ ...form, quantity: Number(form.quantity), uom: form.uom || 'CM' })}
-              disabled={!(Number(form.quantity) > 0) || preview.length === 0 || (formLocations.length > 0 && !form.stock_location_id)}
+              disabled={!(Number(form.quantity) > 0) || preview.length === 0 || (formLocations.length > 0 && !form.stock_location_id) || overStock}
             >
               Submit Production
             </Button>
