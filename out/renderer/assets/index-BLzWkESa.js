@@ -13051,20 +13051,20 @@ const createLruCache = (maxCacheSize) => {
     };
   }
   let cacheSize = 0;
-  let cache = /* @__PURE__ */ new Map();
+  let cache2 = /* @__PURE__ */ new Map();
   let previousCache = /* @__PURE__ */ new Map();
   const update = (key, value) => {
-    cache.set(key, value);
+    cache2.set(key, value);
     cacheSize++;
     if (cacheSize > maxCacheSize) {
       cacheSize = 0;
-      previousCache = cache;
-      cache = /* @__PURE__ */ new Map();
+      previousCache = cache2;
+      cache2 = /* @__PURE__ */ new Map();
     }
   };
   return {
     get(key) {
-      let value = cache.get(key);
+      let value = cache2.get(key);
       if (value !== void 0) {
         return value;
       }
@@ -13074,8 +13074,8 @@ const createLruCache = (maxCacheSize) => {
       }
     },
     set(key, value) {
-      if (cache.has(key)) {
-        cache.set(key, value);
+      if (cache2.has(key)) {
+        cache2.set(key, value);
       } else {
         update(key, value);
       }
@@ -36648,12 +36648,12 @@ function memoize$2(func, resolver) {
     throw new TypeError(FUNC_ERROR_TEXT$2);
   }
   var memoized = function() {
-    var args = arguments, key = resolver ? resolver.apply(this, args) : args[0], cache = memoized.cache;
-    if (cache.has(key)) {
-      return cache.get(key);
+    var args = arguments, key = resolver ? resolver.apply(this, args) : args[0], cache2 = memoized.cache;
+    if (cache2.has(key)) {
+      return cache2.get(key);
     }
     var result = func.apply(this, args);
-    memoized.cache = cache.set(key, result) || cache;
+    memoized.cache = cache2.set(key, result) || cache2;
     return result;
   };
   memoized.cache = new (memoize$2.Cache || MapCache$2)();
@@ -36666,12 +36666,12 @@ var memoize$1 = memoize_1;
 var MAX_MEMOIZE_SIZE = 500;
 function memoizeCapped$1(func) {
   var result = memoize$1(func, function(key) {
-    if (cache.size === MAX_MEMOIZE_SIZE) {
-      cache.clear();
+    if (cache2.size === MAX_MEMOIZE_SIZE) {
+      cache2.clear();
     }
     return key;
   });
-  var cache = result.cache;
+  var cache2 = result.cache;
   return result;
 }
 var _memoizeCapped = memoizeCapped$1;
@@ -36944,10 +36944,10 @@ var hasDuplicate = function hasDuplicate2(ary) {
     return false;
   }
   var len = ary.length;
-  var cache = {};
+  var cache2 = {};
   for (var i2 = 0; i2 < len; i2++) {
-    if (!cache[ary[i2]]) {
-      cache[ary[i2]] = true;
+    if (!cache2[ary[i2]]) {
+      cache2[ary[i2]] = true;
     } else {
       return true;
     }
@@ -39154,8 +39154,8 @@ function arraySome$2(array2, predicate) {
   return false;
 }
 var _arraySome = arraySome$2;
-function cacheHas$2(cache, key) {
-  return cache.has(key);
+function cacheHas$2(cache2, key) {
+  return cache2.has(key);
 }
 var _cacheHas = cacheHas$2;
 var SetCache$1 = _SetCache, arraySome$1 = _arraySome, cacheHas$1 = _cacheHas;
@@ -48808,17 +48808,17 @@ function createIsCircular(areItemsEqual) {
     if (!a2 || !b2 || typeof a2 !== "object" || typeof b2 !== "object") {
       return areItemsEqual(a2, b2, state);
     }
-    const { cache } = state;
-    const cachedA = cache.get(a2);
-    const cachedB = cache.get(b2);
+    const { cache: cache2 } = state;
+    const cachedA = cache2.get(a2);
+    const cachedB = cache2.get(b2);
     if (cachedA && cachedB) {
       return cachedA === b2 && cachedB === a2;
     }
-    cache.set(a2, b2);
-    cache.set(b2, a2);
+    cache2.set(a2, b2);
+    cache2.set(b2, a2);
     const result = areItemsEqual(a2, b2, state);
-    cache.delete(a2);
-    cache.delete(b2);
+    cache2.delete(a2);
+    cache2.delete(b2);
     return result;
   };
 }
@@ -49173,9 +49173,9 @@ function createInternalEqualityComparator(compare) {
 function createIsEqual({ circular, comparator, createState, equals, strict }) {
   if (createState) {
     return function isEqual2(a2, b2) {
-      const { cache = circular ? /* @__PURE__ */ new WeakMap() : void 0, meta } = createState();
+      const { cache: cache2 = circular ? /* @__PURE__ */ new WeakMap() : void 0, meta } = createState();
       return comparator(a2, b2, {
-        cache,
+        cache: cache2,
         equals,
         meta,
         strict
@@ -77026,7 +77026,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-Brub3ZxJ.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-CFTDHuL-.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
@@ -79623,6 +79623,37 @@ try {
 } catch (error) {
   console.error("Could not apply autoTable plugin", error);
 }
+const interRegularUrl = "" + new URL("Inter_400Regular-C_F0_eS_.ttf", import.meta.url).href;
+const interBoldUrl = "" + new URL("Inter_700Bold-CGGXExDp.ttf", import.meta.url).href;
+let cache = null;
+async function fetchBase64(url) {
+  const res = await fetch(url);
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  let binary = "";
+  const chunk = 32768;
+  for (let i2 = 0; i2 < bytes.length; i2 += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i2, i2 + chunk));
+  }
+  return btoa(binary);
+}
+async function registerInter(doc) {
+  try {
+    if (!cache) {
+      const [regular, bold] = await Promise.all([
+        fetchBase64(interRegularUrl),
+        fetchBase64(interBoldUrl)
+      ]);
+      cache = { regular, bold };
+    }
+    doc.addFileToVFS("Inter-Regular.ttf", cache.regular);
+    doc.addFont("Inter-Regular.ttf", "Inter", "normal");
+    doc.addFileToVFS("Inter-Bold.ttf", cache.bold);
+    doc.addFont("Inter-Bold.ttf", "Inter", "bold");
+    return "Inter";
+  } catch {
+    return "helvetica";
+  }
+}
 function qtyText(e3) {
   return e3.qty != null ? `${fmtQty(e3.qty)} ${e3.uom ?? ""}`.trim() : "";
 }
@@ -79804,6 +79835,7 @@ function Ledgers() {
   async function downloadPdf() {
     if (!ledger) return;
     const doc = new E({ orientation: "portrait", unit: "mm", format: "a4" });
+    const FONT = await registerInter(doc);
     const pageW = doc.internal.pageSize.getWidth();
     const pageH = doc.internal.pageSize.getHeight();
     const margin = 14;
@@ -79828,25 +79860,25 @@ function Ledgers() {
       }
     }
     const business = branding?.business_name || "BL Crushing";
-    doc.setFont("helvetica", "bold").setFontSize(16).setTextColor(17, 24, 39);
+    doc.setFont(FONT, "bold").setFontSize(16).setTextColor(17, 24, 39);
     doc.text(business, textX, topY + 6);
-    doc.setFont("helvetica", "normal").setFontSize(9).setTextColor(120, 120, 120);
+    doc.setFont(FONT, "normal").setFontSize(9).setTextColor(120, 120, 120);
     doc.text("Ledger Account", textX, topY + 11.5);
     const closingStr = `${fmtMoney(Math.abs(ledger.closing))} ${drcr(partyType, ledger.closing)}`.trim();
     const goodTypes = ["rack", "plant", "business", "machine", "company"];
     const good = goodTypes.includes(partyType) ? ledger.closing >= 0 : ledger.closing <= 0;
     doc.setFontSize(8).setTextColor(120, 120, 120);
     doc.text(`Closing — ${balanceLabel[partyType]}`, pageW - margin, topY + 4, { align: "right" });
-    doc.setFont("helvetica", "bold").setFontSize(13);
+    doc.setFont(FONT, "bold").setFontSize(13);
     doc.setTextColor(...good ? [22, 163, 74] : [185, 28, 28]);
     doc.text(closingStr, pageW - margin, topY + 11, { align: "right" });
     let y2 = topY + 18;
     doc.setDrawColor(225, 228, 232).line(margin, y2, pageW - margin, y2);
     y2 += 6;
-    doc.setFont("helvetica", "bold").setFontSize(12).setTextColor(17, 24, 39);
+    doc.setFont(FONT, "bold").setFontSize(12).setTextColor(17, 24, 39);
     doc.text(`${ledger.party_name}  ·  ${partyLabel[partyType]}`, margin, y2);
     const period = `${from ? fmtDate(from) : "Beginning"} to ${to ? fmtDate(to) : fmtDate(today())}`;
-    doc.setFont("helvetica", "normal").setFontSize(9).setTextColor(110, 110, 110);
+    doc.setFont(FONT, "normal").setFontSize(9).setTextColor(110, 110, 110);
     doc.text(`Period: ${period}`, margin, y2 + 5);
     y2 += 9;
     autoTable(doc, {
@@ -79863,9 +79895,9 @@ function Ledgers() {
         `${fmtMoney(Math.abs(e3.balance))} ${drcr(partyType, e3.balance)}`.trim()
       ]),
       foot: [["", "Total", "", "", fmtMoney(ledger.total_debit), fmtMoney(ledger.total_credit), closingStr]],
-      styles: { fontSize: 8, cellPadding: 1.6, lineColor: [230, 232, 236], lineWidth: 0.1, textColor: [31, 41, 55] },
-      headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold" },
-      footStyles: { fillColor: [243, 244, 246], textColor: [17, 24, 39], fontStyle: "bold" },
+      styles: { font: FONT, fontSize: 8.5, cellPadding: 2, lineColor: [230, 232, 236], lineWidth: 0.1, textColor: [31, 41, 55] },
+      headStyles: { font: FONT, fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold" },
+      footStyles: { font: FONT, fillColor: [243, 244, 246], textColor: [17, 24, 39], fontStyle: "bold" },
       alternateRowStyles: { fillColor: [249, 250, 251] },
       columnStyles: {
         0: { cellWidth: 20 },
@@ -79879,7 +79911,7 @@ function Ledgers() {
     const pages = doc.getNumberOfPages();
     for (let i2 = 1; i2 <= pages; i2++) {
       doc.setPage(i2);
-      doc.setFont("helvetica", "normal").setFontSize(8).setTextColor(150, 150, 150);
+      doc.setFont(FONT, "normal").setFontSize(8).setTextColor(150, 150, 150);
       doc.text(`Generated ${fmtDate(today())}`, margin, pageH - 8);
       doc.text(`Page ${i2} of ${pages}`, pageW - margin, pageH - 8, { align: "right" });
     }
