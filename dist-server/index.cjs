@@ -5370,8 +5370,10 @@ async function buildEntries(partyType, partyId) {
         entries.push({
           date: x.date,
           created_at: x.created_at,
-          particulars: `Direct sale \u2014 ${x.product_name} (${x.quantity} ${x.uom})`,
+          particulars: `Direct sale \u2014 ${x.product_name}`,
           ref: x.dispatch_no,
+          qty: x.quantity,
+          uom: x.uom,
           debit: x.billed,
           credit: 0
         });
@@ -5395,15 +5397,18 @@ async function buildEntries(partyType, partyId) {
       entries.push({
         date: x.date,
         created_at: x.created_at,
-        particulars: `Rack sale \u2014 ${x.product_name} (${x.quantity} ${x.uom}) \xB7 Rack ${x.rack_no}`,
+        particulars: `Rack sale \u2014 ${x.product_name} \xB7 Rack ${x.rack_no}`,
         ref: x.sale_no,
+        qty: x.quantity,
+        uom: x.uom,
         debit: x.amount,
         credit: 0
       });
   }
   if (partyType === "supplier") {
     const purchases = await d.prepare(
-      `SELECT purchase_no, date, created_at, COALESCE(amount,0) AS amount, paid_amount, quantity
+      `SELECT purchase_no, date, created_at, COALESCE(amount,0) AS amount, paid_amount, quantity, uom,
+                COALESCE(material_type,'raw') AS material_type, product_name
          FROM purchases WHERE supplier_id = ?`
     ).all(partyId);
     for (const x of purchases) {
@@ -5411,8 +5416,10 @@ async function buildEntries(partyType, partyId) {
         entries.push({
           date: x.date,
           created_at: x.created_at,
-          particulars: `Purchase \u2014 raw material (${x.quantity} m\xB3)`,
+          particulars: `Purchase \u2014 ${x.material_type === "finished" && x.product_name ? x.product_name : "raw material"}`,
           ref: x.purchase_no,
+          qty: x.quantity,
+          uom: x.uom,
           debit: 0,
           credit: x.amount
         });
@@ -5435,8 +5442,10 @@ async function buildEntries(partyType, partyId) {
         entries.push({
           date: x.date,
           created_at: x.created_at,
-          particulars: `Diesel purchase (${x.litres} L)`,
+          particulars: `Diesel purchase`,
           ref: x.purchase_no,
+          qty: x.litres,
+          uom: "L",
           debit: 0,
           credit: x.amount
         });
@@ -5618,6 +5627,8 @@ async function getLedger(payload) {
       date: e.date,
       particulars: e.particulars,
       ref: e.ref,
+      qty: e.qty,
+      uom: e.uom,
       debit: roundMoney2(e.debit),
       credit: roundMoney2(e.credit),
       balance: roundMoney2(bal),
