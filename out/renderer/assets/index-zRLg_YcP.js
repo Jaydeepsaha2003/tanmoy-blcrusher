@@ -60190,6 +60190,8 @@ function ProductionEntry() {
   const selectedLoc = locations.find((l2) => l2.id === form?.stock_location_id);
   plants.find((p2) => p2.id === form?.plant_id);
   const rawQtyCm = form ? toCm(Number(form.quantity) || 0, form.uom || "CM") : 0;
+  const locAvailable = selectedLoc?.balance_qty ?? null;
+  const overStock = locAvailable != null && rawQtyCm > locAvailable + 1e-6;
   reactExports.useEffect(() => {
     let active = true;
     if (form?.plant_id && rawQtyCm > 0) {
@@ -60333,13 +60335,34 @@ function ProductionEntry() {
         ] }, o.product_name)) })
       ] }) }),
       form.plant_id && preview.length === 0 && rawQtyCm > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-3 text-sm text-destructive", children: "No production settings for this plant. Set them up in Production Settings first." }),
+      overStock && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3 flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-2.5 text-sm text-destructive", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TriangleAlert, { size: 16, className: "mt-0.5 shrink-0" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+          "This consumes ",
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("b", { children: [
+            fmtQty(rawQtyCm),
+            " m³"
+          ] }),
+          " but only ",
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("b", { children: [
+            fmtQty(locAvailable),
+            " m³"
+          ] }),
+          " is available in ",
+          selectedLoc?.name,
+          ".",
+          (form.uom || "CM") !== "CM" && ` (You entered ${fmtQty(Number(form.quantity) || 0)} ${form.uom}.)`,
+          " ",
+          "Record a raw purchase into this location first — or check the unit (a TON purchase is far less volume than the same number in m³)."
+        ] })
+      ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 flex justify-end gap-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setOpen(false), children: "Cancel" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           Button,
           {
             onClick: () => save.mutate({ ...form, quantity: Number(form.quantity), uom: form.uom || "CM" }),
-            disabled: !(Number(form.quantity) > 0) || preview.length === 0 || formLocations.length > 0 && !form.stock_location_id,
+            disabled: !(Number(form.quantity) > 0) || preview.length === 0 || formLocations.length > 0 && !form.stock_location_id || overStock,
             children: "Submit Production"
           }
         )
