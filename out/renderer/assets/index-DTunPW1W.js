@@ -62525,7 +62525,8 @@ function Assets() {
     setOpen(true);
   }
   function openEdit(a2) {
-    setForm({ ...a2, plant_ids: a2.plant_ids ?? [] });
+    const perLitre = a2.standard_consumption && a2.standard_consumption > 0 ? Math.round(1 / a2.standard_consumption * 1e3) / 1e3 : "";
+    setForm({ ...a2, plant_ids: a2.plant_ids ?? [], std_per_litre: perLitre });
     setOpen(true);
   }
   function togglePlant(arr, id2) {
@@ -62540,6 +62541,8 @@ function Assets() {
       rows.map((a2) => [a2.name, a2.asset_type, a2.category, a2.identifier, plantsLabel(a2), a2.business_name ?? "", a2.status])
     );
   }
+  const meterUnit = (form.meter_type || (form.asset_type === "vehicle" ? "km" : "hour")) === "km" ? "km" : "hr";
+  const stdEff = Number(form.std_per_litre);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       PageHeader,
@@ -62627,14 +62630,42 @@ function Assets() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Identifier / Reg. No.", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.identifier || "", onChange: (e3) => setForm({ ...form, identifier: e3.target.value }), placeholder: "e.g. JH-01-AB-1234" }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Owning Business / Firm", hint: "Costs & rent of this machine roll up here", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.business_id ?? "", onChange: (v2) => setForm({ ...form, business_id: v2 ? Number(v2) : null }), options: [{ value: "", label: "— None —" }, ...businesses.map((b2) => ({ value: b2.id, label: b2.name }))] }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Meter", hint: "Machines run on hours; vehicles on km", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.meter_type || (form.asset_type === "vehicle" ? "km" : "hour"), onChange: (v2) => setForm({ ...form, meter_type: v2 }), options: [{ value: "hour", label: "Hours" }, { value: "km", label: "Kilometres" }] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Standard fuel", hint: `Litres per ${(form.meter_type || (form.asset_type === "vehicle" ? "km" : "hour")) === "km" ? "km" : "hour"} (over-use check)`, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.standard_consumption ?? "", onChange: (e3) => setForm({ ...form, standard_consumption: e3.target.value === "" ? null : Number(e3.target.value) }), placeholder: "Optional" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Field,
+          {
+            label: `Standard ${meterUnit === "km" ? "mileage (km / L)" : "run (hr / L)"}`,
+            hint: form.std_per_litre !== "" && form.std_per_litre != null && stdEff > 0 ? `For 1 litre it runs ${meterUnit} · ≈ ${fmtQty(1 / stdEff)} L/${meterUnit} (over-use check)` : `How many ${meterUnit} 1 litre runs (over-use check)`,
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              Input,
+              {
+                type: "number",
+                step: "0.01",
+                value: form.std_per_litre ?? "",
+                onChange: (e3) => setForm({ ...form, std_per_litre: e3.target.value }),
+                placeholder: meterUnit === "km" ? "e.g. 4 = 4 km per litre" : "e.g. 0.06 = hr per litre"
+              }
+            )
+          }
+        ),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Status", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.status || "active", onChange: (v2) => setForm({ ...form, status: v2 }), options: [{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }] }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Available at plants", hint: "Tick the plants that use this machine. Leave all unticked to share it across every plant.", children: /* @__PURE__ */ jsxRuntimeExports.jsx(PlantPicker, { plants, selected: form.plant_ids ?? [], onToggle: (id2) => setForm({ ...form, plant_ids: togglePlant(form.plant_ids ?? [], id2) }) }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.remarks || "", onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) }) })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 flex justify-end gap-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setOpen(false), children: "Cancel" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: () => save.mutate(form), disabled: !form.name?.trim(), children: "Save" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Button,
+          {
+            onClick: () => {
+              const { std_per_litre, ...rest } = form;
+              const eff = Number(std_per_litre);
+              const standard_consumption = std_per_litre !== "" && std_per_litre != null && eff > 0 ? Math.round(1 / eff * 1e5) / 1e5 : null;
+              save.mutate({ ...rest, standard_consumption });
+            },
+            disabled: !form.name?.trim(),
+            children: "Save"
+          }
+        )
       ] })
     ] }),
     moveForm && /* @__PURE__ */ jsxRuntimeExports.jsx(Modal, { open: true, onClose: () => setMoveForm(null), title: `Move — ${moveForm.name}`, children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
@@ -63167,8 +63198,8 @@ function MachineLogs() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Type" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Usage" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Fuel (L)" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actual / unit" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Standard" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actual fuel" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Standard fuel" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Status" })
         ] }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: mileage.map((m2) => {
@@ -63182,8 +63213,8 @@ function MachineLogs() {
               /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-muted-foreground", children: unit2 })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: fmtQty(m2.fuel_litres) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: m2.actual_consumption == null ? "-" : `${fmtQty(m2.actual_consumption)}/${unit2}` }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right text-muted-foreground", children: m2.standard_consumption == null ? "-" : `${fmtQty(m2.standard_consumption)}/${unit2}` }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: m2.actual_consumption == null ? "-" : `${fmtQty(m2.actual_consumption)} L/${unit2}` }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right text-muted-foreground", children: m2.standard_consumption == null ? "-" : `${fmtQty(m2.standard_consumption)} L/${unit2}` }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: m2.standard_consumption == null || m2.actual_consumption == null ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-muted-foreground", children: "—" }) : m2.over ? /* @__PURE__ */ jsxRuntimeExports.jsxs(Badge, { variant: "destructive", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx(TriangleAlert, { size: 11, className: "mr-0.5 inline" }),
               "Over"
@@ -77026,7 +77057,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-CFTDHuL-.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-2gViXQbL.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
