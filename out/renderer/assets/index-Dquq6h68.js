@@ -35579,6 +35579,11 @@ function fmtDate(s2) {
   if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
   return d2;
 }
+const MONEY_HEADER = /amount|amt|paid|rate|charge|cost|debit|credit|balance|receivable|payable|earned|deduction|\bnet\b|premium|goods|invoice|transport|machine|salary|wage|profit|expense|sales|diesel|\bother\b|\bbill\b|₹/i;
+const QTY_HEADER = /m³|m3|\bqty\b|quantity|cft|\bton\b|litre|liter|\bhrs\b|hours?|\bdays?\b|trips?|meter|\bkm\b|\bunits?\b|carried|loaded|unloaded|\bsold\b|change|stock|opening|closing/i;
+function isMoneyHeader(h2) {
+  return MONEY_HEADER.test(h2) && !QTY_HEADER.test(h2);
+}
 function downloadExcel(filename, sheetName, headers, rows, titleRows) {
   const body = rows.map((r2) => r2.map((c2) => c2 == null ? "" : c2));
   const title = titleRows ?? [];
@@ -35590,6 +35595,14 @@ function downloadExcel(filename, sheetName, headers, rows, titleRows) {
       ...body.map((r2) => r2[i] == null ? 0 : String(r2[i]).length)
     );
     return { wch: Math.min(Math.max(widest + 2, 10), 42) };
+  });
+  const headerRow = title.length ? title.length + 1 : 0;
+  headers.forEach((h2, c2) => {
+    if (!isMoneyHeader(h2)) return;
+    for (let r2 = headerRow + 1; r2 <= headerRow + body.length; r2++) {
+      const cell = ws[utils.encode_cell({ r: r2, c: c2 })];
+      if (cell && cell.t === "n") cell.z = "#,##0.00";
+    }
   });
   ws["!freeze"] = { xSplit: 0, ySplit: title.length ? title.length + 2 : 1 };
   const wb2 = utils.book_new();
@@ -60270,13 +60283,15 @@ function ProductionEntry() {
           Field,
           {
             label: "Stock Location",
-            hint: selectedLoc ? `Available: ${fmtQty(selectedLoc.balance_qty)} m³` : "Leave blank to use the plant itself as the default location",
+            required: formLocations.length > 0,
+            hint: selectedLoc ? `Available: ${fmtQty(selectedLoc.balance_qty)} m³` : formLocations.length > 0 ? "Pick which location to draw raw material from" : "No locations for this plant — the plant itself is used as the default",
             children: /* @__PURE__ */ jsxRuntimeExports.jsx(
               SearchSelect,
               {
                 value: form.stock_location_id || "",
+                placeholder: "Select stock location…",
                 onChange: (v2) => setForm({ ...form, stock_location_id: v2 ? Number(v2) : void 0 }),
-                options: [{ value: "", label: "Plant default (auto)" }, ...formLocations.map((l2) => ({ value: l2.id, label: `${l2.name} (${fmtQty(l2.balance_qty)} m³)` }))]
+                options: formLocations.length > 0 ? formLocations.map((l2) => ({ value: l2.id, label: `${l2.name} (${fmtQty(l2.balance_qty)} m³)` })) : [{ value: "", label: "Plant default (auto)" }]
               }
             )
           }
@@ -60324,7 +60339,7 @@ function ProductionEntry() {
           Button,
           {
             onClick: () => save.mutate({ ...form, quantity: Number(form.quantity), uom: form.uom || "CM" }),
-            disabled: !(Number(form.quantity) > 0) || preview.length === 0,
+            disabled: !(Number(form.quantity) > 0) || preview.length === 0 || formLocations.length > 0 && !form.stock_location_id,
             children: "Submit Production"
           }
         )
