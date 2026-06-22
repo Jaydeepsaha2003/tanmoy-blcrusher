@@ -7339,13 +7339,13 @@ async function getDashboard(payload = {}) {
     await d.prepare(`SELECT COALESCE(SUM(change_qty),0) AS q FROM stock_movements m WHERE type='production_output'${mAnd}`).get()
   );
   const totalDispatched = num2(
-    await d.prepare(`SELECT COALESCE(SUM(qty_cm),0) AS q FROM dispatches${plWhere}`).get()
+    await d.prepare(`SELECT COALESCE(SUM(qty_cm),0) AS q FROM dispatches WHERE to_plant_id IS NULL${plAnd}`).get()
   );
   const pendingSupplierPayment = money7(
-    await d.prepare(`SELECT COALESCE(SUM(COALESCE(amount,0) - paid_amount),0) AS q FROM purchases WHERE payment_status <> 'paid'${plAnd}`).get()
+    await d.prepare(`SELECT COALESCE(SUM(COALESCE(amount,0) - paid_amount),0) AS q FROM purchases WHERE payment_status <> 'paid' AND linked_dispatch_id IS NULL${plAnd}`).get()
   );
-  const pendingDeliveries = (await d.prepare(`SELECT COUNT(*) AS q FROM dispatches WHERE delivery_status='pending'${plAnd}`).get()).q;
-  const deliveredNoRate = (await d.prepare(`SELECT COUNT(*) AS q FROM dispatches WHERE delivery_status='delivered' AND rate IS NULL${plAnd}`).get()).q;
+  const pendingDeliveries = (await d.prepare(`SELECT COUNT(*) AS q FROM dispatches WHERE delivery_status='pending' AND to_plant_id IS NULL${plAnd}`).get()).q;
+  const deliveredNoRate = (await d.prepare(`SELECT COUNT(*) AS q FROM dispatches WHERE delivery_status='delivered' AND rate IS NULL AND to_plant_id IS NULL${plAnd}`).get()).q;
   const rackStockCm = num2(
     await d.prepare(
       `SELECT
@@ -7374,15 +7374,15 @@ async function getDashboard(payload = {}) {
     await d.prepare(`SELECT COALESCE(SUM(amount),0) AS q FROM rack_expenses`).get()
   );
   const rackProfit = money7({ q: rackSalesAmount - rackTransportCost - totalRackExpenses });
-  const custSalesExpr = pid ? `COALESCE((SELECT SUM(amount) FROM dispatches WHERE customer_id=c.id AND plant_id=${pid} AND amount IS NOT NULL),0)` : `COALESCE((SELECT SUM(amount) FROM rack_sales WHERE customer_id=c.id AND amount IS NOT NULL),0) +
-       COALESCE((SELECT SUM(amount) FROM dispatches WHERE customer_id=c.id AND amount IS NOT NULL),0)`;
+  const custSalesExpr = pid ? `COALESCE((SELECT SUM(amount) FROM dispatches WHERE customer_id=c.id AND plant_id=${pid} AND to_plant_id IS NULL AND amount IS NOT NULL),0)` : `COALESCE((SELECT SUM(amount) FROM rack_sales WHERE customer_id=c.id AND amount IS NOT NULL),0) +
+       COALESCE((SELECT SUM(amount) FROM dispatches WHERE customer_id=c.id AND to_plant_id IS NULL AND amount IS NOT NULL),0)`;
   const topCustomers = (await d.prepare(
     `SELECT c.name AS name, ${custSalesExpr} AS amount
          FROM customers c ORDER BY amount DESC LIMIT 5`
   ).all()).filter((r) => r.amount > 0).map((r) => ({ name: r.name, amount: money7({ q: r.amount }) }));
-  const monthlySrc = pid ? `SELECT substr(date,1,7) AS month, COALESCE(amount,0) AS amount FROM dispatches WHERE amount IS NOT NULL AND plant_id=${pid}` : `SELECT substr(date,1,7) AS month, COALESCE(amount,0) AS amount FROM rack_sales WHERE amount IS NOT NULL
+  const monthlySrc = pid ? `SELECT substr(date,1,7) AS month, COALESCE(amount,0) AS amount FROM dispatches WHERE amount IS NOT NULL AND to_plant_id IS NULL AND plant_id=${pid}` : `SELECT substr(date,1,7) AS month, COALESCE(amount,0) AS amount FROM rack_sales WHERE amount IS NOT NULL
        UNION ALL
-       SELECT substr(date,1,7) AS month, COALESCE(amount,0) AS amount FROM dispatches WHERE amount IS NOT NULL`;
+       SELECT substr(date,1,7) AS month, COALESCE(amount,0) AS amount FROM dispatches WHERE amount IS NOT NULL AND to_plant_id IS NULL`;
   const monthlySales = (await d.prepare(
     `SELECT month, SUM(amount) AS amount FROM (${monthlySrc}) AS t GROUP BY month ORDER BY month DESC LIMIT 6`
   ).all()).map((r) => ({ month: r.month, amount: money7({ q: r.amount }) })).reverse();
@@ -7390,13 +7390,13 @@ async function getDashboard(payload = {}) {
     `SELECT COALESCE(SUM(COALESCE(amount,0)
              + CASE WHEN transport_billed=1 THEN transport_charge ELSE 0 END
              + CASE WHEN other_billed=1 THEN other_charge ELSE 0 END
-             - paid_amount),0) AS q FROM dispatches WHERE plant_id = ${pid}`
+             - paid_amount),0) AS q FROM dispatches WHERE plant_id = ${pid} AND to_plant_id IS NULL`
   ) : d.prepare(
     `SELECT
             (SELECT COALESCE(SUM(COALESCE(amount,0)
                 + CASE WHEN transport_billed=1 THEN transport_charge ELSE 0 END
                 + CASE WHEN other_billed=1 THEN other_charge ELSE 0 END
-                - paid_amount),0) FROM dispatches) +
+                - paid_amount),0) FROM dispatches WHERE to_plant_id IS NULL) +
             (SELECT COALESCE(SUM(amount),0) FROM rack_sales WHERE amount IS NOT NULL) +
             (SELECT COALESCE(SUM(amount),0) FROM payments WHERE party_type='customer' AND direction='out') -
             (SELECT COALESCE(SUM(amount),0) FROM payments WHERE party_type='customer' AND direction='in') AS q`
