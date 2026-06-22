@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, FileSpreadsheet, ArrowLeft, FileText } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { registerInter } from '@/lib/pdfFont'
 import { api } from '@/lib/api'
 import type { LedgerType } from '@shared/types'
 import { usePlant } from '@/lib/plant'
@@ -235,6 +236,7 @@ export function Ledgers(): React.JSX.Element {
   async function downloadPdf(): Promise<void> {
     if (!ledger) return
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+    const FONT = await registerInter(doc)
     const pageW = doc.internal.pageSize.getWidth()
     const pageH = doc.internal.pageSize.getHeight()
     const margin = 14
@@ -263,9 +265,9 @@ export function Ledgers(): React.JSX.Element {
     }
 
     const business = branding?.business_name || 'BL Crushing'
-    doc.setFont('helvetica', 'bold').setFontSize(16).setTextColor(17, 24, 39)
+    doc.setFont(FONT, 'bold').setFontSize(16).setTextColor(17, 24, 39)
     doc.text(business, textX, topY + 6)
-    doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(120, 120, 120)
+    doc.setFont(FONT, 'normal').setFontSize(9).setTextColor(120, 120, 120)
     doc.text('Ledger Account', textX, topY + 11.5)
 
     const closingStr = `${fmtMoney(Math.abs(ledger.closing))} ${drcr(partyType, ledger.closing)}`.trim()
@@ -273,17 +275,17 @@ export function Ledgers(): React.JSX.Element {
     const good = goodTypes.includes(partyType) ? ledger.closing >= 0 : ledger.closing <= 0
     doc.setFontSize(8).setTextColor(120, 120, 120)
     doc.text(`Closing — ${balanceLabel[partyType]}`, pageW - margin, topY + 4, { align: 'right' })
-    doc.setFont('helvetica', 'bold').setFontSize(13)
+    doc.setFont(FONT, 'bold').setFontSize(13)
     doc.setTextColor(...(good ? ([22, 163, 74] as [number, number, number]) : ([185, 28, 28] as [number, number, number])))
     doc.text(closingStr, pageW - margin, topY + 11, { align: 'right' })
 
     let y = topY + 18
     doc.setDrawColor(225, 228, 232).line(margin, y, pageW - margin, y)
     y += 6
-    doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(17, 24, 39)
+    doc.setFont(FONT, 'bold').setFontSize(12).setTextColor(17, 24, 39)
     doc.text(`${ledger.party_name}  ·  ${partyLabel[partyType]}`, margin, y)
     const period = `${from ? fmtDate(from) : 'Beginning'} to ${to ? fmtDate(to) : fmtDate(today())}`
-    doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(110, 110, 110)
+    doc.setFont(FONT, 'normal').setFontSize(9).setTextColor(110, 110, 110)
     doc.text(`Period: ${period}`, margin, y + 5)
     y += 9
 
@@ -301,9 +303,9 @@ export function Ledgers(): React.JSX.Element {
         `${fmtMoney(Math.abs(e.balance))} ${drcr(partyType, e.balance)}`.trim()
       ]),
       foot: [['', 'Total', '', '', fmtMoney(ledger.total_debit), fmtMoney(ledger.total_credit), closingStr]],
-      styles: { fontSize: 8, cellPadding: 1.6, lineColor: [230, 232, 236], lineWidth: 0.1, textColor: [31, 41, 55] },
-      headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold' },
-      footStyles: { fillColor: [243, 244, 246], textColor: [17, 24, 39], fontStyle: 'bold' },
+      styles: { font: FONT, fontSize: 8.5, cellPadding: 2, lineColor: [230, 232, 236], lineWidth: 0.1, textColor: [31, 41, 55] },
+      headStyles: { font: FONT, fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold' },
+      footStyles: { font: FONT, fillColor: [243, 244, 246], textColor: [17, 24, 39], fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [249, 250, 251] },
       columnStyles: {
         0: { cellWidth: 20 },
@@ -318,7 +320,7 @@ export function Ledgers(): React.JSX.Element {
     const pages = doc.getNumberOfPages()
     for (let i = 1; i <= pages; i++) {
       doc.setPage(i)
-      doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(150, 150, 150)
+      doc.setFont(FONT, 'normal').setFontSize(8).setTextColor(150, 150, 150)
       doc.text(`Generated ${fmtDate(today())}`, margin, pageH - 8)
       doc.text(`Page ${i} of ${pages}`, pageW - margin, pageH - 8, { align: 'right' })
     }
