@@ -1,9 +1,12 @@
 import * as React from 'react'
 import { useLocation } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, FileSpreadsheet, ArrowLeft, Printer } from 'lucide-react'
+import { Plus, Trash2, FileSpreadsheet, ArrowLeft, FileText } from 'lucide-react'
+import { jsPDF } from 'jspdf'
+import autoTable from 'jspdf-autotable'
 import { api } from '@/lib/api'
 import type { LedgerType } from '@shared/types'
+import { usePlant } from '@/lib/plant'
 import { PageHeader, Page } from '@/components/layout'
 import {
   Button,
@@ -23,7 +26,12 @@ import {
 } from '@/components/ui'
 import { useToast } from '@/components/toast'
 import { confirmDialog } from '@/components/confirm'
-import { fmtMoney, fmtDate, today, downloadExcel } from '@/lib/utils'
+import { fmtMoney, fmtQty, fmtDate, today, downloadExcel } from '@/lib/utils'
+
+/** "50 TON" style cell for the dealt quantity, or empty when the line has none. */
+function qtyText(e: { qty?: number; uom?: string }): string {
+  return e.qty != null ? `${fmtQty(e.qty)} ${e.uom ?? ''}`.trim() : ''
+}
 
 const partyLabel: Record<LedgerType, string> = {
   customer: 'Customer',
@@ -76,6 +84,7 @@ function fyLabel(y: number): string {
 export function Ledgers(): React.JSX.Element {
   const qc = useQueryClient()
   const toast = useToast()
+  const { plantId } = usePlant()
   const initial = (useLocation().state ?? {}) as { type?: LedgerType; id?: number }
   const [partyType, setPartyType] = React.useState<LedgerType>(initial.type ?? 'customer')
   const [partyId, setPartyId] = React.useState<number | undefined>(initial.id)
@@ -103,10 +112,13 @@ export function Ledgers(): React.JSX.Element {
     setTo(`${y + 1}-03-31`)
   }
 
+  // Scope party lists to the active plant (customers/suppliers/transporters/outsource
+  // carry a plant; global types like company/plant/business/rack ignore it server-side).
   const { data: balances = [] } = useQuery({
-    queryKey: ['ledger-balances', partyType],
-    queryFn: () => api.ledgers.balances(partyType)
+    queryKey: ['ledger-balances', partyType, plantId],
+    queryFn: () => api.ledgers.balances(partyType, plantId)
   })
+  const { data: branding } = useQuery({ queryKey: ['branding'], queryFn: () => api.rates.getBranding() })
   const { data: ledger } = useQuery({
     queryKey: ['ledger', partyType, partyId, from, to],
     queryFn: () => api.ledgers.get(partyType, partyId!, from || undefined, to || undefined),
@@ -195,6 +207,7 @@ export function Ledgers(): React.JSX.Element {
     const rows: (string | number)[][] = ledger.entries.map((e) => [
       fmtDate(e.date),
       e.particulars,
+      qtyText(e),
       e.ref,
       e.debit || '',
       e.credit || '',
@@ -204,6 +217,7 @@ export function Ledgers(): React.JSX.Element {
       '',
       'TOTAL',
       '',
+      '',
       ledger.total_debit,
       ledger.total_credit,
       `${fmtMoney(Math.abs(ledger.closing))} ${drcr(partyType, ledger.closing)}`.trim()
@@ -211,10 +225,106 @@ export function Ledgers(): React.JSX.Element {
     downloadExcel(
       `ledger-${partyType}-${ledger.party_name}`,
       `${partyLabel[partyType]} Ledger`,
-      ['Date', 'Particulars', 'Vch No.', 'Debit', 'Credit', 'Balance'],
+      ['Date', 'Particulars', 'Qty', 'Vch No.', 'Debit', 'Credit', 'Balance'],
       rows,
       title
     )
+  }
+
+  // Generate a styled PDF and download it directly (no print dialog).
+  async function downloadPdf(): Promise<void> {
+    if (!ledger) return
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+    const pageW = doc.internal.pageSize.getWidth()
+    const pageH = doc.internal.pageSize.getHeight()
+    const margin = 14
+    const topY = 14
+    let textX = margin
+
+    // Optional logo (data URL) — sized to its aspect ratio, never fatal.
+    const logo = branding?.logo
+    if (logo && /^data:image\/(png|jpe?g|webp);/i.test(logo)) {
+      try {
+        const dims = await new Promise<{ w: number; h: number }>((resolve, reject) => {
+          const img = new Image()
+          img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight })
+          img.onerror = reject
+          img.src = logo
+        })
+        const h = 15
+        const w = dims.h ? Math.min((dims.w / dims.h) * h, 45) : 15
+        const raw = logo.substring(11, logo.indexOf(';')).toUpperCase()
+        const fmt = raw === 'JPG' ? 'JPEG' : raw
+        doc.addImage(logo, fmt, margin, topY, w, h)
+        textX = margin + w + 4
+      } catch {
+        /* skip logo on any decode error */
+      }
+    }
+
+    const business = branding?.business_name || 'BL Crushing'
+    doc.setFont('helvetica', 'bold').setFontSize(16).setTextColor(17, 24, 39)
+    doc.text(business, textX, topY + 6)
+    doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(120, 120, 120)
+    doc.text('Ledger Account', textX, topY + 11.5)
+
+    const closingStr = `${fmtMoney(Math.abs(ledger.closing))} ${drcr(partyType, ledger.closing)}`.trim()
+    const goodTypes = ['rack', 'plant', 'business', 'machine', 'company']
+    const good = goodTypes.includes(partyType) ? ledger.closing >= 0 : ledger.closing <= 0
+    doc.setFontSize(8).setTextColor(120, 120, 120)
+    doc.text(`Closing — ${balanceLabel[partyType]}`, pageW - margin, topY + 4, { align: 'right' })
+    doc.setFont('helvetica', 'bold').setFontSize(13)
+    doc.setTextColor(...(good ? ([22, 163, 74] as [number, number, number]) : ([185, 28, 28] as [number, number, number])))
+    doc.text(closingStr, pageW - margin, topY + 11, { align: 'right' })
+
+    let y = topY + 18
+    doc.setDrawColor(225, 228, 232).line(margin, y, pageW - margin, y)
+    y += 6
+    doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(17, 24, 39)
+    doc.text(`${ledger.party_name}  ·  ${partyLabel[partyType]}`, margin, y)
+    const period = `${from ? fmtDate(from) : 'Beginning'} to ${to ? fmtDate(to) : fmtDate(today())}`
+    doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(110, 110, 110)
+    doc.text(`Period: ${period}`, margin, y + 5)
+    y += 9
+
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margin, right: margin },
+      head: [['Date', 'Particulars', 'Qty', 'Vch No.', 'Debit', 'Credit', 'Balance']],
+      body: ledger.entries.map((e) => [
+        fmtDate(e.date),
+        e.particulars,
+        qtyText(e),
+        e.ref || '',
+        e.debit ? fmtMoney(e.debit) : '',
+        e.credit ? fmtMoney(e.credit) : '',
+        `${fmtMoney(Math.abs(e.balance))} ${drcr(partyType, e.balance)}`.trim()
+      ]),
+      foot: [['', 'Total', '', '', fmtMoney(ledger.total_debit), fmtMoney(ledger.total_credit), closingStr]],
+      styles: { fontSize: 8, cellPadding: 1.6, lineColor: [230, 232, 236], lineWidth: 0.1, textColor: [31, 41, 55] },
+      headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold' },
+      footStyles: { fillColor: [243, 244, 246], textColor: [17, 24, 39], fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [249, 250, 251] },
+      columnStyles: {
+        0: { cellWidth: 20 },
+        2: { halign: 'right', cellWidth: 22 },
+        3: { cellWidth: 24 },
+        4: { halign: 'right', cellWidth: 24 },
+        5: { halign: 'right', cellWidth: 24 },
+        6: { halign: 'right', cellWidth: 28 }
+      }
+    })
+
+    const pages = doc.getNumberOfPages()
+    for (let i = 1; i <= pages; i++) {
+      doc.setPage(i)
+      doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(150, 150, 150)
+      doc.text(`Generated ${fmtDate(today())}`, margin, pageH - 8)
+      doc.text(`Page ${i} of ${pages}`, pageW - margin, pageH - 8, { align: 'right' })
+    }
+
+    const safe = (s: string): string => s.replace(/[^\w.-]+/g, '_')
+    doc.save(`Ledger-${safe(partyLabel[partyType])}-${safe(ledger.party_name)}.pdf`)
   }
 
   const selected = balances.find((b) => b.party_id === partyId)
@@ -227,8 +337,8 @@ export function Ledgers(): React.JSX.Element {
         actions={
           partyId ? (
             <>
-              <Button variant="outline" className="no-print" onClick={() => window.print()} disabled={!ledger?.entries.length}>
-                <Printer size={16} /> Print
+              <Button variant="outline" className="no-print" onClick={() => downloadPdf()} disabled={!ledger?.entries.length}>
+                <FileText size={16} /> PDF
               </Button>
               <Button variant="outline" className="no-print" onClick={exportExcel} disabled={!ledger?.entries.length}>
                 <FileSpreadsheet size={16} /> Excel
@@ -367,6 +477,7 @@ export function Ledgers(): React.JSX.Element {
                   <TR>
                     <TH>Date</TH>
                     <TH>Particulars</TH>
+                    <TH className="text-right">Qty</TH>
                     <TH>Vch No.</TH>
                     <TH className="text-right">Debit</TH>
                     <TH className="text-right">Credit</TH>
@@ -381,6 +492,7 @@ export function Ledgers(): React.JSX.Element {
                       <TR key={i} className={opening ? 'bg-muted/30' : ''}>
                         <TD className="whitespace-nowrap">{fmtDate(e.date)}</TD>
                         <TD className={opening ? 'italic text-muted-foreground' : 'font-medium'}>{e.particulars}</TD>
+                        <TD className="tnum whitespace-nowrap text-right text-muted-foreground">{qtyText(e) || '-'}</TD>
                         <TD className="font-mono text-xs text-muted-foreground">{e.ref || '-'}</TD>
                         <TD className="tnum text-right">{e.debit ? fmtMoney(e.debit) : '-'}</TD>
                         <TD className="tnum text-right">{e.credit ? fmtMoney(e.credit) : '-'}</TD>
@@ -399,7 +511,7 @@ export function Ledgers(): React.JSX.Element {
                     )
                   })}
                   <TR className="border-t-2 bg-muted/40 font-bold">
-                    <TD colSpan={3}>Total</TD>
+                    <TD colSpan={4}>Total</TD>
                     <TD className="tnum text-right">{fmtMoney(ledger.total_debit)}</TD>
                     <TD className="tnum text-right">{fmtMoney(ledger.total_credit)}</TD>
                     <TD className="tnum text-right">

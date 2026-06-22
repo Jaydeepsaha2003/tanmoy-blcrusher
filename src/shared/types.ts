@@ -586,6 +586,9 @@ export interface LedgerEntry {
   date: string
   particulars: string
   ref: string
+  /** Original dealt quantity for trade lines (sales/purchases), in its own UOM. */
+  qty?: number
+  uom?: string
   debit: number
   credit: number
   balance: number

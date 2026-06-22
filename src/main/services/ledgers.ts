@@ -177,6 +177,8 @@ interface RawEntry {
   created_at: string
   particulars: string
   ref: string
+  qty?: number
+  uom?: string
   debit: number
   credit: number
   payment_id?: number
@@ -912,8 +914,10 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
         entries.push({
           date: x.date,
           created_at: x.created_at,
-          particulars: `Direct sale — ${x.product_name} (${x.quantity} ${x.uom})`,
+          particulars: `Direct sale — ${x.product_name}`,
           ref: x.dispatch_no,
+          qty: x.quantity,
+          uom: x.uom,
           debit: x.billed,
           credit: 0
         })
@@ -948,8 +952,10 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
       entries.push({
         date: x.date,
         created_at: x.created_at,
-        particulars: `Rack sale — ${x.product_name} (${x.quantity} ${x.uom}) · Rack ${x.rack_no}`,
+        particulars: `Rack sale — ${x.product_name} · Rack ${x.rack_no}`,
         ref: x.sale_no,
+        qty: x.quantity,
+        uom: x.uom,
         debit: x.amount,
         credit: 0
       })
@@ -958,7 +964,8 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
   if (partyType === 'supplier') {
     const purchases = (await d
       .prepare(
-        `SELECT purchase_no, date, created_at, COALESCE(amount,0) AS amount, paid_amount, quantity
+        `SELECT purchase_no, date, created_at, COALESCE(amount,0) AS amount, paid_amount, quantity, uom,
+                COALESCE(material_type,'raw') AS material_type, product_name
          FROM purchases WHERE supplier_id = ?`
       )
       .all(partyId)) as {
@@ -968,14 +975,19 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
       amount: number
       paid_amount: number
       quantity: number
+      uom: string
+      material_type: string
+      product_name: string | null
     }[]
     for (const x of purchases) {
       if (x.amount > 0)
         entries.push({
           date: x.date,
           created_at: x.created_at,
-          particulars: `Purchase — raw material (${x.quantity} m³)`,
+          particulars: `Purchase — ${x.material_type === 'finished' && x.product_name ? x.product_name : 'raw material'}`,
           ref: x.purchase_no,
+          qty: x.quantity,
+          uom: x.uom,
           debit: 0,
           credit: x.amount
         })
@@ -1007,8 +1019,10 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
         entries.push({
           date: x.date,
           created_at: x.created_at,
-          particulars: `Diesel purchase (${x.litres} L)`,
+          particulars: `Diesel purchase`,
           ref: x.purchase_no,
+          qty: x.litres,
+          uom: 'L',
           debit: 0,
           credit: x.amount
         })
@@ -1250,6 +1264,8 @@ export async function getLedger(payload: {
       date: e.date,
       particulars: e.particulars,
       ref: e.ref,
+      qty: e.qty,
+      uom: e.uom,
       debit: roundMoney(e.debit),
       credit: roundMoney(e.credit),
       balance: roundMoney(bal),
