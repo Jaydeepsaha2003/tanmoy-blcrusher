@@ -47,9 +47,22 @@ export function downloadCsv(filename: string, csv: string): void {
   URL.revokeObjectURL(url)
 }
 
+// A column holds money when its header reads like a money figure and not like a
+// quantity. Used to give every amount the same 2-decimal format across all exports.
+const MONEY_HEADER =
+  /amount|amt|paid|rate|charge|cost|debit|credit|balance|receivable|payable|earned|deduction|\bnet\b|premium|goods|invoice|transport|machine|salary|wage|profit|expense|sales|diesel|\bother\b|\bbill\b|₹/i
+const QTY_HEADER =
+  /m³|m3|\bqty\b|quantity|cft|\bton\b|litre|liter|\bhrs\b|hours?|\bdays?\b|trips?|meter|\bkm\b|\bunits?\b|carried|loaded|unloaded|\bsold\b|change|stock|opening|closing/i
+
+function isMoneyHeader(h: string): boolean {
+  return MONEY_HEADER.test(h) && !QTY_HEADER.test(h)
+}
+
 /**
  * Download a proper .xlsx workbook. Pass raw numbers (not formatted strings) for
- * numeric columns so Excel treats them as numbers. Column widths auto-fit.
+ * numeric columns so Excel treats them as numbers. Column widths auto-fit, and
+ * money columns (Amount, Rate, Paid, Debit, …) are shown with 2 decimals so every
+ * exported file uses the same amount format.
  */
 export function downloadExcel(
   filename: string,
@@ -71,6 +84,16 @@ export function downloadExcel(
       ...body.map((r) => (r[i] == null ? 0 : String(r[i]).length))
     )
     return { wch: Math.min(Math.max(widest + 2, 10), 42) }
+  })
+  // Apply a 2-decimal number format to numeric cells in money columns. Text and
+  // quantity cells are left untouched (only cells Excel parsed as numbers change).
+  const headerRow = title.length ? title.length + 1 : 0
+  headers.forEach((h, c) => {
+    if (!isMoneyHeader(h)) return
+    for (let r = headerRow + 1; r <= headerRow + body.length; r++) {
+      const cell = ws[XLSX.utils.encode_cell({ r, c })] as { t?: string; z?: string } | undefined
+      if (cell && cell.t === 'n') cell.z = '#,##0.00'
+    }
   })
   ws['!freeze'] = { xSplit: 0, ySplit: title.length ? title.length + 2 : 1 } as never
   const wb = XLSX.utils.book_new()

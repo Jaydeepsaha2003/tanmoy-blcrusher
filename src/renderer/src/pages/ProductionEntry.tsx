@@ -156,18 +156,26 @@ export function ProductionEntry(): React.JSX.Element {
             </Field>
             <Field
               label="Stock Location"
+              required={formLocations.length > 0}
               hint={
                 selectedLoc
                   ? `Available: ${fmtQty(selectedLoc.balance_qty)} m³`
-                  : 'Leave blank to use the plant itself as the default location'
+                  : formLocations.length > 0
+                    ? 'Pick which location to draw raw material from'
+                    : 'No locations for this plant — the plant itself is used as the default'
               }
             >
               <SearchSelect
                 value={form.stock_location_id || ''}
+                placeholder="Select stock location…"
                 onChange={(v) =>
                   setForm({ ...form, stock_location_id: v ? Number(v) : undefined })
                 }
-                options={[{ value: '', label: 'Plant default (auto)' }, ...formLocations.map((l) => ({ value: l.id, label: `${l.name} (${fmtQty(l.balance_qty)} m³)` }))]}
+                options={
+                  formLocations.length > 0
+                    ? formLocations.map((l) => ({ value: l.id, label: `${l.name} (${fmtQty(l.balance_qty)} m³)` }))
+                    : [{ value: '', label: 'Plant default (auto)' }]
+                }
               />
             </Field>
             <Field label="Raw Material Unit">
@@ -217,7 +225,7 @@ export function ProductionEntry(): React.JSX.Element {
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
             <Button
               onClick={() => save.mutate({ ...form, quantity: Number(form.quantity), uom: form.uom || 'CM' })}
-              disabled={!(Number(form.quantity) > 0) || preview.length === 0}
+              disabled={!(Number(form.quantity) > 0) || preview.length === 0 || (formLocations.length > 0 && !form.stock_location_id)}
             >
               Submit Production
             </Button>
