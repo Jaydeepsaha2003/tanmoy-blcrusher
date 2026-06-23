@@ -152,21 +152,26 @@ export async function getDashboard(payload: { plant_id?: number } = {}): Promise
     .reverse()
 
   // ---- Plant-wise dues (attributed to the plant each bill was raised at) ----
-  // Receivable = unpaid amount on this plant's direct sales. Payable = unpaid on
-  // this plant's supplier purchases (material + diesel) and outsourced expenses.
-  // Each uses the per-bill paid amount, so figures stay payment-netted and the
-  // plants add up to the company total. (Rack flow, transporter dues, opening
-  // balances and general advances aren't tied to one plant — they show in the
-  // rack section / Payment Status, so these numbers differ from that screen.)
+  // Receivable = unpaid on this plant's direct sales + customers' opening balance
+  // (Dr adds, Cr i.e. advance subtracts). Payable = unpaid on this plant's supplier
+  // purchases (material + diesel) and outsourced expenses + supplier/outsource
+  // opening balance (Cr adds, Dr subtracts). Opening balances are party-level, so
+  // they follow the party's plant (its own + common). Net = Receivable − Payable.
+  const obCust = pid ? ` AND (c.plant_id = ${pid} OR c.plant_id IS NULL)` : ''
+  const obSup = pid ? ` AND (s.plant_id = ${pid} OR s.plant_id IS NULL)` : ''
   const billReceivable = money(
     (await d
       .prepare(
-        `SELECT COALESCE(SUM(
-            (COALESCE(amount,0)
-             + CASE WHEN transport_billed=1 THEN transport_charge ELSE 0 END
-             + CASE WHEN other_billed=1 THEN other_charge ELSE 0 END)
-            - COALESCE(paid_amount,0)),0) AS q
-         FROM dispatches WHERE to_plant_id IS NULL${plAnd}`
+        `SELECT
+          (SELECT COALESCE(SUM(
+              (COALESCE(amount,0)
+               + CASE WHEN transport_billed=1 THEN transport_charge ELSE 0 END
+               + CASE WHEN other_billed=1 THEN other_charge ELSE 0 END)
+              - COALESCE(paid_amount,0)),0)
+             FROM dispatches WHERE to_plant_id IS NULL${plAnd}) +
+          (SELECT COALESCE(SUM(CASE WHEN ob.direction='debit' THEN ob.amount ELSE -ob.amount END),0)
+             FROM opening_balances ob JOIN customers c ON c.id = ob.party_id
+             WHERE ob.party_type='customer'${obCust}) AS q`
       )
       .get()) as { q: number }
   )
@@ -179,7 +184,12 @@ export async function getDashboard(payload: { plant_id?: number } = {}): Promise
           (SELECT COALESCE(SUM(COALESCE(amount,0) - COALESCE(paid_amount,0)),0)
              FROM diesel_purchases WHERE 1=1${plAnd}) +
           (SELECT COALESCE(SUM(COALESCE(amount,0) - COALESCE(paid_amount,0)),0)
-             FROM plant_expenses WHERE outsource_id IS NOT NULL${plAnd}) AS q`
+             FROM plant_expenses WHERE outsource_id IS NOT NULL${plAnd}) +
+          (SELECT COALESCE(SUM(CASE WHEN ob.direction='credit' THEN ob.amount ELSE -ob.amount END),0)
+             FROM opening_balances ob JOIN suppliers s ON s.id = ob.party_id
+             WHERE ob.party_type='supplier'${obSup}) +
+          (SELECT COALESCE(SUM(CASE WHEN ob.direction='credit' THEN ob.amount ELSE -ob.amount END),0)
+             FROM opening_balances ob WHERE ob.party_type='outsource') AS q`
       )
       .get()) as { q: number }
   )
