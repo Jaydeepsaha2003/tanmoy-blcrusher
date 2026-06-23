@@ -41,8 +41,16 @@ export function Assets(): React.JSX.Element {
   const [form, setForm] = React.useState<any>({})
   const [moveForm, setMoveForm] = React.useState<any>(null)
   const [typeFilter, setTypeFilter] = React.useState<'all' | 'machine' | 'vehicle'>('all')
+  const [q, setQ] = React.useState('')
 
-  const rows = typeFilter === 'all' ? data : data.filter((a) => a.asset_type === typeFilter)
+  const rows = React.useMemo(() => {
+    const term = q.trim().toLowerCase()
+    return data.filter((a) => {
+      if (typeFilter !== 'all' && a.asset_type !== typeFilter) return false
+      if (term && !`${a.name} ${a.category ?? ''} ${a.identifier ?? ''} ${a.business_name ?? ''}`.toLowerCase().includes(term)) return false
+      return true
+    })
+  }, [data, typeFilter, q])
 
   const save = useMutation({
     mutationFn: (p: any) => (p.id ? api.assets.update(p) : api.assets.create(p)),
@@ -123,15 +131,20 @@ export function Assets(): React.JSX.Element {
       />
       <Page>
         <div className="mb-4 flex flex-wrap items-center gap-2">
+          <Input className="w-full sm:w-60" placeholder="Search name, category, reg. no…" value={q} onChange={(e) => setQ(e.target.value)} />
           <SearchSelect
             className="w-full sm:w-48"
             value={typeFilter}
             onChange={(v) => setTypeFilter(v as 'all' | 'machine' | 'vehicle')}
             options={[{ value: 'all', label: 'All types' }, { value: 'machine', label: 'Machines' }, { value: 'vehicle', label: 'Vehicles' }]}
           />
+          {(q || typeFilter !== 'all') && <Button variant="ghost" size="sm" onClick={() => { setQ(''); setTypeFilter('all') }}>Clear</Button>}
+          {data.length > 0 && <span className="ml-auto text-sm text-muted-foreground">{rows.length} of {data.length}</span>}
         </div>
-        {rows.length === 0 ? (
+        {data.length === 0 ? (
           <EmptyState message="No machinery or vehicles yet." />
+        ) : rows.length === 0 ? (
+          <EmptyState message="No machines or vehicles match your search." />
         ) : (
           <Table>
             <THead>
