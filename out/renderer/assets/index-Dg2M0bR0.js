@@ -58904,8 +58904,8 @@ function Dashboard() {
         plantId ? ` — ${activePlant}` : ""
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-3", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Stat$1, { icon: Coins, label: "Bill Receivable", value: fmtMoney(data.billReceivable), tone: "warning", hint: "Unpaid on direct sales" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Stat$1, { icon: Wallet, label: "Bills Payable", value: fmtMoney(data.billsPayable), tone: "destructive", hint: "Unpaid supplier, diesel & outsource bills" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Stat$1, { icon: Coins, label: "Bill Receivable", value: fmtMoney(data.billReceivable), tone: "warning", hint: "Sales dues + opening (Dr)" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Stat$1, { icon: Wallet, label: "Bills Payable", value: fmtMoney(data.billsPayable), tone: "destructive", hint: "Supplier/outsource bills + opening (Cr)" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           Stat$1,
           {
@@ -58913,7 +58913,7 @@ function Dashboard() {
             label: "Net Position",
             value: fmtMoney(data.billReceivable - data.billsPayable),
             tone: data.billReceivable - data.billsPayable < 0 ? "destructive" : "success",
-            hint: "Receivable − Payable"
+            hint: data.billReceivable - data.billsPayable < 0 ? "Net payable (incl. opening)" : "Net receivable (incl. opening)"
           }
         )
       ] }),
@@ -77350,7 +77350,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-BqVSziAs.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-BfiBhqJi.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
