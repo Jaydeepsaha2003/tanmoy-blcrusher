@@ -1,6 +1,7 @@
 import { getDb } from '../db'
 import type { Customer } from '@shared/types'
 import { properCase } from '@shared/types'
+import { ensureUniqueName } from './names'
 
 export async function listCustomers(payload: { plant_id?: number } = {}): Promise<Customer[]> {
   const d = getDb()
@@ -39,6 +40,7 @@ export async function createCustomer(p: {
   plant_id?: number | null
 }): Promise<Customer> {
   const d = getDb()
+  await ensureUniqueName('customers', p.name, { label: 'A customer' })
   const info = await d
     .prepare(
       `INSERT INTO customers (name, contact, address, remarks, company_id, plant_id) VALUES (?, ?, ?, ?, ?, ?)`
@@ -64,6 +66,7 @@ export async function updateCustomer(p: {
   plant_id?: number | null
 }): Promise<Customer> {
   const d = getDb()
+  await ensureUniqueName('customers', p.name, { id: p.id, label: 'A customer' })
   await d.prepare(
     `UPDATE customers SET name=?, contact=?, address=?, remarks=?, company_id=?, plant_id=? WHERE id=?`
   ).run(

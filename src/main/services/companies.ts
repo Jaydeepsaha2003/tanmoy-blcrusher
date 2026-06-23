@@ -1,6 +1,7 @@
 import { getDb, type Db } from '../db'
 import type { Company } from '@shared/types'
 import { properCase } from '@shared/types'
+import { ensureUniqueName } from './names'
 import { deleteSupplier } from './suppliers'
 import { deleteCustomer } from './customers'
 import { deleteTransporter } from './transporters'
@@ -76,6 +77,7 @@ export async function createCompany(p: {
 }): Promise<Company> {
   const d = getDb()
   if (!p.name?.trim()) throw new Error('Company name is required.')
+  await ensureUniqueName('companies', p.name, { label: 'A company' })
   const name = properCase(p.name)
   const contact = p.contact ?? ''
   const address = p.address ?? ''
@@ -109,6 +111,7 @@ export async function updateCompany(p: {
 }): Promise<Company> {
   const d = getDb()
   if (!p.name?.trim()) throw new Error('Company name is required.')
+  await ensureUniqueName('companies', p.name, { id: p.id, label: 'A company' })
   const name = properCase(p.name)
   const contact = p.contact ?? ''
   const address = p.address ?? ''

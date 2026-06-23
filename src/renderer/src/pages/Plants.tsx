@@ -31,6 +31,17 @@ export function Plants(): React.JSX.Element {
   const { data = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
   const [open, setOpen] = React.useState(false)
   const [form, setForm] = React.useState<Partial<Plant>>(empty)
+  const [q, setQ] = React.useState('')
+  const [status, setStatus] = React.useState('')
+
+  const filtered = React.useMemo(() => {
+    const term = q.trim().toLowerCase()
+    return data.filter((p) => {
+      if (term && !`${p.name} ${p.code ?? ''} ${p.location ?? ''}`.toLowerCase().includes(term)) return false
+      if (status && p.status !== status) return false
+      return true
+    })
+  }, [data, q, status])
 
   const save = useMutation({
     mutationFn: (p: Partial<Plant>) => (p.id ? api.plants.update(p) : api.plants.create(p)),
@@ -79,6 +90,21 @@ export function Plants(): React.JSX.Element {
         {data.length === 0 ? (
           <EmptyState message="No plants yet. Create your first plant to get started." />
         ) : (
+          <>
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <Input className="w-full sm:w-60" placeholder="Search name, code, location…" value={q} onChange={(e) => setQ(e.target.value)} />
+            <SearchSelect
+              className="w-full sm:w-40"
+              value={status}
+              onChange={setStatus}
+              options={[{ value: '', label: 'All status' }, { value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }]}
+            />
+            {(q || status) && <Button variant="ghost" size="sm" onClick={() => { setQ(''); setStatus('') }}>Clear</Button>}
+            <span className="ml-auto text-sm text-muted-foreground">{filtered.length} of {data.length}</span>
+          </div>
+          {filtered.length === 0 ? (
+            <EmptyState message="No plants match your search." />
+          ) : (
           <Table>
             <THead>
               <TR>
@@ -90,7 +116,7 @@ export function Plants(): React.JSX.Element {
               </TR>
             </THead>
             <TBody>
-              {data.map((p) => (
+              {filtered.map((p) => (
                 <TR key={p.id}>
                   <TD className="font-medium">{p.name}</TD>
                   <TD>{p.code}</TD>
@@ -112,6 +138,8 @@ export function Plants(): React.JSX.Element {
               ))}
             </TBody>
           </Table>
+          )}
+          </>
         )}
       </Page>
 

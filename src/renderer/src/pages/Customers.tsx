@@ -43,6 +43,18 @@ export function Customers(): React.JSX.Element {
   const [open, setOpen] = React.useState(false)
   const [form, setForm] = React.useState<Partial<Customer>>({})
   const [ratesFor, setRatesFor] = React.useState<Customer | null>(null)
+  const [q, setQ] = React.useState('')
+  const [companyFilter, setCompanyFilter] = React.useState('')
+
+  const filtered = React.useMemo(() => {
+    const term = q.trim().toLowerCase()
+    return data.filter((c) => {
+      if (term && !`${c.name} ${c.contact ?? ''} ${c.address ?? ''}`.toLowerCase().includes(term)) return false
+      if (companyFilter === 'none' && c.company_id) return false
+      if (companyFilter && companyFilter !== 'none' && String(c.company_id ?? '') !== companyFilter) return false
+      return true
+    })
+  }, [data, q, companyFilter])
 
   function exportExcel(): void {
     downloadExcel(
@@ -109,6 +121,21 @@ export function Customers(): React.JSX.Element {
         {data.length === 0 ? (
           <EmptyState message="No customers yet." />
         ) : (
+          <>
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <Input className="w-full sm:w-60" placeholder="Search name, contact, address…" value={q} onChange={(e) => setQ(e.target.value)} />
+            <SearchSelect
+              className="w-full sm:w-48"
+              value={companyFilter}
+              onChange={setCompanyFilter}
+              options={[{ value: '', label: 'All companies' }, { value: 'none', label: 'No company' }, ...companies.map((c) => ({ value: String(c.id), label: c.name }))]}
+            />
+            {(q || companyFilter) && <Button variant="ghost" size="sm" onClick={() => { setQ(''); setCompanyFilter('') }}>Clear</Button>}
+            <span className="ml-auto text-sm text-muted-foreground">{filtered.length} of {data.length}</span>
+          </div>
+          {filtered.length === 0 ? (
+            <EmptyState message="No customers match your search." />
+          ) : (
           <Table>
             <THead>
               <TR>
@@ -121,7 +148,7 @@ export function Customers(): React.JSX.Element {
               </TR>
             </THead>
             <TBody>
-              {data.map((c) => (
+              {filtered.map((c) => (
                 <TR key={c.id}>
                   <TD className="font-medium">{c.name}</TD>
                   <TD className="text-muted-foreground">{c.company_name || '-'}</TD>
@@ -146,6 +173,8 @@ export function Customers(): React.JSX.Element {
               ))}
             </TBody>
           </Table>
+          )}
+          </>
         )}
       </Page>
 

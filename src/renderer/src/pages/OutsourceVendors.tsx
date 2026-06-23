@@ -8,6 +8,7 @@ import { PageHeader, Page } from '@/components/layout'
 import {
   Button,
   Input,
+  SearchSelect,
   Textarea,
   Field,
   Badge,
@@ -32,6 +33,18 @@ export function OutsourceVendors(): React.JSX.Element {
   const { data = [] } = useQuery({ queryKey: ['outsource'], queryFn: api.outsource.list })
   const [open, setOpen] = React.useState(false)
   const [form, setForm] = React.useState<Partial<Outsource>>({})
+  const [q, setQ] = React.useState('')
+  const [head, setHead] = React.useState('')
+
+  const heads = React.useMemo(() => [...new Set(data.map((o) => o.head).filter(Boolean))], [data])
+  const filtered = React.useMemo(() => {
+    const term = q.trim().toLowerCase()
+    return data.filter((o) => {
+      if (term && !`${o.name} ${o.contact ?? ''}`.toLowerCase().includes(term)) return false
+      if (head && o.head !== head) return false
+      return true
+    })
+  }, [data, q, head])
 
   const save = useMutation({
     mutationFn: (p: Partial<Outsource>) => (p.id ? api.outsource.update(p) : api.outsource.create(p)),
@@ -72,6 +85,21 @@ export function OutsourceVendors(): React.JSX.Element {
         {data.length === 0 ? (
           <EmptyState message="No outsource vendors yet." />
         ) : (
+          <>
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <Input className="w-full sm:w-60" placeholder="Search name, contact…" value={q} onChange={(e) => setQ(e.target.value)} />
+            <SearchSelect
+              className="w-full sm:w-44"
+              value={head}
+              onChange={setHead}
+              options={[{ value: '', label: 'All heads' }, ...heads.map((h) => ({ value: h as string, label: h as string }))]}
+            />
+            {(q || head) && <Button variant="ghost" size="sm" onClick={() => { setQ(''); setHead('') }}>Clear</Button>}
+            <span className="ml-auto text-sm text-muted-foreground">{filtered.length} of {data.length}</span>
+          </div>
+          {filtered.length === 0 ? (
+            <EmptyState message="No vendors match your search." />
+          ) : (
           <Table>
             <THead>
               <TR>
@@ -82,7 +110,7 @@ export function OutsourceVendors(): React.JSX.Element {
               </TR>
             </THead>
             <TBody>
-              {data.map((o) => (
+              {filtered.map((o) => (
                 <TR key={o.id}>
                   <TD className="font-medium">{o.name}</TD>
                   <TD>{o.head ? <Badge variant="muted">{o.head}</Badge> : '-'}</TD>
@@ -102,6 +130,8 @@ export function OutsourceVendors(): React.JSX.Element {
               ))}
             </TBody>
           </Table>
+          )}
+          </>
         )}
       </Page>
 

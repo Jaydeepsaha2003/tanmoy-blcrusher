@@ -1,6 +1,7 @@
 import { getDb } from '../db'
 import type { Business } from '@shared/types'
 import { properCase } from '@shared/types'
+import { ensureUniqueName } from './names'
 
 export async function listBusinesses(): Promise<Business[]> {
   return (await getDb().prepare(`SELECT * FROM businesses ORDER BY name`).all()) as Business[]
@@ -9,6 +10,7 @@ export async function listBusinesses(): Promise<Business[]> {
 export async function createBusiness(p: { name: string; contact: string; remarks: string }): Promise<Business> {
   const d = getDb()
   if (!p.name?.trim()) throw new Error('Business name is required.')
+  await ensureUniqueName('businesses', p.name, { label: 'A business' })
   const info = await d
     .prepare(`INSERT INTO businesses (name, contact, remarks) VALUES (?, ?, ?)`)
     .run(properCase(p.name), p.contact ?? '', p.remarks ?? '')
@@ -22,6 +24,8 @@ export async function updateBusiness(p: {
   remarks: string
 }): Promise<Business> {
   const d = getDb()
+  if (!p.name?.trim()) throw new Error('Business name is required.')
+  await ensureUniqueName('businesses', p.name, { id: p.id, label: 'A business' })
   await d.prepare(`UPDATE businesses SET name=?, contact=?, remarks=? WHERE id=?`).run(
     properCase(p.name),
     p.contact ?? '',

@@ -35,6 +35,20 @@ export function Employees(): React.JSX.Element {
   const { data: plants = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
   const [open, setOpen] = React.useState(false)
   const [form, setForm] = React.useState<any>(null)
+  const [q, setQ] = React.useState('')
+  const [desig, setDesig] = React.useState('')
+  const [status, setStatus] = React.useState('')
+
+  const desigs = React.useMemo(() => [...new Set(data.map((e) => e.designation).filter(Boolean))], [data])
+  const filtered = React.useMemo(() => {
+    const term = q.trim().toLowerCase()
+    return data.filter((e) => {
+      if (term && !`${e.name} ${e.designation ?? ''} ${e.contact ?? ''}`.toLowerCase().includes(term)) return false
+      if (desig && e.designation !== desig) return false
+      if (status && e.status !== status) return false
+      return true
+    })
+  }, [data, q, desig, status])
 
   const save = useMutation({
     mutationFn: (p: any) => (p.id ? api.employees.update(p) : api.employees.create(p)),
@@ -93,6 +107,27 @@ export function Employees(): React.JSX.Element {
         {data.length === 0 ? (
           <EmptyState message="No employees added yet." />
         ) : (
+          <>
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <Input className="w-full sm:w-60" placeholder="Search name, designation, contact…" value={q} onChange={(e) => setQ(e.target.value)} />
+            <SearchSelect
+              className="w-full sm:w-44"
+              value={desig}
+              onChange={setDesig}
+              options={[{ value: '', label: 'All designations' }, ...desigs.map((dz) => ({ value: dz as string, label: dz as string }))]}
+            />
+            <SearchSelect
+              className="w-full sm:w-36"
+              value={status}
+              onChange={setStatus}
+              options={[{ value: '', label: 'All status' }, { value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }]}
+            />
+            {(q || desig || status) && <Button variant="ghost" size="sm" onClick={() => { setQ(''); setDesig(''); setStatus('') }}>Clear</Button>}
+            <span className="ml-auto text-sm text-muted-foreground">{filtered.length} of {data.length}</span>
+          </div>
+          {filtered.length === 0 ? (
+            <EmptyState message="No employees match your search." />
+          ) : (
           <Table>
             <THead>
               <TR>
@@ -107,7 +142,7 @@ export function Employees(): React.JSX.Element {
               </TR>
             </THead>
             <TBody>
-              {data.map((e) => (
+              {filtered.map((e) => (
                 <TR key={e.id}>
                   <TD className="font-medium">{e.name}</TD>
                   <TD className="text-muted-foreground">{e.designation || '-'}</TD>
@@ -128,6 +163,8 @@ export function Employees(): React.JSX.Element {
               ))}
             </TBody>
           </Table>
+          )}
+          </>
         )}
       </Page>
 

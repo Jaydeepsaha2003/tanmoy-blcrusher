@@ -2,6 +2,7 @@ import { getDb, nextNumber } from '../db'
 import type { Employee, WageEntry, WageType, PaymentStatus } from '@shared/types'
 import { properCase, derivePaymentStatus } from '@shared/types'
 import { getWorkdaySettings } from './system'
+import { ensureUniqueName } from './names'
 
 function money(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100
@@ -53,6 +54,7 @@ export async function createEmployee(p: {
 }): Promise<Employee> {
   const d = getDb()
   if (!p.name?.trim()) throw new Error('Name is required.')
+  await ensureUniqueName('employees', p.name, { label: 'An employee' })
   const info = await d
     .prepare(
       `INSERT INTO employees (name, designation, wage_type, monthly_salary, daily_wage, ot_rate, plant_id, contact, status, remarks)
@@ -87,6 +89,8 @@ export async function updateEmployee(p: {
   remarks: string
 }): Promise<Employee> {
   const d = getDb()
+  if (!p.name?.trim()) throw new Error('Name is required.')
+  await ensureUniqueName('employees', p.name, { id: p.id, label: 'An employee' })
   await d.prepare(
     `UPDATE employees SET name=?, designation=?, wage_type=?, monthly_salary=?, daily_wage=?, ot_rate=?,
        plant_id=?, contact=?, status=?, remarks=? WHERE id=?`

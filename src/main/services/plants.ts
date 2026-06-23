@@ -2,6 +2,7 @@ import { getDb } from '../db'
 import type { Plant, UomFactors } from '@shared/types'
 import { properCase, TON_PER_CM, CFT_PER_CM } from '@shared/types'
 import { ensureDefaultLocation } from './stockLocations'
+import { ensureUniqueName } from './names'
 
 export async function listPlants(): Promise<Plant[]> {
   return (await getDb().prepare(`SELECT * FROM plants ORDER BY name`).all()) as Plant[]
@@ -21,6 +22,7 @@ export async function createPlant(p: {
   cft_per_cm?: number
 }): Promise<Plant> {
   const d = getDb()
+  await ensureUniqueName('plants', p.name, { label: 'A plant' })
   const info = await d
     .prepare(
       `INSERT INTO plants (name, code, location, status, ton_per_cm, cft_per_cm) VALUES (?, ?, ?, ?, ?, ?)`
@@ -50,6 +52,7 @@ export async function updatePlant(p: {
   cft_per_cm?: number
 }): Promise<Plant> {
   const d = getDb()
+  await ensureUniqueName('plants', p.name, { id: p.id, label: 'A plant' })
   // COALESCE keeps the existing factor when the caller doesn't send one.
   await d
     .prepare(

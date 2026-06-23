@@ -2,6 +2,7 @@ import { getDb } from '../db'
 import type { StockLocation } from '@shared/types'
 import { properCase } from '@shared/types'
 import { rawLocationBalance, setLocationOpening } from './movements'
+import { ensureUniqueName } from './names'
 
 function today(): string {
   return new Date().toISOString().slice(0, 10)
@@ -43,6 +44,7 @@ export async function createStockLocation(p: {
   remarks: string
 }): Promise<StockLocation> {
   const d = getDb()
+  await ensureUniqueName('stock_locations', p.name, { scopeColumn: 'plant_id', scopeValue: p.plant_id, label: 'A location in this plant' })
   const id = await d.transaction(async () => {
     const info = await d
       .prepare(
@@ -84,6 +86,7 @@ export async function updateStockLocation(p: {
   remarks: string
 }): Promise<StockLocation> {
   const d = getDb()
+  await ensureUniqueName('stock_locations', p.name, { id: p.id, scopeColumn: 'plant_id', scopeValue: p.plant_id, label: 'A location in this plant' })
   await d.transaction(async () => {
     await d.prepare(`UPDATE stock_locations SET name=?, opening_qty=?, remarks=? WHERE id=?`).run(
       properCase(p.name),

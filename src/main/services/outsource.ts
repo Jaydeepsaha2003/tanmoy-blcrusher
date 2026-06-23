@@ -1,6 +1,7 @@
 import { getDb } from '../db'
 import type { Outsource } from '@shared/types'
 import { properCase } from '@shared/types'
+import { ensureUniqueName } from './names'
 
 export async function listOutsource(): Promise<Outsource[]> {
   return (await getDb().prepare(`SELECT * FROM outsource ORDER BY name`).all()) as Outsource[]
@@ -15,6 +16,7 @@ export async function createOutsource(p: {
   const d = getDb()
   if (!p.name?.trim()) throw new Error('Name is required.')
   if (!p.head?.trim()) throw new Error('Head is required.')
+  await ensureUniqueName('outsource', p.name, { scopeColumn: 'head', scopeValue: p.head, label: 'An outsource vendor with that head' })
   const info = await d
     .prepare(`INSERT INTO outsource (name, head, contact, remarks) VALUES (?, ?, ?, ?)`)
     .run(properCase(p.name), properCase(p.head), p.contact ?? '', p.remarks ?? '')
@@ -31,6 +33,7 @@ export async function updateOutsource(p: {
   const d = getDb()
   if (!p.name?.trim()) throw new Error('Name is required.')
   if (!p.head?.trim()) throw new Error('Head is required.')
+  await ensureUniqueName('outsource', p.name, { id: p.id, scopeColumn: 'head', scopeValue: p.head, label: 'An outsource vendor with that head' })
   await d.prepare(`UPDATE outsource SET name=?, head=?, contact=?, remarks=? WHERE id=?`).run(
     properCase(p.name),
     properCase(p.head),
