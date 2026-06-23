@@ -2519,6 +2519,31 @@ async function deleteTransfer(payload) {
   return { ok: true };
 }
 
+// src/main/services/names.ts
+async function ensureUniqueName(table, name, opts = {}) {
+  const trimmed = (name ?? "").trim();
+  if (!trimmed) return;
+  const conds = ["UPPER(name) = UPPER(?)"];
+  const params = [trimmed];
+  if (opts.id) {
+    conds.push("id <> ?");
+    params.push(opts.id);
+  }
+  if (opts.scopeColumn) {
+    if (opts.scopeValue == null) {
+      conds.push(`${opts.scopeColumn} IS NULL`);
+    } else if (typeof opts.scopeValue === "string") {
+      conds.push(`UPPER(${opts.scopeColumn}) = UPPER(?)`);
+      params.push(opts.scopeValue);
+    } else {
+      conds.push(`${opts.scopeColumn} = ?`);
+      params.push(opts.scopeValue);
+    }
+  }
+  const row = await getDb().prepare(`SELECT id FROM ${table} WHERE ${conds.join(" AND ")} LIMIT 1`).get(...params);
+  if (row) throw new Error(`${opts.label ?? "A record"} named "${trimmed}" already exists.`);
+}
+
 // src/main/services/stockLocations.ts
 function today() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
@@ -2547,6 +2572,7 @@ async function listStockLocations(payload = {}) {
 }
 async function createStockLocation(p) {
   const d = getDb();
+  await ensureUniqueName("stock_locations", p.name, { scopeColumn: "plant_id", scopeValue: p.plant_id, label: "A location in this plant" });
   const id = await d.transaction(async () => {
     const info = await d.prepare(
       `INSERT INTO stock_locations (plant_id, name, opening_qty, remarks) VALUES (?, ?, ?, ?)`
@@ -2567,6 +2593,7 @@ async function ensureDefaultLocation(plantId) {
 }
 async function updateStockLocation(p) {
   const d = getDb();
+  await ensureUniqueName("stock_locations", p.name, { id: p.id, scopeColumn: "plant_id", scopeValue: p.plant_id, label: "A location in this plant" });
   await d.transaction(async () => {
     await d.prepare(`UPDATE stock_locations SET name=?, opening_qty=?, remarks=? WHERE id=?`).run(
       properCase(p.name),
@@ -2605,6 +2632,7 @@ function posOr(value, fallback) {
 }
 async function createPlant(p) {
   const d = getDb();
+  await ensureUniqueName("plants", p.name, { label: "A plant" });
   const info = await d.prepare(
     `INSERT INTO plants (name, code, location, status, ton_per_cm, cft_per_cm) VALUES (?, ?, ?, ?, ?, ?)`
   ).run(
@@ -2621,6 +2649,7 @@ async function createPlant(p) {
 }
 async function updatePlant(p) {
   const d = getDb();
+  await ensureUniqueName("plants", p.name, { id: p.id, label: "A plant" });
   await d.prepare(
     `UPDATE plants SET name=?, code=?, location=?, status=?,
          ton_per_cm=COALESCE(?, ton_per_cm), cft_per_cm=COALESCE(?, cft_per_cm) WHERE id=?`
@@ -2684,6 +2713,7 @@ async function listSuppliers(payload = {}) {
 }
 async function createSupplier(p) {
   const d = getDb();
+  await ensureUniqueName("suppliers", p.name, { label: "A supplier" });
   const info = await d.prepare(
     `INSERT INTO suppliers (name, contact, address, remarks, company_id, plant_id) VALUES (?, ?, ?, ?, ?, ?)`
   ).run(
@@ -2698,6 +2728,7 @@ async function createSupplier(p) {
 }
 async function updateSupplier(p) {
   const d = getDb();
+  await ensureUniqueName("suppliers", p.name, { id: p.id, label: "A supplier" });
   await d.prepare(
     `UPDATE suppliers SET name=?, contact=?, address=?, remarks=?, company_id=?, plant_id=? WHERE id=?`
   ).run(
@@ -2747,6 +2778,7 @@ async function listCustomers(payload = {}) {
 }
 async function createCustomer(p) {
   const d = getDb();
+  await ensureUniqueName("customers", p.name, { label: "A customer" });
   const info = await d.prepare(
     `INSERT INTO customers (name, contact, address, remarks, company_id, plant_id) VALUES (?, ?, ?, ?, ?, ?)`
   ).run(
@@ -2761,6 +2793,7 @@ async function createCustomer(p) {
 }
 async function updateCustomer(p) {
   const d = getDb();
+  await ensureUniqueName("customers", p.name, { id: p.id, label: "A customer" });
   await d.prepare(
     `UPDATE customers SET name=?, contact=?, address=?, remarks=?, company_id=?, plant_id=? WHERE id=?`
   ).run(
@@ -3957,6 +3990,7 @@ async function listTransporters(payload = {}) {
 }
 async function createTransporter(p) {
   const d = getDb();
+  await ensureUniqueName("transporters", p.name, { label: "A transporter" });
   const info = await d.prepare(
     `INSERT INTO transporters (name, contact, address, remarks, company_id, plant_id) VALUES (?, ?, ?, ?, ?, ?)`
   ).run(
@@ -3971,6 +4005,7 @@ async function createTransporter(p) {
 }
 async function updateTransporter(p) {
   const d = getDb();
+  await ensureUniqueName("transporters", p.name, { id: p.id, label: "A transporter" });
   await d.prepare(
     `UPDATE transporters SET name=?, contact=?, address=?, remarks=?, company_id=?, plant_id=? WHERE id=?`
   ).run(
@@ -4040,6 +4075,7 @@ async function listCompanies() {
 async function createCompany(p) {
   const d = getDb();
   if (!p.name?.trim()) throw new Error("Company name is required.");
+  await ensureUniqueName("companies", p.name, { label: "A company" });
   const name = properCase(p.name);
   const contact = p.contact ?? "";
   const address = p.address ?? "";
@@ -4058,6 +4094,7 @@ async function createCompany(p) {
 async function updateCompany(p) {
   const d = getDb();
   if (!p.name?.trim()) throw new Error("Company name is required.");
+  await ensureUniqueName("companies", p.name, { id: p.id, label: "A company" });
   const name = properCase(p.name);
   const contact = p.contact ?? "";
   const address = p.address ?? "";
@@ -6819,11 +6856,14 @@ async function listBusinesses() {
 async function createBusiness(p) {
   const d = getDb();
   if (!p.name?.trim()) throw new Error("Business name is required.");
+  await ensureUniqueName("businesses", p.name, { label: "A business" });
   const info = await d.prepare(`INSERT INTO businesses (name, contact, remarks) VALUES (?, ?, ?)`).run(properCase(p.name), p.contact ?? "", p.remarks ?? "");
   return await d.prepare(`SELECT * FROM businesses WHERE id = ?`).get(info.lastInsertRowid);
 }
 async function updateBusiness(p) {
   const d = getDb();
+  if (!p.name?.trim()) throw new Error("Business name is required.");
+  await ensureUniqueName("businesses", p.name, { id: p.id, label: "A business" });
   await d.prepare(`UPDATE businesses SET name=?, contact=?, remarks=? WHERE id=?`).run(
     properCase(p.name),
     p.contact ?? "",
@@ -6849,6 +6889,7 @@ async function createOutsource(p) {
   const d = getDb();
   if (!p.name?.trim()) throw new Error("Name is required.");
   if (!p.head?.trim()) throw new Error("Head is required.");
+  await ensureUniqueName("outsource", p.name, { scopeColumn: "head", scopeValue: p.head, label: "An outsource vendor with that head" });
   const info = await d.prepare(`INSERT INTO outsource (name, head, contact, remarks) VALUES (?, ?, ?, ?)`).run(properCase(p.name), properCase(p.head), p.contact ?? "", p.remarks ?? "");
   return await d.prepare(`SELECT * FROM outsource WHERE id = ?`).get(info.lastInsertRowid);
 }
@@ -6856,6 +6897,7 @@ async function updateOutsource(p) {
   const d = getDb();
   if (!p.name?.trim()) throw new Error("Name is required.");
   if (!p.head?.trim()) throw new Error("Head is required.");
+  await ensureUniqueName("outsource", p.name, { id: p.id, scopeColumn: "head", scopeValue: p.head, label: "An outsource vendor with that head" });
   await d.prepare(`UPDATE outsource SET name=?, head=?, contact=?, remarks=? WHERE id=?`).run(
     properCase(p.name),
     properCase(p.head),
@@ -7011,6 +7053,7 @@ async function listEmployees(payload = {}) {
 async function createEmployee(p) {
   const d = getDb();
   if (!p.name?.trim()) throw new Error("Name is required.");
+  await ensureUniqueName("employees", p.name, { label: "An employee" });
   const info = await d.prepare(
     `INSERT INTO employees (name, designation, wage_type, monthly_salary, daily_wage, ot_rate, plant_id, contact, status, remarks)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -7030,6 +7073,8 @@ async function createEmployee(p) {
 }
 async function updateEmployee(p) {
   const d = getDb();
+  if (!p.name?.trim()) throw new Error("Name is required.");
+  await ensureUniqueName("employees", p.name, { id: p.id, label: "An employee" });
   await d.prepare(
     `UPDATE employees SET name=?, designation=?, wage_type=?, monthly_salary=?, daily_wage=?, ot_rate=?,
        plant_id=?, contact=?, status=?, remarks=? WHERE id=?`

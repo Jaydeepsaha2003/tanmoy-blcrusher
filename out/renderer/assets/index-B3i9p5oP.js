@@ -59087,6 +59087,16 @@ function Plants() {
   const { data = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
   const [open2, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState(empty$1);
+  const [q2, setQ] = reactExports.useState("");
+  const [status, setStatus] = reactExports.useState("");
+  const filtered = reactExports.useMemo(() => {
+    const term = q2.trim().toLowerCase();
+    return data.filter((p2) => {
+      if (term && !`${p2.name} ${p2.code ?? ""} ${p2.location ?? ""}`.toLowerCase().includes(term)) return false;
+      if (status && p2.status !== status) return false;
+      return true;
+    });
+  }, [data, q2, status]);
   const save = useMutation({
     mutationFn: (p2) => p2.id ? api.plants.update(p2) : api.plants.create(p2),
     onSuccess: () => {
@@ -59128,24 +59138,47 @@ function Plants() {
         ] })
       }
     ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(Page, { children: data.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No plants yet. Create your first plant to get started." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Name" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Code" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Location" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Status" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
-      ] }) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: data.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: p2.name }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: p2.code }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: p2.location || "-" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: p2.status === "active" ? "success" : "muted", children: p2.status }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => openEdit(p2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => remove(p2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Page, { children: data.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No plants yet. Create your first plant to get started." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap items-center gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { className: "w-full sm:w-60", placeholder: "Search name, code, location…", value: q2, onChange: (e3) => setQ(e3.target.value) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            className: "w-full sm:w-40",
+            value: status,
+            onChange: setStatus,
+            options: [{ value: "", label: "All status" }, { value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }]
+          }
+        ),
+        (q2 || status) && /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "sm", onClick: () => {
+          setQ("");
+          setStatus("");
+        }, children: "Clear" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "ml-auto text-sm text-muted-foreground", children: [
+          filtered.length,
+          " of ",
+          data.length
         ] })
-      ] }, p2.id)) })
+      ] }),
+      filtered.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No plants match your search." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Name" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Code" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Location" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Status" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: filtered.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: p2.name }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: p2.code }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: p2.location || "-" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: p2.status === "active" ? "success" : "muted", children: p2.status }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => openEdit(p2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => remove(p2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+          ] })
+        ] }, p2.id)) })
+      ] })
     ] }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Modal, { open: open2, onClose: () => setOpen(false), title: form.id ? "Edit Plant" : "New Plant", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant Name", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -60801,6 +60834,17 @@ function Customers() {
   const [open2, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState({});
   const [ratesFor, setRatesFor] = reactExports.useState(null);
+  const [q2, setQ] = reactExports.useState("");
+  const [companyFilter, setCompanyFilter] = reactExports.useState("");
+  const filtered = reactExports.useMemo(() => {
+    const term = q2.trim().toLowerCase();
+    return data.filter((c2) => {
+      if (term && !`${c2.name} ${c2.contact ?? ""} ${c2.address ?? ""}`.toLowerCase().includes(term)) return false;
+      if (companyFilter === "none" && c2.company_id) return false;
+      if (companyFilter && companyFilter !== "none" && String(c2.company_id ?? "") !== companyFilter) return false;
+      return true;
+    });
+  }, [data, q2, companyFilter]);
   function exportExcel() {
     downloadExcel(
       "customers",
@@ -60862,31 +60906,54 @@ function Customers() {
         ] })
       }
     ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(Page, { children: data.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No customers yet." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Name" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Company" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plant" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Contact" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Total Sold (m³)" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
-      ] }) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: data.map((c2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: c2.name }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: c2.company_name || "-" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: c2.plant_name || "Common" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: c2.contact || "-" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtQty(c2.total_dispatched) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Rate list", onClick: () => setRatesFor(c2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Tags, { size: 15 }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Copy shareable rate link", onClick: () => copyShareUrl(c2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Link2, { size: 15 }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Edit", onClick: () => {
-            setForm(c2);
-            setOpen(true);
-          }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Delete", onClick: () => remove(c2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Page, { children: data.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No customers yet." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap items-center gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { className: "w-full sm:w-60", placeholder: "Search name, contact, address…", value: q2, onChange: (e3) => setQ(e3.target.value) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            className: "w-full sm:w-48",
+            value: companyFilter,
+            onChange: setCompanyFilter,
+            options: [{ value: "", label: "All companies" }, { value: "none", label: "No company" }, ...companies.map((c2) => ({ value: String(c2.id), label: c2.name }))]
+          }
+        ),
+        (q2 || companyFilter) && /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "sm", onClick: () => {
+          setQ("");
+          setCompanyFilter("");
+        }, children: "Clear" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "ml-auto text-sm text-muted-foreground", children: [
+          filtered.length,
+          " of ",
+          data.length
         ] })
-      ] }, c2.id)) })
+      ] }),
+      filtered.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No customers match your search." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Name" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Company" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plant" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Contact" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Total Sold (m³)" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: filtered.map((c2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: c2.name }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: c2.company_name || "-" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: c2.plant_name || "Common" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: c2.contact || "-" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtQty(c2.total_dispatched) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Rate list", onClick: () => setRatesFor(c2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Tags, { size: 15 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Copy shareable rate link", onClick: () => copyShareUrl(c2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Link2, { size: 15 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Edit", onClick: () => {
+              setForm(c2);
+              setOpen(true);
+            }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Delete", onClick: () => remove(c2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+          ] })
+        ] }, c2.id)) })
+      ] })
     ] }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       Modal,
@@ -62531,6 +62598,17 @@ function OutsourceVendors() {
   const { data = [] } = useQuery({ queryKey: ["outsource"], queryFn: api.outsource.list });
   const [open2, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState({});
+  const [q2, setQ] = reactExports.useState("");
+  const [head, setHead] = reactExports.useState("");
+  const heads = reactExports.useMemo(() => [...new Set(data.map((o2) => o2.head).filter(Boolean))], [data]);
+  const filtered = reactExports.useMemo(() => {
+    const term = q2.trim().toLowerCase();
+    return data.filter((o2) => {
+      if (term && !`${o2.name} ${o2.contact ?? ""}`.toLowerCase().includes(term)) return false;
+      if (head && o2.head !== head) return false;
+      return true;
+    });
+  }, [data, q2, head]);
   const save = useMutation({
     mutationFn: (p2) => p2.id ? api.outsource.update(p2) : api.outsource.create(p2),
     onSuccess: () => {
@@ -62574,26 +62652,49 @@ function OutsourceVendors() {
         /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: "Payment Status" }),
         " as a payable."
       ] }),
-      data.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No outsource vendors yet." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Name" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Head" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Contact" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
-        ] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: data.map((o2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: o2.name }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: o2.head ? /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "muted", children: o2.head }) : "-" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: o2.contact || "-" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Ledger", onClick: () => nav("/ledgers", { state: { type: "outsource", id: o2.id } }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(BookOpen, { size: 15 }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => {
-              setForm(o2);
-              setOpen(true);
-            }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => remove(o2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+      data.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No outsource vendors yet." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap items-center gap-2", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { className: "w-full sm:w-60", placeholder: "Search name, contact…", value: q2, onChange: (e3) => setQ(e3.target.value) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SearchSelect,
+            {
+              className: "w-full sm:w-44",
+              value: head,
+              onChange: setHead,
+              options: [{ value: "", label: "All heads" }, ...heads.map((h2) => ({ value: h2, label: h2 }))]
+            }
+          ),
+          (q2 || head) && /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "sm", onClick: () => {
+            setQ("");
+            setHead("");
+          }, children: "Clear" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "ml-auto text-sm text-muted-foreground", children: [
+            filtered.length,
+            " of ",
+            data.length
           ] })
-        ] }, o2.id)) })
+        ] }),
+        filtered.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No vendors match your search." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Name" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Head" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Contact" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
+          ] }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: filtered.map((o2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: o2.name }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: o2.head ? /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "muted", children: o2.head }) : "-" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: o2.contact || "-" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Ledger", onClick: () => nav("/ledgers", { state: { type: "outsource", id: o2.id } }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(BookOpen, { size: 15 }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => {
+                setForm(o2);
+                setOpen(true);
+              }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => remove(o2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+            ] })
+          ] }, o2.id)) })
+        ] })
       ] })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Modal, { open: open2, onClose: () => setOpen(false), title: form.id ? "Edit Vendor" : "New Outsource Vendor", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
@@ -64766,6 +64867,19 @@ function Employees() {
   const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
   const [open2, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState(null);
+  const [q2, setQ] = reactExports.useState("");
+  const [desig, setDesig] = reactExports.useState("");
+  const [status, setStatus] = reactExports.useState("");
+  const desigs = reactExports.useMemo(() => [...new Set(data.map((e3) => e3.designation).filter(Boolean))], [data]);
+  const filtered = reactExports.useMemo(() => {
+    const term = q2.trim().toLowerCase();
+    return data.filter((e3) => {
+      if (term && !`${e3.name} ${e3.designation ?? ""} ${e3.contact ?? ""}`.toLowerCase().includes(term)) return false;
+      if (desig && e3.designation !== desig) return false;
+      if (status && e3.status !== status) return false;
+      return true;
+    });
+  }, [data, q2, desig, status]);
   const save = useMutation({
     mutationFn: (p2) => p2.id ? api.employees.update(p2) : api.employees.create(p2),
     onSuccess: () => {
@@ -64824,33 +64938,66 @@ function Employees() {
         ] })
       }
     ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(Page, { children: data.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No employees added yet." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Name" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Designation" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Wage Type" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Rate" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "OT / hr" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plant" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Status" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
-      ] }) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: data.map((e3) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: e3.name }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: e3.designation || "-" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: e3.wage_type === "monthly" ? "default" : "muted", children: e3.wage_type }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: e3.wage_type === "monthly" ? `${fmtMoney(e3.monthly_salary)}/mo` : `${fmtMoney(e3.daily_wage)}/day` }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: e3.ot_rate ? fmtMoney(e3.ot_rate) : "-" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: e3.plant_name || "Common" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "capitalize text-muted-foreground", children: e3.status }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => {
-            setForm({ ...e3, monthly_salary: e3.monthly_salary || "", daily_wage: e3.daily_wage || "", ot_rate: e3.ot_rate || "" });
-            setOpen(true);
-          }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => remove(e3), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Page, { children: data.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No employees added yet." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap items-center gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { className: "w-full sm:w-60", placeholder: "Search name, designation, contact…", value: q2, onChange: (e3) => setQ(e3.target.value) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            className: "w-full sm:w-44",
+            value: desig,
+            onChange: setDesig,
+            options: [{ value: "", label: "All designations" }, ...desigs.map((dz) => ({ value: dz, label: dz }))]
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            className: "w-full sm:w-36",
+            value: status,
+            onChange: setStatus,
+            options: [{ value: "", label: "All status" }, { value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }]
+          }
+        ),
+        (q2 || desig || status) && /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "sm", onClick: () => {
+          setQ("");
+          setDesig("");
+          setStatus("");
+        }, children: "Clear" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "ml-auto text-sm text-muted-foreground", children: [
+          filtered.length,
+          " of ",
+          data.length
         ] })
-      ] }, e3.id)) })
+      ] }),
+      filtered.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No employees match your search." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Name" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Designation" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Wage Type" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Rate" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "OT / hr" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plant" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Status" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: filtered.map((e3) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: e3.name }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: e3.designation || "-" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: e3.wage_type === "monthly" ? "default" : "muted", children: e3.wage_type }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: e3.wage_type === "monthly" ? `${fmtMoney(e3.monthly_salary)}/mo` : `${fmtMoney(e3.daily_wage)}/day` }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: e3.ot_rate ? fmtMoney(e3.ot_rate) : "-" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: e3.plant_name || "Common" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "capitalize text-muted-foreground", children: e3.status }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => {
+              setForm({ ...e3, monthly_salary: e3.monthly_salary || "", daily_wage: e3.daily_wage || "", ot_rate: e3.ot_rate || "" });
+              setOpen(true);
+            }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => remove(e3), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+          ] })
+        ] }, e3.id)) })
+      ] })
     ] }) }),
     form && /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { open: open2, onClose: () => setOpen(false), title: form.id ? "Edit Employee" : "New Employee", width: "max-w-2xl", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
@@ -77191,7 +77338,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-PhcuDvbG.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-B7Aq-y_f.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
