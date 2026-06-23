@@ -62984,6 +62984,8 @@ function MachineDetail() {
     qc2.invalidateQueries({ queryKey: ["machineLogs"] });
     qc2.invalidateQueries({ queryKey: ["machineDocs"] });
     qc2.invalidateQueries({ queryKey: ["reminders"] });
+    qc2.invalidateQueries({ queryKey: ["machineLedger"] });
+    qc2.invalidateQueries({ queryKey: ["ledger"] });
   };
   const [logForm, setLogForm] = reactExports.useState(null);
   const saveLog = useMutation({
@@ -64304,6 +64306,8 @@ function PlantExpenses() {
       qc2.invalidateQueries({ queryKey: ["plantExpenseTotals"] });
       qc2.invalidateQueries({ queryKey: ["ledger"] });
       qc2.invalidateQueries({ queryKey: ["ledger-balances"] });
+      qc2.invalidateQueries({ queryKey: ["allDues"] });
+      qc2.invalidateQueries({ queryKey: ["dashboard"] });
       setOpen(false);
       toast.success("Expense saved.");
     },
@@ -64350,6 +64354,9 @@ function PlantExpenses() {
     qc2.invalidateQueries({ queryKey: ["plantExpenses"] });
     qc2.invalidateQueries({ queryKey: ["plantExpenseTotals"] });
     qc2.invalidateQueries({ queryKey: ["ledger"] });
+    qc2.invalidateQueries({ queryKey: ["ledger-balances"] });
+    qc2.invalidateQueries({ queryKey: ["allDues"] });
+    qc2.invalidateQueries({ queryKey: ["dashboard"] });
     toast.success("Expense deleted.");
   }
   function exportExcel() {
@@ -64627,6 +64634,7 @@ function Diesel() {
     qc2.invalidateQueries({ queryKey: ["ledger"] });
     qc2.invalidateQueries({ queryKey: ["ledger-balances"] });
     qc2.invalidateQueries({ queryKey: ["allDues"] });
+    qc2.invalidateQueries({ queryKey: ["dashboard"] });
   }
   const savePurchase = useMutation({
     mutationFn: (p2) => p2.id ? api.diesel.updatePurchase(p2) : api.diesel.createPurchase(p2),
@@ -65103,6 +65111,7 @@ function Payroll() {
     await api.wages.delete(x2.id);
     qc2.invalidateQueries({ queryKey: ["wages"] });
     qc2.invalidateQueries({ queryKey: ["ledger"] });
+    qc2.invalidateQueries({ queryKey: ["ledger-balances"] });
     toast.success("Deleted.");
   }
   function openNew() {
@@ -65545,6 +65554,9 @@ function RackDetail() {
     qc2.invalidateQueries({ queryKey: ["transporters"] });
     qc2.invalidateQueries({ queryKey: ["expenseTypes"] });
     qc2.invalidateQueries({ queryKey: ["dashboard"] });
+    qc2.invalidateQueries({ queryKey: ["ledger"] });
+    qc2.invalidateQueries({ queryKey: ["ledger-balances"] });
+    qc2.invalidateQueries({ queryKey: ["allDues"] });
   }
   const setStatus = useMutation({
     mutationFn: (status) => api.racks.setStatus(rackId, status),
@@ -77338,7 +77350,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-WIxfRN1o.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-BqVSziAs.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
@@ -80804,6 +80816,10 @@ function Deliveries() {
     mutationFn: () => api.dispatches.setRate(rateForm.id, Number(rateForm.rate)),
     onSuccess: () => {
       qc2.invalidateQueries({ queryKey: ["dispatches"] });
+      qc2.invalidateQueries({ queryKey: ["ledger"] });
+      qc2.invalidateQueries({ queryKey: ["ledger-balances"] });
+      qc2.invalidateQueries({ queryKey: ["allDues"] });
+      qc2.invalidateQueries({ queryKey: ["dashboard"] });
       setRateForm(null);
       toast.success("Rate updated.");
     },
