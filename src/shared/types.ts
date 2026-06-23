@@ -1058,9 +1058,11 @@ export interface DashboardData {
   totalRackExpenses: number
   rackTransportCost: number
   rackProfit: number
-  /** Total receivable from customers (ledger balances > 0) — matches Payment Status. */
+  /** Net carried-forward opening balance (customers Dr − suppliers/outsource Cr). */
+  openingBalance: number
+  /** Unpaid on this period's direct sales (excludes opening balance). */
   billReceivable: number
-  /** Total payable to suppliers + transporters + outsource (ledger balances > 0). */
+  /** Unpaid on this period's supplier/diesel/outsource bills (excludes opening). */
   billsPayable: number
   topCustomers: { name: string; amount: number }[]
   monthlySales: { month: string; amount: number }[]

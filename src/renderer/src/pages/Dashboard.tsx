@@ -18,7 +18,8 @@ import {
   Building2,
   UserSquare2,
   Coins,
-  ArrowUpFromLine
+  ArrowUpFromLine,
+  Scale
 } from 'lucide-react'
 import {
   BarChart,
@@ -157,17 +158,29 @@ export function Dashboard(): React.JSX.Element {
 
         {/* Receivables & payables — plant-specific */}
         <SectionLabel>Receivables &amp; Payables{plantId ? ` — ${activePlant}` : ''}</SectionLabel>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <Stat icon={Coins} label="Bill Receivable" value={fmtMoney(data.billReceivable)} tone="warning" hint="Sales dues + opening (Dr)" />
-          <Stat icon={Wallet} label="Bills Payable" value={fmtMoney(data.billsPayable)} tone="destructive" hint="Supplier/outsource bills + opening (Cr)" />
-          <Stat
-            icon={HandCoins}
-            label="Net Position"
-            value={fmtMoney(data.billReceivable - data.billsPayable)}
-            tone={data.billReceivable - data.billsPayable < 0 ? 'destructive' : 'success'}
-            hint={data.billReceivable - data.billsPayable < 0 ? 'Net payable (incl. opening)' : 'Net receivable (incl. opening)'}
-          />
-        </div>
+        {(() => {
+          const net = data.openingBalance + data.billReceivable - data.billsPayable
+          return (
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+              <Stat
+                icon={Scale}
+                label="Opening Balance"
+                value={fmtMoney(data.openingBalance)}
+                tone={data.openingBalance < 0 ? 'destructive' : 'success'}
+                hint="Carried forward (Dr − Cr)"
+              />
+              <Stat icon={Coins} label="Bill Receivable" value={fmtMoney(data.billReceivable)} tone="warning" hint="Unpaid on sales" />
+              <Stat icon={Wallet} label="Bills Payable" value={fmtMoney(data.billsPayable)} tone="destructive" hint="Unpaid supplier/outsource bills" />
+              <Stat
+                icon={HandCoins}
+                label="Net Position"
+                value={fmtMoney(net)}
+                tone={net < 0 ? 'destructive' : 'success'}
+                hint={net < 0 ? 'Net payable (incl. opening)' : 'Net receivable (incl. opening)'}
+              />
+            </div>
+          )
+        })()}
 
         {/* Rail-rack pipeline — company-wide; only meaningful across all plants */}
         {!plantId && (
