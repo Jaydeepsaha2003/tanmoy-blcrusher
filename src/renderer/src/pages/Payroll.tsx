@@ -82,6 +82,7 @@ export function Payroll(): React.JSX.Element {
     await api.wages.delete(x.id)
     qc.invalidateQueries({ queryKey: ['wages'] })
     qc.invalidateQueries({ queryKey: ['ledger'] })
+    qc.invalidateQueries({ queryKey: ['ledger-balances'] })
     toast.success('Deleted.')
   }
 

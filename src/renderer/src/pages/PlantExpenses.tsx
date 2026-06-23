@@ -74,6 +74,8 @@ export function PlantExpenses(): React.JSX.Element {
       qc.invalidateQueries({ queryKey: ['plantExpenseTotals'] })
       qc.invalidateQueries({ queryKey: ['ledger'] })
       qc.invalidateQueries({ queryKey: ['ledger-balances'] })
+      qc.invalidateQueries({ queryKey: ['allDues'] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
       setOpen(false)
       toast.success('Expense saved.')
     },
@@ -123,6 +125,9 @@ export function PlantExpenses(): React.JSX.Element {
     qc.invalidateQueries({ queryKey: ['plantExpenses'] })
     qc.invalidateQueries({ queryKey: ['plantExpenseTotals'] })
     qc.invalidateQueries({ queryKey: ['ledger'] })
+    qc.invalidateQueries({ queryKey: ['ledger-balances'] })
+    qc.invalidateQueries({ queryKey: ['allDues'] })
+    qc.invalidateQueries({ queryKey: ['dashboard'] })
     toast.success('Expense deleted.')
   }
 

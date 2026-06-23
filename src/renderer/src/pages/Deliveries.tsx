@@ -60,7 +60,12 @@ export function Deliveries(): React.JSX.Element {
   const saveRate = useMutation({
     mutationFn: () => api.dispatches.setRate(rateForm!.id, Number(rateForm!.rate)),
     onSuccess: () => {
+      // A rate sets the sale amount, so the customer ledger, dues and dashboard change.
       qc.invalidateQueries({ queryKey: ['dispatches'] })
+      qc.invalidateQueries({ queryKey: ['ledger'] })
+      qc.invalidateQueries({ queryKey: ['ledger-balances'] })
+      qc.invalidateQueries({ queryKey: ['allDues'] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
       setRateForm(null)
       toast.success('Rate updated.')
     },

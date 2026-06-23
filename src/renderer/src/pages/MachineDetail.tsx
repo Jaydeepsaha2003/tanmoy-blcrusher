@@ -75,6 +75,8 @@ export function MachineDetail(): React.JSX.Element {
     qc.invalidateQueries({ queryKey: ['machineLogs'] })
     qc.invalidateQueries({ queryKey: ['machineDocs'] })
     qc.invalidateQueries({ queryKey: ['reminders'] })
+    qc.invalidateQueries({ queryKey: ['machineLedger'] })
+    qc.invalidateQueries({ queryKey: ['ledger'] })
   }
 
   /* ---- Logbook ---- */

@@ -93,6 +93,9 @@ export function RackDetail(): React.JSX.Element {
     qc.invalidateQueries({ queryKey: ['transporters'] })
     qc.invalidateQueries({ queryKey: ['expenseTypes'] })
     qc.invalidateQueries({ queryKey: ['dashboard'] })
+    qc.invalidateQueries({ queryKey: ['ledger'] })
+    qc.invalidateQueries({ queryKey: ['ledger-balances'] })
+    qc.invalidateQueries({ queryKey: ['allDues'] })
   }
 
   const setStatus = useMutation({

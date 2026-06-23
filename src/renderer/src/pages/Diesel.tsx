@@ -59,6 +59,7 @@ export function Diesel(): React.JSX.Element {
     qc.invalidateQueries({ queryKey: ['ledger'] })
     qc.invalidateQueries({ queryKey: ['ledger-balances'] })
     qc.invalidateQueries({ queryKey: ['allDues'] })
+    qc.invalidateQueries({ queryKey: ['dashboard'] })
   }
 
   const savePurchase = useMutation({
