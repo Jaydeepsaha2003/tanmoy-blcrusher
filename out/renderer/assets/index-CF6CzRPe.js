@@ -62740,7 +62740,15 @@ function Assets() {
   const [form, setForm] = reactExports.useState({});
   const [moveForm, setMoveForm] = reactExports.useState(null);
   const [typeFilter, setTypeFilter] = reactExports.useState("all");
-  const rows = typeFilter === "all" ? data : data.filter((a2) => a2.asset_type === typeFilter);
+  const [q2, setQ] = reactExports.useState("");
+  const rows = reactExports.useMemo(() => {
+    const term = q2.trim().toLowerCase();
+    return data.filter((a2) => {
+      if (typeFilter !== "all" && a2.asset_type !== typeFilter) return false;
+      if (term && !`${a2.name} ${a2.category ?? ""} ${a2.identifier ?? ""} ${a2.business_name ?? ""}`.toLowerCase().includes(term)) return false;
+      return true;
+    });
+  }, [data, typeFilter, q2]);
   const save = useMutation({
     mutationFn: (p2) => p2.id ? api.assets.update(p2) : api.assets.create(p2),
     onSuccess: () => {
@@ -62813,16 +62821,28 @@ function Assets() {
       }
     ),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Page, { children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-4 flex flex-wrap items-center gap-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-        SearchSelect,
-        {
-          className: "w-full sm:w-48",
-          value: typeFilter,
-          onChange: (v2) => setTypeFilter(v2),
-          options: [{ value: "all", label: "All types" }, { value: "machine", label: "Machines" }, { value: "vehicle", label: "Vehicles" }]
-        }
-      ) }),
-      rows.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No machinery or vehicles yet." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap items-center gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { className: "w-full sm:w-60", placeholder: "Search name, category, reg. no…", value: q2, onChange: (e3) => setQ(e3.target.value) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            className: "w-full sm:w-48",
+            value: typeFilter,
+            onChange: (v2) => setTypeFilter(v2),
+            options: [{ value: "all", label: "All types" }, { value: "machine", label: "Machines" }, { value: "vehicle", label: "Vehicles" }]
+          }
+        ),
+        (q2 || typeFilter !== "all") && /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "sm", onClick: () => {
+          setQ("");
+          setTypeFilter("all");
+        }, children: "Clear" }),
+        data.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "ml-auto text-sm text-muted-foreground", children: [
+          rows.length,
+          " of ",
+          data.length
+        ] })
+      ] }),
+      data.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No machinery or vehicles yet." }) : rows.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No machines or vehicles match your search." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Machine / Vehicle" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plants" }),
@@ -77366,7 +77386,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-DuK3qY-m.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-fPYlaMZE.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
