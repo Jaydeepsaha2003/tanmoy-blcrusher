@@ -7439,13 +7439,27 @@ async function getDashboard(payload = {}) {
   const monthlySales = (await d.prepare(
     `SELECT month, SUM(amount) AS amount FROM (${monthlySrc}) AS t GROUP BY month ORDER BY month DESC LIMIT 6`
   ).all()).map((r) => ({ month: r.month, amount: money7({ q: r.amount }) })).reverse();
-  const dues = await getAllDues({ plant_id: pid || void 0 });
-  const billReceivable = money7({
-    q: dues.filter((r) => r.kind === "receivable" && r.balance > 0).reduce((s, r) => s + r.balance, 0)
-  });
-  const billsPayable = money7({
-    q: dues.filter((r) => r.kind === "payable" && r.balance > 0).reduce((s, r) => s + r.balance, 0)
-  });
+  const billReceivable = money7(
+    await d.prepare(
+      `SELECT COALESCE(SUM(
+            (COALESCE(amount,0)
+             + CASE WHEN transport_billed=1 THEN transport_charge ELSE 0 END
+             + CASE WHEN other_billed=1 THEN other_charge ELSE 0 END)
+            - COALESCE(paid_amount,0)),0) AS q
+         FROM dispatches WHERE to_plant_id IS NULL${plAnd}`
+    ).get()
+  );
+  const billsPayable = money7(
+    await d.prepare(
+      `SELECT
+          (SELECT COALESCE(SUM(COALESCE(amount,0) - COALESCE(paid_amount,0)),0)
+             FROM purchases WHERE linked_dispatch_id IS NULL${plAnd}) +
+          (SELECT COALESCE(SUM(COALESCE(amount,0) - COALESCE(paid_amount,0)),0)
+             FROM diesel_purchases WHERE 1=1${plAnd}) +
+          (SELECT COALESCE(SUM(COALESCE(amount,0) - COALESCE(paid_amount,0)),0)
+             FROM plant_expenses WHERE outsource_id IS NOT NULL${plAnd}) AS q`
+    ).get()
+  );
   const partyWhere = pid ? ` WHERE (plant_id IS NULL OR plant_id = ${pid})` : "";
   const counts = {
     plants: (await d.prepare(`SELECT COUNT(*) AS q FROM plants`).get()).q,
