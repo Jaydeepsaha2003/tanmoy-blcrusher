@@ -1049,7 +1049,6 @@ export interface DashboardData {
   totalConsumed: number
   totalProduced: number
   totalDispatched: number
-  pendingSupplierPayment: number
   pendingDeliveries: number
   deliveredNoRate: number
   rackStockCm: number
@@ -1059,8 +1058,10 @@ export interface DashboardData {
   totalRackExpenses: number
   rackTransportCost: number
   rackProfit: number
-  customerReceivable: number
-  transporterPayable: number
+  /** Total receivable from customers (ledger balances > 0) — matches Payment Status. */
+  billReceivable: number
+  /** Total payable to suppliers + transporters + outsource (ledger balances > 0). */
+  billsPayable: number
   topCustomers: { name: string; amount: number }[]
   monthlySales: { month: string; amount: number }[]
   counts: {

@@ -157,15 +157,15 @@ export function Dashboard(): React.JSX.Element {
 
         {/* Receivables & payables — plant-specific */}
         <SectionLabel>Receivables &amp; Payables{plantId ? ` — ${activePlant}` : ''}</SectionLabel>
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <Stat icon={Coins} label="Customer Receivable" value={fmtMoney(data.customerReceivable)} tone="warning" />
-          <Stat icon={Wallet} label="Supplier Payable" value={fmtMoney(data.pendingSupplierPayment)} tone="destructive" />
-          <Stat icon={Truck} label="Transporter Payable" value={fmtMoney(data.transporterPayable)} tone="destructive" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <Stat icon={Coins} label="Bill Receivable" value={fmtMoney(data.billReceivable)} tone="warning" hint="Outstanding from customers" />
+          <Stat icon={Wallet} label="Bills Payable" value={fmtMoney(data.billsPayable)} tone="destructive" hint="Owed to suppliers, transporters & vendors" />
           <Stat
             icon={HandCoins}
             label="Net Position"
-            value={fmtMoney(data.customerReceivable - data.pendingSupplierPayment - data.transporterPayable)}
-            tone={data.customerReceivable - data.pendingSupplierPayment - data.transporterPayable < 0 ? 'destructive' : 'success'}
+            value={fmtMoney(data.billReceivable - data.billsPayable)}
+            tone={data.billReceivable - data.billsPayable < 0 ? 'destructive' : 'success'}
+            hint="Receivable − Payable"
           />
         </div>
 

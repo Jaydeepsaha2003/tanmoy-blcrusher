@@ -1,5 +1,6 @@
 import { getDb } from '../db'
 import type { DashboardData } from '@shared/types'
+import { getAllDues } from './ledgers'
 
 function num(row: { q: number } | undefined): number {
   return Math.round(((row?.q ?? 0) + Number.EPSILON) * 1000) / 1000
@@ -53,7 +54,7 @@ export async function getDashboard(payload: { plant_id?: number } = {}): Promise
     .prepare(
       `SELECT m.product_name, ROUND(COALESCE(SUM(m.change_qty),0),3) AS qty
        FROM stock_movements m
-       WHERE m.material_type='finished'${mAnd} GROUP BY m.product_name HAVING qty <> 0 ORDER BY m.product_name`
+       WHERE m.material_type='finished'${mAnd} GROUP BY m.product_name HAVING qty > 0 ORDER BY m.product_name`
     )
     .all()) as DashboardData['finishedByProduct']
 
@@ -74,11 +75,6 @@ export async function getDashboard(payload: { plant_id?: number } = {}): Promise
     (await d.prepare(`SELECT COALESCE(SUM(qty_cm),0) AS q FROM dispatches WHERE to_plant_id IS NULL${plAnd}`).get()) as { q: number }
   )
 
-  // Exclude the auto-created inter-plant finished-goods purchases (linked_dispatch_id set);
-  // they are the receiving side of an internal transfer, not money owed to a real supplier.
-  const pendingSupplierPayment = money(
-    (await d.prepare(`SELECT COALESCE(SUM(COALESCE(amount,0) - paid_amount),0) AS q FROM purchases WHERE payment_status <> 'paid' AND linked_dispatch_id IS NULL${plAnd}`).get()) as { q: number }
-  )
   const pendingDeliveries = (
     (await d.prepare(`SELECT COUNT(*) AS q FROM dispatches WHERE delivery_status='pending' AND to_plant_id IS NULL${plAnd}`).get()) as { q: number }
   ).q
@@ -155,43 +151,17 @@ export async function getDashboard(payload: { plant_id?: number } = {}): Promise
     .reverse()
 
   // ---- Party dues ----
-  // For a specific plant: scope to that plant's own direct sales / loadings.
-  // For All Plants: include rack sales and the general payments ledger.
-  const custRow = (await (
-    pid
-      ? d.prepare(
-          `SELECT COALESCE(SUM(COALESCE(amount,0)
-             + CASE WHEN transport_billed=1 THEN transport_charge ELSE 0 END
-             + CASE WHEN other_billed=1 THEN other_charge ELSE 0 END
-             - paid_amount),0) AS q FROM dispatches WHERE plant_id = ${pid} AND to_plant_id IS NULL`
-        )
-      : d.prepare(
-          `SELECT
-            (SELECT COALESCE(SUM(COALESCE(amount,0)
-                + CASE WHEN transport_billed=1 THEN transport_charge ELSE 0 END
-                + CASE WHEN other_billed=1 THEN other_charge ELSE 0 END
-                - paid_amount),0) FROM dispatches WHERE to_plant_id IS NULL) +
-            (SELECT COALESCE(SUM(amount),0) FROM rack_sales WHERE amount IS NOT NULL) +
-            (SELECT COALESCE(SUM(amount),0) FROM payments WHERE party_type='customer' AND direction='out') -
-            (SELECT COALESCE(SUM(amount),0) FROM payments WHERE party_type='customer' AND direction='in') AS q`
-        )
-  ).get()) as { q: number }
-  const customerReceivable = money(custRow)
-
-  const transRow = (await (
-    pid
-      ? d.prepare(
-          `SELECT COALESCE(SUM(COALESCE(amount,0) - COALESCE(diesel_amount,0)),0) AS q FROM rack_loadings WHERE plant_id = ${pid}`
-        )
-      : d.prepare(
-          `SELECT
-            (SELECT COALESCE(SUM(COALESCE(amount,0) - COALESCE(diesel_amount,0)),0) FROM rack_loadings) +
-            (SELECT COALESCE(SUM(COALESCE(amount,0) - COALESCE(diesel_amount,0)),0) FROM rack_unloadings) -
-            (SELECT COALESCE(SUM(amount),0) FROM payments WHERE party_type='transporter' AND direction='out') +
-            (SELECT COALESCE(SUM(amount),0) FROM payments WHERE party_type='transporter' AND direction='in') AS q`
-        )
-  ).get()) as { q: number }
-  const transporterPayable = money(transRow)
+  // Use the same authoritative ledger balances as the Payment Status screen so the
+  // dashboard always matches it: receivable = customers owing us; payable = what we
+  // owe suppliers, transporters and outsource vendors. Includes opening balances,
+  // advances, rack sales, diesel and every cost line — not an ad-hoc approximation.
+  const dues = await getAllDues({ plant_id: pid || undefined })
+  const billReceivable = money({
+    q: dues.filter((r) => r.kind === 'receivable' && r.balance > 0).reduce((s, r) => s + r.balance, 0)
+  })
+  const billsPayable = money({
+    q: dues.filter((r) => r.kind === 'payable' && r.balance > 0).reduce((s, r) => s + r.balance, 0)
+  })
 
   const counts = {
     plants: ((await d.prepare(`SELECT COUNT(*) AS q FROM plants`).get()) as { q: number }).q,
@@ -214,7 +184,6 @@ export async function getDashboard(payload: { plant_id?: number } = {}): Promise
     totalConsumed,
     totalProduced,
     totalDispatched,
-    pendingSupplierPayment,
     pendingDeliveries,
     deliveredNoRate,
     rackStockCm,
@@ -224,8 +193,8 @@ export async function getDashboard(payload: { plant_id?: number } = {}): Promise
     totalRackExpenses,
     rackTransportCost,
     rackProfit,
-    customerReceivable,
-    transporterPayable,
+    billReceivable,
+    billsPayable,
     topCustomers,
     monthlySales,
     counts
