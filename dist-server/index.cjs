@@ -7446,13 +7446,14 @@ async function getDashboard(payload = {}) {
   const billsPayable = money7({
     q: dues.filter((r) => r.kind === "payable" && r.balance > 0).reduce((s, r) => s + r.balance, 0)
   });
+  const partyWhere = pid ? ` WHERE (plant_id IS NULL OR plant_id = ${pid})` : "";
   const counts = {
     plants: (await d.prepare(`SELECT COUNT(*) AS q FROM plants`).get()).q,
-    suppliers: (await d.prepare(`SELECT COUNT(*) AS q FROM suppliers`).get()).q,
-    customers: (await d.prepare(`SELECT COUNT(*) AS q FROM customers`).get()).q,
-    transporters: (await d.prepare(`SELECT COUNT(*) AS q FROM transporters`).get()).q,
+    suppliers: (await d.prepare(`SELECT COUNT(*) AS q FROM suppliers${partyWhere}`).get()).q,
+    customers: (await d.prepare(`SELECT COUNT(*) AS q FROM customers${partyWhere}`).get()).q,
+    transporters: (await d.prepare(`SELECT COUNT(*) AS q FROM transporters${partyWhere}`).get()).q,
     companies: (await d.prepare(`SELECT COUNT(*) AS q FROM companies`).get()).q,
-    racks: (await d.prepare(`SELECT COUNT(*) AS q FROM racks`).get()).q
+    racks: pid ? (await d.prepare(`SELECT COUNT(*) AS q FROM racks WHERE id IN (SELECT DISTINCT rack_id FROM rack_loadings WHERE plant_id = ${pid})`).get()).q : (await d.prepare(`SELECT COUNT(*) AS q FROM racks`).get()).q
   };
   return {
     rawTotal,
