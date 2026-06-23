@@ -12,8 +12,10 @@ function money(row: { q: number } | undefined): number {
 
 export async function getDashboard(payload: { plant_id?: number } = {}): Promise<DashboardData> {
   const d = getDb()
-  // Plant filter applies to stock + throughput + direct-sale figures. Rack flow and
-  // company-wide dues span plants, so those stay global.
+  // When a plant is active, everything is scoped to it: stock, throughput, direct
+  // sales, dues, sales charts and the master counts (parties available at that
+  // plant). Only the rail-rack pipeline is company-wide — the UI hides that section
+  // for a single plant, so it isn't shown stale.
   const pid = Number(payload.plant_id) || 0
   const mAnd = pid ? ` AND m.plant_id = ${pid}` : ''
   const plAnd = pid ? ` AND plant_id = ${pid}` : ''
@@ -163,14 +165,22 @@ export async function getDashboard(payload: { plant_id?: number } = {}): Promise
     q: dues.filter((r) => r.kind === 'payable' && r.balance > 0).reduce((s, r) => s + r.balance, 0)
   })
 
+  // Parties that carry a plant scope are counted for the active plant (its own +
+  // common, plant-unassigned ones), matching their list pages. Plants and companies
+  // are global by nature; racks are counted by those loaded from the active plant.
+  const partyWhere = pid ? ` WHERE (plant_id IS NULL OR plant_id = ${pid})` : ''
   const counts = {
     plants: ((await d.prepare(`SELECT COUNT(*) AS q FROM plants`).get()) as { q: number }).q,
-    suppliers: ((await d.prepare(`SELECT COUNT(*) AS q FROM suppliers`).get()) as { q: number }).q,
-    customers: ((await d.prepare(`SELECT COUNT(*) AS q FROM customers`).get()) as { q: number }).q,
-    transporters: ((await d.prepare(`SELECT COUNT(*) AS q FROM transporters`).get()) as { q: number })
+    suppliers: ((await d.prepare(`SELECT COUNT(*) AS q FROM suppliers${partyWhere}`).get()) as { q: number }).q,
+    customers: ((await d.prepare(`SELECT COUNT(*) AS q FROM customers${partyWhere}`).get()) as { q: number }).q,
+    transporters: ((await d.prepare(`SELECT COUNT(*) AS q FROM transporters${partyWhere}`).get()) as { q: number })
       .q,
     companies: ((await d.prepare(`SELECT COUNT(*) AS q FROM companies`).get()) as { q: number }).q,
-    racks: ((await d.prepare(`SELECT COUNT(*) AS q FROM racks`).get()) as { q: number }).q
+    racks: pid
+      ? ((await d
+          .prepare(`SELECT COUNT(*) AS q FROM racks WHERE id IN (SELECT DISTINCT rack_id FROM rack_loadings WHERE plant_id = ${pid})`)
+          .get()) as { q: number }).q
+      : ((await d.prepare(`SELECT COUNT(*) AS q FROM racks`).get()) as { q: number }).q
   }
 
   return {
