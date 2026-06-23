@@ -58903,17 +58903,17 @@ function Dashboard() {
         "Receivables & Payables",
         plantId ? ` — ${activePlant}` : ""
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4 lg:grid-cols-4", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Stat$1, { icon: Coins, label: "Customer Receivable", value: fmtMoney(data.customerReceivable), tone: "warning" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Stat$1, { icon: Wallet, label: "Supplier Payable", value: fmtMoney(data.pendingSupplierPayment), tone: "destructive" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Stat$1, { icon: Truck, label: "Transporter Payable", value: fmtMoney(data.transporterPayable), tone: "destructive" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-3", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Stat$1, { icon: Coins, label: "Bill Receivable", value: fmtMoney(data.billReceivable), tone: "warning", hint: "Outstanding from customers" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Stat$1, { icon: Wallet, label: "Bills Payable", value: fmtMoney(data.billsPayable), tone: "destructive", hint: "Owed to suppliers, transporters & vendors" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           Stat$1,
           {
             icon: HandCoins,
             label: "Net Position",
-            value: fmtMoney(data.customerReceivable - data.pendingSupplierPayment - data.transporterPayable),
-            tone: data.customerReceivable - data.pendingSupplierPayment - data.transporterPayable < 0 ? "destructive" : "success"
+            value: fmtMoney(data.billReceivable - data.billsPayable),
+            tone: data.billReceivable - data.billsPayable < 0 ? "destructive" : "success",
+            hint: "Receivable − Payable"
           }
         )
       ] }),
@@ -77191,7 +77191,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-CQm0sQ6O.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-PhcuDvbG.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
