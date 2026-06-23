@@ -59330,6 +59330,20 @@ function Suppliers() {
   const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
   const [open2, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState({});
+  const [q2, setQ] = reactExports.useState("");
+  const [companyFilter, setCompanyFilter] = reactExports.useState("");
+  const [dues, setDues] = reactExports.useState("");
+  const filtered = reactExports.useMemo(() => {
+    const term = q2.trim().toLowerCase();
+    return data.filter((s2) => {
+      if (term && !`${s2.name} ${s2.contact ?? ""} ${s2.address ?? ""}`.toLowerCase().includes(term)) return false;
+      if (companyFilter === "none" && s2.company_id) return false;
+      if (companyFilter && companyFilter !== "none" && String(s2.company_id ?? "") !== companyFilter) return false;
+      if (dues === "due" && !((s2.unpaid_amount ?? 0) > 5e-3)) return false;
+      if (dues === "clear" && (s2.unpaid_amount ?? 0) > 5e-3) return false;
+      return true;
+    });
+  }, [data, q2, companyFilter, dues]);
   function exportExcel() {
     downloadExcel(
       "suppliers",
@@ -59390,31 +59404,64 @@ function Suppliers() {
         ] })
       }
     ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(Page, { children: data.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No suppliers yet." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Name" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Company" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plant" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Purchased (m³)" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Total Amt" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Unpaid" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
-      ] }) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: data.map((s2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: s2.name }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: s2.company_name || "-" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: s2.plant_name || "Common" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtQty(s2.total_purchased) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtMoney(s2.total_amount) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right font-semibold text-destructive", children: fmtMoney(s2.unpaid_amount) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => {
-            setForm(s2);
-            setOpen(true);
-          }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => remove(s2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Page, { children: data.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No suppliers yet." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap items-center gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { className: "w-full sm:w-60", placeholder: "Search name, contact, address…", value: q2, onChange: (e3) => setQ(e3.target.value) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            className: "w-full sm:w-48",
+            value: companyFilter,
+            onChange: setCompanyFilter,
+            options: [{ value: "", label: "All companies" }, { value: "none", label: "No company" }, ...companies.map((c2) => ({ value: String(c2.id), label: c2.name }))]
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            className: "w-full sm:w-40",
+            value: dues,
+            onChange: setDues,
+            options: [{ value: "", label: "All payments" }, { value: "due", label: "Has dues" }, { value: "clear", label: "Cleared" }]
+          }
+        ),
+        (q2 || companyFilter || dues) && /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "sm", onClick: () => {
+          setQ("");
+          setCompanyFilter("");
+          setDues("");
+        }, children: "Clear" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "ml-auto text-sm text-muted-foreground", children: [
+          filtered.length,
+          " of ",
+          data.length
         ] })
-      ] }, s2.id)) })
+      ] }),
+      filtered.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No suppliers match your search." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Name" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Company" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plant" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Purchased (m³)" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Total Amt" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Unpaid" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: filtered.map((s2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: s2.name }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: s2.company_name || "-" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: s2.plant_name || "Common" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtQty(s2.total_purchased) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtMoney(s2.total_amount) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right font-semibold text-destructive", children: fmtMoney(s2.unpaid_amount) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => {
+              setForm(s2);
+              setOpen(true);
+            }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => remove(s2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+          ] })
+        ] }, s2.id)) })
+      ] })
     ] }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       Modal,
@@ -62006,6 +62053,20 @@ function Transporters() {
   const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
   const [open2, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState({});
+  const [q2, setQ] = reactExports.useState("");
+  const [companyFilter, setCompanyFilter] = reactExports.useState("");
+  const [bal, setBal] = reactExports.useState("");
+  const filtered = reactExports.useMemo(() => {
+    const term = q2.trim().toLowerCase();
+    return data.filter((t3) => {
+      if (term && !`${t3.name} ${t3.contact ?? ""} ${t3.address ?? ""}`.toLowerCase().includes(term)) return false;
+      if (companyFilter === "none" && t3.company_id) return false;
+      if (companyFilter && companyFilter !== "none" && String(t3.company_id ?? "") !== companyFilter) return false;
+      if (bal === "due" && !((t3.balance_amount ?? 0) > 5e-3)) return false;
+      if (bal === "clear" && (t3.balance_amount ?? 0) > 5e-3) return false;
+      return true;
+    });
+  }, [data, q2, companyFilter, bal]);
   function exportExcel() {
     downloadExcel(
       "transporters",
@@ -62067,37 +62128,70 @@ function Transporters() {
         ] })
       }
     ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(Page, { children: data.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No transporters yet." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Name" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Company" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plant" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Trips" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Carried (m³)" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Bill Amt" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Diesel" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Paid" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Balance" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
-      ] }) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: data.map((t3) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: t3.name }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: t3.company_name || "-" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: t3.plant_name || "Common" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtQty(t3.total_trips) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtQty(t3.total_cm) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtMoney(t3.total_amount) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtMoney(t3.diesel_amount) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtMoney(t3.paid_amount) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right font-semibold text-destructive", children: fmtMoney(t3.balance_amount) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => {
-            setForm(t3);
-            setOpen(true);
-          }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => remove(t3), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Page, { children: data.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No transporters yet." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap items-center gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { className: "w-full sm:w-60", placeholder: "Search name, contact, address…", value: q2, onChange: (e3) => setQ(e3.target.value) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            className: "w-full sm:w-48",
+            value: companyFilter,
+            onChange: setCompanyFilter,
+            options: [{ value: "", label: "All companies" }, { value: "none", label: "No company" }, ...companies.map((c2) => ({ value: String(c2.id), label: c2.name }))]
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            className: "w-full sm:w-40",
+            value: bal,
+            onChange: setBal,
+            options: [{ value: "", label: "All balances" }, { value: "due", label: "Has balance" }, { value: "clear", label: "Settled" }]
+          }
+        ),
+        (q2 || companyFilter || bal) && /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "sm", onClick: () => {
+          setQ("");
+          setCompanyFilter("");
+          setBal("");
+        }, children: "Clear" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "ml-auto text-sm text-muted-foreground", children: [
+          filtered.length,
+          " of ",
+          data.length
         ] })
-      ] }, t3.id)) })
+      ] }),
+      filtered.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No transporters match your search." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Name" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Company" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plant" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Trips" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Carried (m³)" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Bill Amt" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Diesel" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Paid" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Balance" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: filtered.map((t3) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: t3.name }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: t3.company_name || "-" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: t3.plant_name || "Common" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtQty(t3.total_trips) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtQty(t3.total_cm) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtMoney(t3.total_amount) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtMoney(t3.diesel_amount) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtMoney(t3.paid_amount) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right font-semibold text-destructive", children: fmtMoney(t3.balance_amount) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => {
+              setForm(t3);
+              setOpen(true);
+            }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => remove(t3), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+          ] })
+        ] }, t3.id)) })
+      ] })
     ] }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       Modal,
@@ -62163,6 +62257,17 @@ function Companies() {
   const { data = [] } = useQuery({ queryKey: ["companies"], queryFn: api.companies.list });
   const [open2, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState({});
+  const [q2, setQ] = reactExports.useState("");
+  const [role, setRole] = reactExports.useState("");
+  const filtered = reactExports.useMemo(() => {
+    const term = q2.trim().toLowerCase();
+    return data.filter((c2) => {
+      if (term && !`${c2.name} ${c2.contact ?? ""} ${c2.address ?? ""}`.toLowerCase().includes(term)) return false;
+      if (role === "none" && (c2.roles ?? []).length > 0) return false;
+      if (role && role !== "none" && !(c2.roles ?? []).includes(role)) return false;
+      return true;
+    });
+  }, [data, q2, role]);
   const save = useMutation({
     mutationFn: (p2) => p2.id ? api.companies.update(p2) : api.companies.create(p2),
     onSuccess: () => {
@@ -62229,37 +62334,66 @@ function Companies() {
         /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: "Ledgers → Companies" }),
         " view then shows one combined statement across all those roles."
       ] }),
-      data.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No companies yet." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Name" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Roles" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Contact" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Address" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
-        ] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: data.map((c2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: c2.name }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-wrap gap-1", children: (c2.roles ?? []).length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-muted-foreground", children: "Not linked" }) : (c2.roles ?? []).map((r2) => /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "muted", children: r2 }, r2)) }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: c2.contact || "-" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: c2.address || "-" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              Button,
-              {
-                variant: "ghost",
-                size: "icon",
-                title: "Combined ledger",
-                onClick: () => nav("/ledgers", { state: { type: "company", id: c2.id } }),
-                children: /* @__PURE__ */ jsxRuntimeExports.jsx(BookOpen, { size: 15 })
-              }
-            ),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => {
-              setForm({ ...c2, as_supplier: (c2.roles ?? []).includes("Supplier"), as_customer: (c2.roles ?? []).includes("Customer"), as_transporter: (c2.roles ?? []).includes("Transporter") });
-              setOpen(true);
-            }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => remove(c2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+      data.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No companies yet." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap items-center gap-2", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { className: "w-full sm:w-60", placeholder: "Search name, contact, address…", value: q2, onChange: (e3) => setQ(e3.target.value) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SearchSelect,
+            {
+              className: "w-full sm:w-44",
+              value: role,
+              onChange: setRole,
+              options: [
+                { value: "", label: "All roles" },
+                { value: "Supplier", label: "Supplier" },
+                { value: "Customer", label: "Customer" },
+                { value: "Transporter", label: "Transporter" },
+                { value: "none", label: "Not linked" }
+              ]
+            }
+          ),
+          (q2 || role) && /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "sm", onClick: () => {
+            setQ("");
+            setRole("");
+          }, children: "Clear" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "ml-auto text-sm text-muted-foreground", children: [
+            filtered.length,
+            " of ",
+            data.length
           ] })
-        ] }, c2.id)) })
+        ] }),
+        filtered.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No companies match your search." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Name" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Roles" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Contact" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Address" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
+          ] }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: filtered.map((c2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: c2.name }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-wrap gap-1", children: (c2.roles ?? []).length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-muted-foreground", children: "Not linked" }) : (c2.roles ?? []).map((r2) => /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "muted", children: r2 }, r2)) }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: c2.contact || "-" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: c2.address || "-" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                Button,
+                {
+                  variant: "ghost",
+                  size: "icon",
+                  title: "Combined ledger",
+                  onClick: () => nav("/ledgers", { state: { type: "company", id: c2.id } }),
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(BookOpen, { size: 15 })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => {
+                setForm({ ...c2, as_supplier: (c2.roles ?? []).includes("Supplier"), as_customer: (c2.roles ?? []).includes("Customer"), as_transporter: (c2.roles ?? []).includes("Transporter") });
+                setOpen(true);
+              }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => remove(c2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+            ] })
+          ] }, c2.id)) })
+        ] })
       ] })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Modal, { open: open2, onClose: () => setOpen(false), title: form.id ? "Edit Company" : "New Company", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
@@ -77057,7 +77191,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-2gViXQbL.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-CQm0sQ6O.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;

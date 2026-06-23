@@ -1743,6 +1743,10 @@ textarea::placeholder {
     width: 14rem;
   }
 
+  .sm\:w-60 {
+    width: 15rem;
+  }
+
   .sm\:w-72 {
     width: 18rem;
   }
