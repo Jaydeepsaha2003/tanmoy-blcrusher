@@ -62773,8 +62773,10 @@ function Assets() {
     setOpen(true);
   }
   function openEdit(a2) {
-    const perLitre = a2.standard_consumption && a2.standard_consumption > 0 ? Math.round(1 / a2.standard_consumption * 1e3) / 1e3 : "";
-    setForm({ ...a2, plant_ids: a2.plant_ids ?? [], std_per_litre: perLitre });
+    const isVeh = (a2.meter_type || (a2.asset_type === "vehicle" ? "km" : "hour")) === "km";
+    const sc2 = a2.standard_consumption;
+    const stdInput2 = sc2 && sc2 > 0 ? isVeh ? Math.round(1 / sc2 * 1e3) / 1e3 : sc2 : "";
+    setForm({ ...a2, plant_ids: a2.plant_ids ?? [], std_input: stdInput2 });
     setOpen(true);
   }
   function togglePlant(arr, id2) {
@@ -62790,7 +62792,8 @@ function Assets() {
     );
   }
   const meterUnit = (form.meter_type || (form.asset_type === "vehicle" ? "km" : "hour")) === "km" ? "km" : "hr";
-  const stdEff = Number(form.std_per_litre);
+  const isVehicle = meterUnit === "km";
+  const stdInput = Number(form.std_input);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       PageHeader,
@@ -62881,16 +62884,16 @@ function Assets() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           Field,
           {
-            label: `Standard ${meterUnit === "km" ? "mileage (km / L)" : "run (hr / L)"}`,
-            hint: form.std_per_litre !== "" && form.std_per_litre != null && stdEff > 0 ? `For 1 litre it runs ${meterUnit} · ≈ ${fmtQty(1 / stdEff)} L/${meterUnit} (over-use check)` : `How many ${meterUnit} 1 litre runs (over-use check)`,
+            label: isVehicle ? "Standard mileage (km / L)" : "Standard fuel (L / hr)",
+            hint: isVehicle ? form.std_input !== "" && form.std_input != null && stdInput > 0 ? `1 litre runs ${fmtQty(stdInput)} km · ≈ ${fmtQty(1 / stdInput)} L/km (over-use check)` : "How many km 1 litre runs (over-use check)" : "Litres consumed per hour (over-use check)",
             children: /* @__PURE__ */ jsxRuntimeExports.jsx(
               Input,
               {
                 type: "number",
                 step: "0.01",
-                value: form.std_per_litre ?? "",
-                onChange: (e3) => setForm({ ...form, std_per_litre: e3.target.value }),
-                placeholder: meterUnit === "km" ? "e.g. 4 = 4 km per litre" : "e.g. 0.06 = hr per litre"
+                value: form.std_input ?? "",
+                onChange: (e3) => setForm({ ...form, std_input: e3.target.value }),
+                placeholder: isVehicle ? "e.g. 4 = 4 km per litre" : "e.g. 16 = 16 L per hour"
               }
             )
           }
@@ -62905,9 +62908,9 @@ function Assets() {
           Button,
           {
             onClick: () => {
-              const { std_per_litre, ...rest } = form;
-              const eff = Number(std_per_litre);
-              const standard_consumption = std_per_litre !== "" && std_per_litre != null && eff > 0 ? Math.round(1 / eff * 1e5) / 1e5 : null;
+              const { std_input, ...rest } = form;
+              const v2 = Number(std_input);
+              const standard_consumption = std_input !== "" && std_input != null && v2 > 0 ? isVehicle ? Math.round(1 / v2 * 1e5) / 1e5 : v2 : null;
               save.mutate({ ...rest, standard_consumption });
             },
             disabled: !form.name?.trim(),
@@ -77363,7 +77366,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-BB2C7f0X.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-DuK3qY-m.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
