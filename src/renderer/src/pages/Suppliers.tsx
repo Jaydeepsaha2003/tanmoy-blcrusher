@@ -34,6 +34,21 @@ export function Suppliers(): React.JSX.Element {
   const { data: plants = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
   const [open, setOpen] = React.useState(false)
   const [form, setForm] = React.useState<Partial<Supplier>>({})
+  const [q, setQ] = React.useState('')
+  const [companyFilter, setCompanyFilter] = React.useState('')
+  const [dues, setDues] = React.useState('')
+
+  const filtered = React.useMemo(() => {
+    const term = q.trim().toLowerCase()
+    return data.filter((s) => {
+      if (term && !`${s.name} ${s.contact ?? ''} ${s.address ?? ''}`.toLowerCase().includes(term)) return false
+      if (companyFilter === 'none' && s.company_id) return false
+      if (companyFilter && companyFilter !== 'none' && String(s.company_id ?? '') !== companyFilter) return false
+      if (dues === 'due' && !((s.unpaid_amount ?? 0) > 0.005)) return false
+      if (dues === 'clear' && (s.unpaid_amount ?? 0) > 0.005) return false
+      return true
+    })
+  }, [data, q, companyFilter, dues])
 
   function exportExcel(): void {
     downloadExcel(
@@ -91,6 +106,27 @@ export function Suppliers(): React.JSX.Element {
         {data.length === 0 ? (
           <EmptyState message="No suppliers yet." />
         ) : (
+          <>
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <Input className="w-full sm:w-60" placeholder="Search name, contact, address…" value={q} onChange={(e) => setQ(e.target.value)} />
+            <SearchSelect
+              className="w-full sm:w-48"
+              value={companyFilter}
+              onChange={setCompanyFilter}
+              options={[{ value: '', label: 'All companies' }, { value: 'none', label: 'No company' }, ...companies.map((c) => ({ value: String(c.id), label: c.name }))]}
+            />
+            <SearchSelect
+              className="w-full sm:w-40"
+              value={dues}
+              onChange={setDues}
+              options={[{ value: '', label: 'All payments' }, { value: 'due', label: 'Has dues' }, { value: 'clear', label: 'Cleared' }]}
+            />
+            {(q || companyFilter || dues) && <Button variant="ghost" size="sm" onClick={() => { setQ(''); setCompanyFilter(''); setDues('') }}>Clear</Button>}
+            <span className="ml-auto text-sm text-muted-foreground">{filtered.length} of {data.length}</span>
+          </div>
+          {filtered.length === 0 ? (
+            <EmptyState message="No suppliers match your search." />
+          ) : (
           <Table>
             <THead>
               <TR>
@@ -104,7 +140,7 @@ export function Suppliers(): React.JSX.Element {
               </TR>
             </THead>
             <TBody>
-              {data.map((s) => (
+              {filtered.map((s) => (
                 <TR key={s.id}>
                   <TD className="font-medium">{s.name}</TD>
                   <TD className="text-muted-foreground">{s.company_name || '-'}</TD>
@@ -126,6 +162,8 @@ export function Suppliers(): React.JSX.Element {
               ))}
             </TBody>
           </Table>
+          )}
+          </>
         )}
       </Page>
 

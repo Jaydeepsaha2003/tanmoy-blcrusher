@@ -34,6 +34,21 @@ export function Transporters(): React.JSX.Element {
   const { data: plants = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
   const [open, setOpen] = React.useState(false)
   const [form, setForm] = React.useState<Partial<Transporter>>({})
+  const [q, setQ] = React.useState('')
+  const [companyFilter, setCompanyFilter] = React.useState('')
+  const [bal, setBal] = React.useState('')
+
+  const filtered = React.useMemo(() => {
+    const term = q.trim().toLowerCase()
+    return data.filter((t) => {
+      if (term && !`${t.name} ${t.contact ?? ''} ${t.address ?? ''}`.toLowerCase().includes(term)) return false
+      if (companyFilter === 'none' && t.company_id) return false
+      if (companyFilter && companyFilter !== 'none' && String(t.company_id ?? '') !== companyFilter) return false
+      if (bal === 'due' && !((t.balance_amount ?? 0) > 0.005)) return false
+      if (bal === 'clear' && (t.balance_amount ?? 0) > 0.005) return false
+      return true
+    })
+  }, [data, q, companyFilter, bal])
 
   function exportExcel(): void {
     downloadExcel(
@@ -91,6 +106,27 @@ export function Transporters(): React.JSX.Element {
         {data.length === 0 ? (
           <EmptyState message="No transporters yet." />
         ) : (
+          <>
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <Input className="w-full sm:w-60" placeholder="Search name, contact, address…" value={q} onChange={(e) => setQ(e.target.value)} />
+            <SearchSelect
+              className="w-full sm:w-48"
+              value={companyFilter}
+              onChange={setCompanyFilter}
+              options={[{ value: '', label: 'All companies' }, { value: 'none', label: 'No company' }, ...companies.map((c) => ({ value: String(c.id), label: c.name }))]}
+            />
+            <SearchSelect
+              className="w-full sm:w-40"
+              value={bal}
+              onChange={setBal}
+              options={[{ value: '', label: 'All balances' }, { value: 'due', label: 'Has balance' }, { value: 'clear', label: 'Settled' }]}
+            />
+            {(q || companyFilter || bal) && <Button variant="ghost" size="sm" onClick={() => { setQ(''); setCompanyFilter(''); setBal('') }}>Clear</Button>}
+            <span className="ml-auto text-sm text-muted-foreground">{filtered.length} of {data.length}</span>
+          </div>
+          {filtered.length === 0 ? (
+            <EmptyState message="No transporters match your search." />
+          ) : (
           <Table>
             <THead>
               <TR>
@@ -107,7 +143,7 @@ export function Transporters(): React.JSX.Element {
               </TR>
             </THead>
             <TBody>
-              {data.map((t) => (
+              {filtered.map((t) => (
                 <TR key={t.id}>
                   <TD className="font-medium">{t.name}</TD>
                   <TD className="text-muted-foreground">{t.company_name || '-'}</TD>
@@ -132,6 +168,8 @@ export function Transporters(): React.JSX.Element {
               ))}
             </TBody>
           </Table>
+          )}
+          </>
         )}
       </Page>
 

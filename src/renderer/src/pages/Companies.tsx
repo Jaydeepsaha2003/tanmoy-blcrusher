@@ -8,6 +8,7 @@ import { PageHeader, Page } from '@/components/layout'
 import {
   Button,
   Input,
+  SearchSelect,
   Textarea,
   Field,
   Badge,
@@ -32,6 +33,18 @@ export function Companies(): React.JSX.Element {
   const [open, setOpen] = React.useState(false)
   type CompanyForm = Partial<Company> & { as_supplier?: boolean; as_customer?: boolean; as_transporter?: boolean }
   const [form, setForm] = React.useState<CompanyForm>({})
+  const [q, setQ] = React.useState('')
+  const [role, setRole] = React.useState('')
+
+  const filtered = React.useMemo(() => {
+    const term = q.trim().toLowerCase()
+    return data.filter((c) => {
+      if (term && !`${c.name} ${c.contact ?? ''} ${c.address ?? ''}`.toLowerCase().includes(term)) return false
+      if (role === 'none' && (c.roles ?? []).length > 0) return false
+      if (role && role !== 'none' && !(c.roles ?? []).includes(role)) return false
+      return true
+    })
+  }, [data, q, role])
 
   const save = useMutation({
     mutationFn: (p: CompanyForm) => (p.id ? api.companies.update(p) : api.companies.create(p)),
@@ -96,6 +109,27 @@ export function Companies(): React.JSX.Element {
         {data.length === 0 ? (
           <EmptyState message="No companies yet." />
         ) : (
+          <>
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <Input className="w-full sm:w-60" placeholder="Search name, contact, address…" value={q} onChange={(e) => setQ(e.target.value)} />
+            <SearchSelect
+              className="w-full sm:w-44"
+              value={role}
+              onChange={setRole}
+              options={[
+                { value: '', label: 'All roles' },
+                { value: 'Supplier', label: 'Supplier' },
+                { value: 'Customer', label: 'Customer' },
+                { value: 'Transporter', label: 'Transporter' },
+                { value: 'none', label: 'Not linked' }
+              ]}
+            />
+            {(q || role) && <Button variant="ghost" size="sm" onClick={() => { setQ(''); setRole('') }}>Clear</Button>}
+            <span className="ml-auto text-sm text-muted-foreground">{filtered.length} of {data.length}</span>
+          </div>
+          {filtered.length === 0 ? (
+            <EmptyState message="No companies match your search." />
+          ) : (
           <Table>
             <THead>
               <TR>
@@ -107,7 +141,7 @@ export function Companies(): React.JSX.Element {
               </TR>
             </THead>
             <TBody>
-              {data.map((c) => (
+              {filtered.map((c) => (
                 <TR key={c.id}>
                   <TD className="font-medium">{c.name}</TD>
                   <TD>
@@ -143,6 +177,8 @@ export function Companies(): React.JSX.Element {
               ))}
             </TBody>
           </Table>
+          )}
+          </>
         )}
       </Page>
 
