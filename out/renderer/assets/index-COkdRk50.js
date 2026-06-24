@@ -77787,7 +77787,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-D1oh9gQp.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-_vXLxg24.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
@@ -80450,6 +80450,15 @@ function drcr(t3, v2) {
   const debitPositive = t3 === "customer" || t3 === "company";
   return (debitPositive ? v2 > 0 : v2 < 0) ? "Dr" : "Cr";
 }
+function isPnlLedger(t3) {
+  return t3 === "rack" || t3 === "plant" || t3 === "business" || t3 === "machine";
+}
+function balanceAmount(t3, v2) {
+  return isPnlLedger(t3) ? fmtMoney(v2) : fmtMoney(Math.abs(v2));
+}
+function balanceText(t3, v2) {
+  return isPnlLedger(t3) ? fmtMoney(v2) : `${fmtMoney(Math.abs(v2))} ${drcr(t3, v2)}`.trim();
+}
 const OPENING_TYPES = ["customer", "supplier", "transporter", "outsource"];
 function fyStartYearOf(d2) {
   return d2.getMonth() >= 3 ? d2.getFullYear() : d2.getFullYear() - 1;
@@ -80565,7 +80574,7 @@ function Ledgers() {
     const title = [
       [`${ledger.party_name} — ${partyLabel[partyType]} Ledger`],
       [`Period: ${period}`],
-      [`Closing ${balanceLabel[partyType]}: ${fmtMoney(Math.abs(ledger.closing))} ${drcr(partyType, ledger.closing)}`]
+      [`Closing ${balanceLabel[partyType]}: ${balanceText(partyType, ledger.closing)}`]
     ];
     const rows = ledger.entries.map((e3) => [
       fmtDate(e3.date),
@@ -80574,7 +80583,7 @@ function Ledgers() {
       e3.ref,
       e3.debit || "",
       e3.credit || "",
-      `${fmtMoney(Math.abs(e3.balance))} ${drcr(partyType, e3.balance)}`.trim()
+      balanceText(partyType, e3.balance)
     ]);
     rows.push([
       "",
@@ -80583,7 +80592,7 @@ function Ledgers() {
       "",
       ledger.total_debit,
       ledger.total_credit,
-      `${fmtMoney(Math.abs(ledger.closing))} ${drcr(partyType, ledger.closing)}`.trim()
+      balanceText(partyType, ledger.closing)
     ]);
     downloadExcel(
       `ledger-${partyType}-${ledger.party_name}`,
@@ -80625,7 +80634,7 @@ function Ledgers() {
     doc.text(business, textX, topY + 6);
     doc.setFont(FONT, "normal").setFontSize(9).setTextColor(120, 120, 120);
     doc.text("Ledger Account", textX, topY + 11.5);
-    const closingStr = `${fmtMoney(Math.abs(ledger.closing))} ${drcr(partyType, ledger.closing)}`.trim();
+    const closingStr = balanceText(partyType, ledger.closing);
     const goodTypes = ["rack", "plant", "business", "machine", "company"];
     const good = goodTypes.includes(partyType) ? ledger.closing >= 0 : ledger.closing <= 0;
     doc.setFontSize(8).setTextColor(120, 120, 120);
@@ -80653,7 +80662,7 @@ function Ledgers() {
         e3.ref || "",
         e3.debit ? fmtMoney(e3.debit) : "",
         e3.credit ? fmtMoney(e3.credit) : "",
-        `${fmtMoney(Math.abs(e3.balance))} ${drcr(partyType, e3.balance)}`.trim()
+        balanceText(partyType, e3.balance)
       ]),
       foot: [["", "Total", "", "", fmtMoney(ledger.total_debit), fmtMoney(ledger.total_credit), closingStr]],
       styles: { font: FONT, fontSize: 8.5, cellPadding: 2, lineColor: [230, 232, 236], lineWidth: 0.1, textColor: [31, 41, 55] },
@@ -80794,7 +80803,7 @@ function Ledgers() {
             /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtMoney(b2.total_debit) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtMoney(b2.total_credit) }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: `tnum text-right font-semibold ${balanceClass(partyType, b2.balance)}`, children: [
-              fmtMoney(Math.abs(b2.balance)),
+              balanceAmount(partyType, b2.balance),
               /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ml-1 text-[11px] font-normal text-muted-foreground", children: drcr(partyType, b2.balance) })
             ] })
           ] }, b2.party_id)) })
@@ -80817,7 +80826,7 @@ function Ledgers() {
               balanceLabel[partyType]
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `tnum text-2xl font-bold ${balanceClass(partyType, ledger?.closing ?? 0)}`, children: [
-              fmtMoney(Math.abs(ledger?.closing ?? 0)),
+              balanceAmount(partyType, ledger?.closing ?? 0),
               /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ml-1.5 text-sm font-medium", children: drcr(partyType, ledger?.closing ?? 0) })
             ] })
           ] })
@@ -80844,7 +80853,7 @@ function Ledgers() {
                 /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: e3.debit ? fmtMoney(e3.debit) : "-" }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: e3.credit ? fmtMoney(e3.credit) : "-" }),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "tnum text-right font-semibold", children: [
-                  fmtMoney(Math.abs(e3.balance)),
+                  balanceAmount(partyType, e3.balance),
                   /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ml-1 text-[11px] font-normal text-muted-foreground", children: drcr(partyType, e3.balance) })
                 ] }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: e3.payment_id && /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => removePayment(e3.payment_id), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) }) })
@@ -80855,7 +80864,7 @@ function Ledgers() {
               /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: fmtMoney(ledger.total_debit) }),
               /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: fmtMoney(ledger.total_credit) }),
               /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "tnum text-right", children: [
-                fmtMoney(Math.abs(ledger.closing)),
+                balanceAmount(partyType, ledger.closing),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ml-1 text-[11px] font-medium", children: drcr(partyType, ledger.closing) })
               ] }),
               /* @__PURE__ */ jsxRuntimeExports.jsx(TD, {})
