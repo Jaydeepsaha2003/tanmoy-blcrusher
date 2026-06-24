@@ -84,6 +84,19 @@ function normalizeLog(p: MachineLogInput): {
   }
 }
 
+/** The most recent closing meter for an asset — used to pre-fill the next entry's opening. */
+export async function lastMachineMeter(payload: {
+  asset_id: number
+}): Promise<{ closing_meter: number | null }> {
+  if (!payload.asset_id) return { closing_meter: null }
+  const row = (await getDb()
+    .prepare(
+      `SELECT closing_meter FROM machine_logs WHERE asset_id = ? ORDER BY date DESC, id DESC LIMIT 1`
+    )
+    .get(payload.asset_id)) as { closing_meter: number } | undefined
+  return { closing_meter: row ? Number(row.closing_meter) : null }
+}
+
 export async function addMachineLog(p: MachineLogInput): Promise<MachineLog> {
   const d = getDb()
   if (!p.asset_id) throw new Error('Select a machine.')

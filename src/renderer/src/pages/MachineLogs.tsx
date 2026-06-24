@@ -52,6 +52,18 @@ export function MachineLogs(): React.JSX.Element {
     qc.invalidateQueries({ queryKey: ['mileage'] })
     toast.success('Deleted.')
   }
+
+  // For a new entry, the opening meter continues from this machine's last closing reading.
+  async function prefillOpening(asset_id: number): Promise<void> {
+    if (!asset_id) return
+    const r = await api.machinery.lastMeter(asset_id).catch(() => ({ closing_meter: null }))
+    setForm((f: any) => (f && !f.id && Number(f.asset_id) === asset_id ? { ...f, opening_meter: r.closing_meter ?? '' } : f))
+  }
+  function openNew(): void {
+    const asset_id = assets[0]?.id
+    setForm({ asset_id, date: today(), work_type: '', opening_meter: '', closing_meter: '', rate: '', fuel_litres: '', remarks: '' })
+    if (asset_id) void prefillOpening(asset_id)
+  }
   const fUsage = form ? (Number(form.closing_meter) || 0) - (Number(form.opening_meter) || 0) : 0
   const fIncome = form && form.rate !== '' && form.rate != null ? fUsage * Number(form.rate) : 0
   const fUnit = form?.asset_id ? assetMeter(Number(form.asset_id)) : 'hr'
@@ -62,7 +74,7 @@ export function MachineLogs(): React.JSX.Element {
         title="Logbook & Mileage"
         description="Daily meter readings (with earning rates) across all machines, and standard-vs-actual fuel mileage"
         actions={
-          <Button onClick={() => setForm({ asset_id: assets[0]?.id, date: today(), work_type: '', opening_meter: '', closing_meter: '', rate: '', fuel_litres: '', remarks: '' })} disabled={!assets.length}>
+          <Button onClick={openNew} disabled={!assets.length}>
             <Plus size={16} /> Add Entry
           </Button>
         }
@@ -191,7 +203,16 @@ export function MachineLogs(): React.JSX.Element {
         <Modal open onClose={() => setForm(null)} title={form.id ? 'Edit Logbook Entry' : 'New Logbook Entry'} width="max-w-xl">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Machine / Vehicle" required>
-              <SearchSelect value={form.asset_id || ''} onChange={(v) => setForm({ ...form, asset_id: Number(v) })} options={assets.map((a) => ({ value: a.id, label: a.name }))} placeholder="Select…" />
+              <SearchSelect
+                value={form.asset_id || ''}
+                onChange={(v) => {
+                  const id = Number(v)
+                  setForm({ ...form, asset_id: id })
+                  if (!form.id) void prefillOpening(id)
+                }}
+                options={assets.map((a) => ({ value: a.id, label: a.name }))}
+                placeholder="Select…"
+              />
             </Field>
             <Field label="Date" required>
               <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
@@ -202,7 +223,7 @@ export function MachineLogs(): React.JSX.Element {
             <Field label={`Rate per ${fUnit}`} hint="Earning rate — usage × rate = income">
               <Input type="number" step="0.01" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} placeholder="Optional" />
             </Field>
-            <Field label={`Opening meter (${fUnit})`}>
+            <Field label={`Opening meter (${fUnit})`} hint={form.id ? undefined : 'Continues from the last closing reading'}>
               <Input type="number" step="0.001" value={form.opening_meter} onChange={(e) => setForm({ ...form, opening_meter: e.target.value })} />
             </Field>
             <Field label={`Closing meter (${fUnit})`} hint={fUsage > 0 ? `Used ${fmtQty(fUsage)} ${fUnit}${fIncome > 0 ? ` · income ${fmtMoney(fIncome)}` : ''}` : undefined}>

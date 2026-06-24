@@ -26,7 +26,7 @@ import { useToast } from '@/components/toast'
 import { confirmDialog } from '@/components/confirm'
 import { usePlant } from '@/lib/plant'
 import { derivePaymentStatus } from '@shared/types'
-import { fmtQty, fmtMoney, fmtDate, today, downloadExcel } from '@/lib/utils'
+import { fmtQty, fmtMoney, fmtDate, today, downloadExcel, cn } from '@/lib/utils'
 
 const payBadge: Record<PaymentStatus, 'success' | 'warning' | 'destructive'> = {
   paid: 'success',
@@ -92,7 +92,7 @@ export function Diesel(): React.JSX.Element {
     setPForm({ supplier_id: suppliers[0]?.id, plant_id: plantId ?? plants[0]?.id, litres: '', rate: '', payment_status: 'unpaid', paid_amount: '', date: today(), remarks: '' })
   }
   function openIssue(): void {
-    setIForm({ plant_id: plantId ?? plants[0]?.id, asset_id: null, transporter_id: null, litres: '', rate: '', date: today(), remarks: '' })
+    setIForm({ recipient: 'asset', plant_id: plantId ?? plants[0]?.id, asset_id: null, transporter_id: null, litres: '', rate: '', date: today(), remarks: '' })
   }
 
   const pAmount = pForm ? (Number(pForm.litres) || 0) * (Number(pForm.rate) || 0) : 0
@@ -115,7 +115,7 @@ export function Diesel(): React.JSX.Element {
     <>
       <PageHeader
         title="Diesel"
-        description="Daily diesel purchases (creditor ledger), litre stock, and issuing to machines & vehicles"
+        description="Daily diesel purchases (creditor ledger), litre stock, and issuing to a machine, vehicle or transporter"
         actions={
           <>
             <Button variant="outline" onClick={exportExcel} disabled={tab === 'issues' ? !issues.length : !purchases.length}>
@@ -188,7 +188,7 @@ export function Diesel(): React.JSX.Element {
                     <TD className="tnum text-right">{x.amount != null ? `₹${fmtMoney(x.amount)}` : '-'}</TD>
                     <TD className="text-muted-foreground">{x.remarks || '-'}</TD>
                     <TD className="text-right">
-                      <Button variant="ghost" size="icon" onClick={() => setIForm({ ...x, asset_id: x.asset_id, transporter_id: x.transporter_id ?? null, rate: x.rate ?? '', litres: x.litres })}><Pencil size={15} /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => setIForm({ ...x, recipient: x.transporter_id ? 'transporter' : 'asset', asset_id: x.asset_id, transporter_id: x.transporter_id ?? null, rate: x.rate ?? '', litres: x.litres })}><Pencil size={15} /></Button>
                       <Button variant="ghost" size="icon" onClick={() => removeIssue(x)}><Trash2 size={15} className="text-destructive" /></Button>
                     </TD>
                   </TR>
@@ -275,16 +275,48 @@ export function Diesel(): React.JSX.Element {
       {iForm && (
         <Modal open onClose={() => setIForm(null)} title={iForm.id ? `Edit ${iForm.issue_no}` : 'Issue Diesel'}>
           <div className="space-y-4">
-            <Field label="Machine / Vehicle">
-              <SearchSelect
-                value={iForm.asset_id ?? ''}
-                onChange={(v) => setIForm({ ...iForm, asset_id: v ? Number(v) : null })}
-                options={[
-                  { value: '', label: '— Unassigned —' },
-                  ...assets.map((a) => ({ value: a.id, label: `${a.name}${a.identifier ? ` (${a.identifier})` : ''}` }))
-                ]}
-              />
+            {/* Issue recipient */}
+            <Field label="Issue To" required>
+              <div className="flex flex-wrap gap-2">
+                {([['asset', 'Machine / Vehicle'], ['transporter', 'Transporter']] as const).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => {
+                      if (iForm.recipient === key) return
+                      setIForm({ ...iForm, recipient: key, asset_id: null, transporter_id: null, rate: key === 'transporter' ? iForm.rate : '' })
+                    }}
+                    className={cn(
+                      'rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors',
+                      iForm.recipient === key ? 'border-primary bg-primary/5 text-foreground' : 'border-input text-muted-foreground hover:bg-accent'
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </Field>
+            {iForm.recipient === 'transporter' ? (
+              <Field label="Transporter" required hint="Diesel is charged to this transporter — debits their ledger">
+                <SearchSelect
+                  value={iForm.transporter_id ?? ''}
+                  onChange={(v) => setIForm({ ...iForm, transporter_id: v ? Number(v) : null })}
+                  options={transporters.map((t) => ({ value: t.id, label: t.name }))}
+                  placeholder="Select transporter…"
+                />
+              </Field>
+            ) : (
+              <Field label="Machine / Vehicle">
+                <SearchSelect
+                  value={iForm.asset_id ?? ''}
+                  onChange={(v) => setIForm({ ...iForm, asset_id: v ? Number(v) : null })}
+                  options={[
+                    { value: '', label: '— Unassigned —' },
+                    ...assets.map((a) => ({ value: a.id, label: `${a.name}${a.identifier ? ` (${a.identifier})` : ''}` }))
+                  ]}
+                />
+              </Field>
+            )}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Litres" required>
                 <Input type="number" step="0.01" value={iForm.litres} onChange={(e) => setIForm({ ...iForm, litres: e.target.value })} />
@@ -293,17 +325,7 @@ export function Diesel(): React.JSX.Element {
                 <Input type="date" value={iForm.date} onChange={(e) => setIForm({ ...iForm, date: e.target.value })} />
               </Field>
             </div>
-            <Field label="Charge to Transporter" hint="Optional — recovers the diesel from what we owe this transporter">
-              <SearchSelect
-                value={iForm.transporter_id ?? ''}
-                onChange={(v) => setIForm({ ...iForm, transporter_id: v ? Number(v) : null })}
-                options={[
-                  { value: '', label: '— Not charged —' },
-                  ...transporters.map((t) => ({ value: t.id, label: t.name }))
-                ]}
-              />
-            </Field>
-            {iForm.transporter_id && (
+            {iForm.recipient === 'transporter' && (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label="Rate / Litre (₹)" required hint="Charged to the transporter">
                   <Input type="number" step="0.01" value={iForm.rate} onChange={(e) => setIForm({ ...iForm, rate: e.target.value })} placeholder="0.00" />
@@ -323,16 +345,20 @@ export function Diesel(): React.JSX.Element {
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="outline" onClick={() => setIForm(null)}>Cancel</Button>
               <Button
-                onClick={() => saveIssue.mutate({
-                  ...iForm,
-                  litres: Number(iForm.litres),
-                  transporter_id: iForm.transporter_id || null,
-                  rate: iForm.transporter_id && iForm.rate !== '' ? Number(iForm.rate) : null
-                })}
+                onClick={() => {
+                  const toTransporter = iForm.recipient === 'transporter'
+                  saveIssue.mutate({
+                    ...iForm,
+                    litres: Number(iForm.litres),
+                    asset_id: toTransporter ? null : iForm.asset_id || null,
+                    transporter_id: toTransporter ? iForm.transporter_id || null : null,
+                    rate: toTransporter && iForm.rate !== '' ? Number(iForm.rate) : null
+                  })
+                }}
                 disabled={
                   !(Number(iForm.litres) > 0) ||
                   Number(iForm.litres) > issueAvail ||
-                  (!!iForm.transporter_id && !(Number(iForm.rate) > 0))
+                  (iForm.recipient === 'transporter' && (!iForm.transporter_id || !(Number(iForm.rate) > 0)))
                 }
               >
                 Save Issue

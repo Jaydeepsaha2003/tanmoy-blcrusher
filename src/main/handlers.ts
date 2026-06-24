@@ -178,6 +178,7 @@ export const handlers: Record<string, (payload: any) => unknown> = {
   'machinery.addLog': machinery.addMachineLog,
   'machinery.updateLog': machinery.updateMachineLog,
   'machinery.deleteLog': machinery.deleteMachineLog,
+  'machinery.lastMeter': machinery.lastMachineMeter,
   'machinery.balanceSheet': machinery.machineBalanceSheet,
   'machinery.documents': machinery.listAssetDocuments,
   'machinery.addDocument': machinery.addAssetDocument,

@@ -298,6 +298,8 @@ export const api = {
     addLog: (p: unknown) => call<MachineLog>('machinery.addLog', p),
     updateLog: (p: unknown) => call<MachineLog>('machinery.updateLog', p),
     deleteLog: (id: number) => call<{ ok: boolean }>('machinery.deleteLog', { id }),
+    lastMeter: (asset_id: number) =>
+      call<{ closing_meter: number | null }>('machinery.lastMeter', { asset_id }),
     balanceSheet: (asset_id: number, from?: string, to?: string) =>
       call<MachineBalanceSheet>('machinery.balanceSheet', { asset_id, from, to }),
     documents: (asset_id: number) => call<AssetDocument[]>('machinery.documents', { asset_id }),
