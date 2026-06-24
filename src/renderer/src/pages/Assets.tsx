@@ -113,6 +113,16 @@ export function Assets(): React.JSX.Element {
   const isVehicle = meterUnit === 'km'
   const stdInput = Number(form.std_input)
 
+  // Category dropdown: the standard list plus any categories already in use, sorted.
+  const categoryOptions = React.useMemo(() => {
+    const set = new Set<string>()
+    for (const c of [...CATEGORIES, ...data.map((a) => a.category)]) {
+      const t = (c || '').trim()
+      if (t) set.add(t)
+    }
+    return [...set].sort((a, b) => a.localeCompare(b)).map((c) => ({ value: c, label: c }))
+  }, [data])
+
   return (
     <>
       <PageHeader
@@ -217,11 +227,14 @@ export function Assets(): React.JSX.Element {
           <Field label="Type">
             <SearchSelect value={form.asset_type || 'machine'} onChange={(v) => setForm({ ...form, asset_type: v as Asset['asset_type'] })} options={[{ value: 'machine', label: 'Machine' }, { value: 'vehicle', label: 'Vehicle' }]} />
           </Field>
-          <Field label="Category">
-            <Input list="asset-cats" value={form.category || ''} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Crusher, Tipper, JCB…" />
-            <datalist id="asset-cats">
-              {CATEGORIES.map((c) => <option key={c} value={c} />)}
-            </datalist>
+          <Field label="Category" hint="Pick one, or type a new name to add it">
+            <SearchSelect
+              creatable
+              value={form.category || ''}
+              onChange={(v) => setForm({ ...form, category: v })}
+              options={categoryOptions}
+              placeholder="Crusher, Tipper, JCB…"
+            />
           </Field>
           <Field label="Identifier / Reg. No.">
             <Input value={form.identifier || ''} onChange={(e) => setForm({ ...form, identifier: e.target.value })} placeholder="e.g. JH-01-AB-1234" />

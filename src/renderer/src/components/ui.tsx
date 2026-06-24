@@ -97,7 +97,8 @@ export function SearchSelect({
   placeholder = 'Select…',
   disabled,
   className,
-  alwaysSearch
+  alwaysSearch,
+  creatable
 }: {
   value: number | string | '' | null | undefined
   onChange: (value: string) => void
@@ -107,6 +108,8 @@ export function SearchSelect({
   className?: string
   /** Force the search box to show even for short lists. */
   alwaysSearch?: boolean
+  /** Allow typing a value that isn't in the list — offers an "Add" option. */
+  creatable?: boolean
 }): React.JSX.Element {
   const [open, setOpen] = React.useState(false)
   const [q, setQ] = React.useState('')
@@ -119,10 +122,13 @@ export function SearchSelect({
     return () => document.removeEventListener('mousedown', onDoc)
   }, [open])
   const sel = options.find((o) => String(o.value) === String(value ?? ''))
+  // A creatable select can hold a typed value that isn't in the list — show it.
+  const display = sel ? sel.label : creatable && value != null && value !== '' ? String(value) : null
   const ql = q.trim().toLowerCase()
   const filtered = ql ? options.filter((o) => o.label.toLowerCase().includes(ql)) : options
+  const canAdd = !!creatable && !!q.trim() && !options.some((o) => o.label.trim().toLowerCase() === ql)
   // Every dropdown with a real choice is searchable; only a single-option list skips it.
-  const showSearch = alwaysSearch || options.length > 1
+  const showSearch = alwaysSearch || creatable || options.length > 1
   return (
     <div ref={ref} className={cn('relative', className)}>
       <button
@@ -131,7 +137,7 @@ export function SearchSelect({
         onClick={() => { setQ(''); setOpen((v) => !v) }}
         className="flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-input bg-card px-3 text-left text-sm shadow-sm transition-all focus-visible:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-50"
       >
-        <span className={cn('truncate', !sel && 'text-muted-foreground')}>{sel ? sel.label : placeholder}</span>
+        <span className={cn('truncate', !display && 'text-muted-foreground')}>{display ?? placeholder}</span>
         <ChevronDown size={15} className="shrink-0 text-muted-foreground" />
       </button>
       {open && (
@@ -149,22 +155,30 @@ export function SearchSelect({
             </div>
           )}
           <div className="max-h-56 overflow-auto py-1">
-            {filtered.length === 0 ? (
+            {filtered.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => { onChange(String(o.value)); setOpen(false); setQ('') }}
+                className={cn(
+                  'block w-full truncate px-3 py-1.5 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground',
+                  String(o.value) === String(value ?? '') && 'bg-accent/60 font-medium'
+                )}
+              >
+                {o.label}
+              </button>
+            ))}
+            {canAdd && (
+              <button
+                type="button"
+                onClick={() => { onChange(q.trim()); setOpen(false); setQ('') }}
+                className="block w-full truncate px-3 py-1.5 text-left text-sm font-medium text-primary transition-colors hover:bg-accent"
+              >
+                + Add “{q.trim()}”
+              </button>
+            )}
+            {filtered.length === 0 && !canAdd && (
               <div className="px-3 py-2 text-sm text-muted-foreground">No matches</div>
-            ) : (
-              filtered.map((o) => (
-                <button
-                  key={o.value}
-                  type="button"
-                  onClick={() => { onChange(String(o.value)); setOpen(false); setQ('') }}
-                  className={cn(
-                    'block w-full truncate px-3 py-1.5 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground',
-                    String(o.value) === String(value ?? '') && 'bg-accent/60 font-medium'
-                  )}
-                >
-                  {o.label}
-                </button>
-              ))
             )}
           </div>
         </div>
