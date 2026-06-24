@@ -1,7 +1,9 @@
 import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { FileSpreadsheet, PencilLine } from 'lucide-react'
+import { FileSpreadsheet, PencilLine, Pencil } from 'lucide-react'
 import { api } from '@/lib/api'
+import type { Uom } from '@shared/types'
+import { toCm, UOMS } from '@shared/types'
 import { PageHeader, Page } from '@/components/layout'
 import {
   Button,
@@ -35,10 +37,16 @@ export function FinishedGoods(): React.JSX.Element {
 
   const products = Array.from(new Set(data.map((d) => d.product_name)))
   const [open, setOpen] = React.useState(false)
-  const [form, setForm] = React.useState<{ plant_id?: number; product_name: string; opening_qty: number }>({ product_name: '', opening_qty: 0 })
+  const [form, setForm] = React.useState<{ plant_id?: number; product_name: string; opening_qty: number | string; uom: Uom; editing?: boolean }>({ product_name: '', opening_qty: 0, uom: 'CM' })
+
+  const formPlant = plants.find((p) => p.id === form.plant_id)
+  const openingCm = toCm(Number(form.opening_qty) || 0, form.uom, formPlant)
 
   const save = useMutation({
-    mutationFn: () => api.finished.setOpening(form.plant_id!, form.product_name, Number(form.opening_qty) || 0),
+    // Opening can be entered in any UOM; it's stored as m³ (the base unit). Saving
+    // the same plant + product overwrites the previous opening, so wrong entries
+    // are corrected by editing the row.
+    mutationFn: () => api.finished.setOpening(form.plant_id!, form.product_name, openingCm),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['finished'] })
       setOpen(false)
@@ -46,6 +54,11 @@ export function FinishedGoods(): React.JSX.Element {
     },
     onError: (e: Error) => toast.error(e.message)
   })
+
+  function openEdit(f: { plant_id: number; product_name: string; opening_qty: number }): void {
+    setForm({ plant_id: f.plant_id, product_name: f.product_name, opening_qty: f.opening_qty, uom: 'CM', editing: true })
+    setOpen(true)
+  }
 
   function exportExcel(): void {
     downloadExcel(
@@ -66,7 +79,7 @@ export function FinishedGoods(): React.JSX.Element {
             <Button variant="outline" onClick={exportExcel} disabled={!data.length}>
               <FileSpreadsheet size={16} /> Excel
             </Button>
-            <Button onClick={() => { setForm({ plant_id: plantId ?? plants[0]?.id, product_name: '', opening_qty: 0 }); setOpen(true) }} disabled={!plants.length}>
+            <Button onClick={() => { setForm({ plant_id: plantId ?? plants[0]?.id, product_name: '', opening_qty: 0, uom: 'CM' }); setOpen(true) }} disabled={!plants.length}>
               <PencilLine size={16} /> Set Opening
             </Button>
           </>
@@ -99,6 +112,7 @@ export function FinishedGoods(): React.JSX.Element {
                 <TH className="text-right">Dispatched</TH>
                 <TH className="text-right">To Rack</TH>
                 <TH className="text-right">Balance (m³)</TH>
+                <TH className="text-right">Opening</TH>
               </TR>
             </THead>
             <TBody>
@@ -112,6 +126,11 @@ export function FinishedGoods(): React.JSX.Element {
                   <TD className="text-right text-destructive">{fmtQty(f.dispatched_qty)}</TD>
                   <TD className="text-right text-warning">{fmtQty(f.loaded_qty)}</TD>
                   <TD className="text-right font-semibold">{fmtQty(f.balance_qty)}</TD>
+                  <TD className="text-right">
+                    <Button variant="ghost" size="icon" title="Edit opening stock" onClick={() => openEdit({ plant_id: f.plant_id, product_name: f.product_name, opening_qty: f.opening_qty })}>
+                      <Pencil size={15} />
+                    </Button>
+                  </TD>
                 </TR>
               ))}
             </TBody>
@@ -119,22 +138,31 @@ export function FinishedGoods(): React.JSX.Element {
         )}
       </Page>
 
-      <Modal open={open} onClose={() => setOpen(false)} title="Set Opening Finished Goods">
+      <Modal open={open} onClose={() => setOpen(false)} title={form.editing ? `Edit Opening — ${form.product_name}` : 'Set Opening Finished Goods'}>
         <div className="space-y-4">
-          <Field label="Plant" hint={plantId ? 'Locked to active plant' : undefined}>
+          <Field label="Plant" hint={form.editing ? 'Locked for this opening' : plantId ? 'Locked to active plant' : undefined}>
             <SearchSelect
               value={form.plant_id || ''}
-              disabled={!!plantId}
+              disabled={form.editing || !!plantId}
               onChange={(v) => setForm({ ...form, plant_id: Number(v) })}
               options={plants.map((p) => ({ value: p.id, label: p.name }))}
             />
           </Field>
           <Field label="Product Name">
-            <Input value={form.product_name} onChange={(e) => setForm({ ...form, product_name: e.target.value })} placeholder="e.g. 30/40" />
+            <Input value={form.product_name} disabled={form.editing} onChange={(e) => setForm({ ...form, product_name: e.target.value })} placeholder="e.g. 30/40" />
           </Field>
-          <Field label="Opening Quantity (m³)">
-            <Input type="number" step="0.001" value={form.opening_qty} onChange={(e) => setForm({ ...form, opening_qty: Number(e.target.value) })} />
-          </Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Unit (UOM)">
+              <SearchSelect
+                value={form.uom}
+                onChange={(v) => setForm({ ...form, uom: v as Uom })}
+                options={UOMS.map((u) => ({ value: u, label: u === 'CM' ? 'm³' : u === 'TON' ? 'Ton' : 'CFT' }))}
+              />
+            </Field>
+            <Field label={`Opening Quantity (${form.uom === 'CM' ? 'm³' : form.uom})`} hint={form.uom !== 'CM' && openingCm > 0 ? `= ${fmtQty(openingCm)} m³` : 'Stored as m³'}>
+              <Input type="number" step="0.001" value={form.opening_qty} onChange={(e) => setForm({ ...form, opening_qty: e.target.value })} />
+            </Field>
+          </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
             <Button onClick={() => save.mutate()} disabled={!form.plant_id || !form.product_name.trim()}>Save</Button>

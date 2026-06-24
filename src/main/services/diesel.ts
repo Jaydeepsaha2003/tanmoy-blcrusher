@@ -194,10 +194,11 @@ export async function listDieselIssues(filter: IssueFilter = {}): Promise<Diesel
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''
   return (await d
     .prepare(
-      `SELECT di.*, p.name AS plant_name, a.name AS asset_name
+      `SELECT di.*, p.name AS plant_name, a.name AS asset_name, t.name AS transporter_name
        FROM diesel_issues di
        JOIN plants p ON p.id = di.plant_id
        LEFT JOIN assets a ON a.id = di.asset_id
+       LEFT JOIN transporters t ON t.id = di.transporter_id
        ${clause}
        ORDER BY di.date DESC, di.id DESC`
     )
@@ -208,9 +209,23 @@ export interface DieselIssueInput {
   id?: number
   plant_id: number
   asset_id: number | null
+  transporter_id?: number | null
   litres: number
+  rate?: number | null
   date: string
   remarks: string
+}
+
+/** litres / charged-rate / amount — amount only set when this issue is charged to a transporter. */
+function issueChargeFields(p: DieselIssueInput): {
+  transporter_id: number | null
+  rate: number | null
+  amount: number | null
+} {
+  const transporter_id = p.transporter_id ? Number(p.transporter_id) : null
+  const rate = p.rate == null || (p.rate as unknown) === '' ? null : Number(p.rate)
+  const amount = transporter_id && rate != null ? money(litres(Number(p.litres)) * rate) : null
+  return { transporter_id, rate: transporter_id ? rate : null, amount }
 }
 
 export async function createDieselIssue(p: DieselIssueInput): Promise<DieselIssue> {
@@ -219,13 +234,24 @@ export async function createDieselIssue(p: DieselIssueInput): Promise<DieselIssu
   const available = (await stockOf(d, p.plant_id)).balance
   if (Number(p.litres) > available)
     throw new Error(`Not enough diesel in stock. Available: ${available} L, requested: ${p.litres} L.`)
+  const charge = issueChargeFields(p)
   const no = await nextNumber('DIS', 'diesel_issue')
   const info = await d
     .prepare(
-      `INSERT INTO diesel_issues (issue_no, plant_id, asset_id, litres, date, remarks)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO diesel_issues (issue_no, plant_id, asset_id, transporter_id, litres, rate, amount, date, remarks)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(no, p.plant_id, p.asset_id ?? null, litres(Number(p.litres)), p.date, p.remarks ?? '')
+    .run(
+      no,
+      p.plant_id,
+      p.asset_id ?? null,
+      charge.transporter_id,
+      litres(Number(p.litres)),
+      charge.rate,
+      charge.amount,
+      p.date,
+      p.remarks ?? ''
+    )
   return (await d.prepare(`SELECT * FROM diesel_issues WHERE id = ?`).get(info.lastInsertRowid)) as DieselIssue
 }
 
@@ -233,10 +259,21 @@ export async function updateDieselIssue(p: DieselIssueInput): Promise<DieselIssu
   const d = getDb()
   if (!p.id) throw new Error('Missing issue id.')
   if (!(Number(p.litres) > 0)) throw new Error('Litres must be greater than 0.')
+  const charge = issueChargeFields(p)
   await d.transaction(async () => {
     await d.prepare(
-      `UPDATE diesel_issues SET plant_id=?, asset_id=?, litres=?, date=?, remarks=? WHERE id=?`
-    ).run(p.plant_id, p.asset_id ?? null, litres(Number(p.litres)), p.date, p.remarks ?? '', p.id)
+      `UPDATE diesel_issues SET plant_id=?, asset_id=?, transporter_id=?, litres=?, rate=?, amount=?, date=?, remarks=? WHERE id=?`
+    ).run(
+      p.plant_id,
+      p.asset_id ?? null,
+      charge.transporter_id,
+      litres(Number(p.litres)),
+      charge.rate,
+      charge.amount,
+      p.date,
+      p.remarks ?? '',
+      p.id
+    )
     if ((await stockOf(d, p.plant_id)).balance < 0)
       throw new Error('Edit would issue more diesel than is in stock.')
   })

@@ -249,10 +249,12 @@ CREATE TABLE IF NOT EXISTS production_outputs (
 CREATE TABLE IF NOT EXISTS spare_parts (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   name       TEXT NOT NULL,
+  part_no    TEXT NOT NULL DEFAULT '',
   part_type  TEXT NOT NULL DEFAULT 'new',
   unit       TEXT NOT NULL DEFAULT 'PCS',
   plant_id   INTEGER REFERENCES plants(id),
   min_qty    REAL NOT NULL DEFAULT 0,
+  rate       REAL,
   remarks    TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
@@ -264,6 +266,8 @@ CREATE TABLE IF NOT EXISTS spare_part_movements (
   movement_type TEXT NOT NULL,
   ref_no        TEXT NOT NULL DEFAULT '',
   quantity      REAL NOT NULL,
+  rate          REAL,
+  amount        REAL,
   date          TEXT NOT NULL,
   note          TEXT NOT NULL DEFAULT '',
   created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
@@ -571,14 +575,17 @@ CREATE TABLE IF NOT EXISTS diesel_purchases (
 );
 
 CREATE TABLE IF NOT EXISTS diesel_issues (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  issue_no   TEXT NOT NULL UNIQUE,
-  plant_id   INTEGER NOT NULL REFERENCES plants(id),
-  asset_id   INTEGER REFERENCES assets(id),
-  litres     REAL NOT NULL,
-  date       TEXT NOT NULL,
-  remarks    TEXT NOT NULL DEFAULT '',
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  issue_no      TEXT NOT NULL UNIQUE,
+  plant_id      INTEGER NOT NULL REFERENCES plants(id),
+  asset_id      INTEGER REFERENCES assets(id),
+  transporter_id INTEGER REFERENCES transporters(id),
+  rate          REAL,
+  amount        REAL,
+  litres        REAL NOT NULL,
+  date          TEXT NOT NULL,
+  remarks       TEXT NOT NULL DEFAULT '',
+  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS opening_balances (

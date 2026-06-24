@@ -8,7 +8,7 @@ import { Badge, Button, EmptyState, Field, Input, Modal, SearchSelect, Table, TB
 import { usePlant } from '@/lib/plant'
 import { useToast } from '@/components/toast'
 import { confirmDialog } from '@/components/confirm'
-import { downloadExcel, fmtDate, fmtQty, today } from '@/lib/utils'
+import { downloadExcel, fmtDate, fmtMoney, fmtQty, today } from '@/lib/utils'
 
 const TYPES: { value: SparePartType; label: string }[] = [
   { value: 'new', label: 'New Part' },
@@ -27,6 +27,7 @@ export function SpareParts(): React.JSX.Element {
   const qc = useQueryClient()
   const toast = useToast()
   const [type, setType] = React.useState<SparePartType | ''>('')
+  const [q, setQ] = React.useState('')
   const [form, setForm] = React.useState<any>(null)
   const [stockMove, setStockMove] = React.useState<any>(null)
   const [selected, setSelected] = React.useState<number | undefined>()
@@ -47,6 +48,16 @@ export function SpareParts(): React.JSX.Element {
   const { data: plants = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
   const { data: assets = [] } = useQuery({ queryKey: ['assets', plantId], queryFn: () => api.assets.list(plantId) })
 
+  const filtered = React.useMemo(() => {
+    const term = q.trim().toLowerCase()
+    if (!term) return parts
+    return parts.filter((p) =>
+      `${p.name} ${p.remarks ?? ''} ${p.unit ?? ''} ${p.part_type ?? ''} ${(p as { part_no?: string }).part_no ?? ''}`
+        .toLowerCase()
+        .includes(term)
+    )
+  }, [parts, q])
+
   const refresh = (): void => {
     qc.invalidateQueries({ queryKey: ['spareParts'] })
     qc.invalidateQueries({ queryKey: ['partMovements'] })
@@ -58,11 +69,13 @@ export function SpareParts(): React.JSX.Element {
   })
   const moveStock = useMutation({
     mutationFn: async (p: any) => {
+      const rate = p.rate === '' || p.rate == null ? null : Number(p.rate)
       if (p.mode === 'out') {
         return api.parts.stockOut({
           part_id: p.part_id,
           asset_id: Number(p.asset_id),
           quantity: Number(p.quantity),
+          rate,
           date: p.date,
           note: p.note
         })
@@ -70,9 +83,11 @@ export function SpareParts(): React.JSX.Element {
       if (p.part_id === '__new__') {
         await api.parts.create({
           name: p.new_name,
+          part_no: p.part_no,
           part_type: p.part_type,
           unit: p.unit,
           plant_id: p.plant_id ?? null,
+          rate,
           min_qty: Number(p.min_qty) || 0,
           remarks: p.remarks || '',
           opening_qty: Number(p.quantity),
@@ -88,6 +103,7 @@ export function SpareParts(): React.JSX.Element {
       return api.parts.stockIn({
           part_id: p.part_id,
           quantity: Number(p.quantity),
+          rate,
           date: p.date,
           note: p.note
         })
@@ -111,10 +127,10 @@ export function SpareParts(): React.JSX.Element {
     downloadExcel(
       'spare-parts-stock',
       'Spare Parts',
-      ['Part', 'Type', 'Unit', 'Plant', 'Balance', 'Minimum', 'Status', 'Remarks'],
+      ['Part', 'Part No.', 'Type', 'Unit', 'Plant', 'Rate', 'Balance', 'Minimum', 'Status', 'Remarks'],
       parts.map((p) => [
-        p.name, p.part_type, p.unit, p.plant_name ?? 'All plants',
-        p.balance_qty, p.min_qty, p.balance_qty <= p.min_qty ? 'LOW' : 'OK', p.remarks
+        p.name, p.part_no ?? '', p.part_type, p.unit, p.plant_name ?? 'All plants',
+        p.rate ?? '', p.balance_qty, p.min_qty, p.balance_qty <= p.min_qty ? 'LOW' : 'OK', p.remarks
       ])
     )
   }
@@ -137,23 +153,27 @@ export function SpareParts(): React.JSX.Element {
         }
       />
       <Page>
-        <div className="mb-4 flex flex-wrap gap-2">
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <Input className="w-full sm:w-60" placeholder="Search part name, no., remarks…" value={q} onChange={(e) => setQ(e.target.value)} />
           <SearchSelect
             className="w-full sm:w-52"
             value={type}
             onChange={(v) => setType(v as SparePartType | '')}
             options={[{ value: '', label: 'All stock types' }, ...TYPES]}
           />
+          {(q || type) && <Button variant="ghost" size="sm" onClick={() => { setQ(''); setType('') }}>Clear</Button>}
+          {parts.length > 0 && <span className="ml-auto text-sm text-muted-foreground">{filtered.length} of {parts.length}</span>}
         </div>
-        {parts.length === 0 ? <EmptyState message="No spare parts recorded." /> : (
+        {parts.length === 0 ? <EmptyState message="No spare parts recorded." /> : filtered.length === 0 ? <EmptyState message="No parts match your search." /> : (
           <Table>
-            <THead><TR><TH>Part Name</TH><TH>Type</TH><TH>Plant</TH><TH className="text-right">Balance</TH><TH>Status</TH><TH className="text-right">Actions</TH></TR></THead>
+            <THead><TR><TH>Part Name</TH><TH>Type</TH><TH>Plant</TH><TH className="text-right">Rate</TH><TH className="text-right">Balance</TH><TH>Status</TH><TH className="text-right">Actions</TH></TR></THead>
             <TBody>
-              {parts.map((p) => (
+              {filtered.map((p) => (
                 <TR key={p.id} className="cursor-pointer" onClick={() => setSelected(p.id)}>
-                  <TD><div className="font-medium">{p.name}</div><div className="text-[11px] text-muted-foreground">{p.remarks || p.unit}</div></TD>
+                  <TD><div className="font-medium">{p.name}</div><div className="text-[11px] text-muted-foreground">{[p.part_no, p.remarks || p.unit].filter(Boolean).join(' · ')}</div></TD>
                   <TD><Badge variant={tone[p.part_type]}>{TYPES.find((x) => x.value === p.part_type)?.label}</Badge></TD>
                   <TD>{p.plant_name || 'All plants'}</TD>
+                  <TD className="tnum text-right text-muted-foreground">{p.rate != null ? `₹${fmtMoney(p.rate)}` : '-'}</TD>
                   <TD className="tnum text-right text-base font-bold">{fmtQty(p.balance_qty)} <span className="text-xs font-normal text-muted-foreground">{p.unit}</span></TD>
                   <TD>{p.balance_qty <= p.min_qty ? <Badge variant="destructive">Low stock</Badge> : <Badge variant="success">In stock</Badge>}</TD>
                   <TD className="text-right" onClick={(e) => e.stopPropagation()}>
@@ -173,13 +193,15 @@ export function SpareParts(): React.JSX.Element {
             <div className="mb-2 flex items-center gap-2 text-sm font-semibold"><PackagePlus size={16} /> Stock History</div>
             {movements.length === 0 ? <EmptyState message="No stock activity for this part." /> : (
               <Table>
-                <THead><TR><TH>Date</TH><TH>Activity</TH><TH>Used For</TH><TH className="text-right">Quantity</TH><TH>Note</TH></TR></THead>
+                <THead><TR><TH>Date</TH><TH>Activity</TH><TH>Used For</TH><TH className="text-right">Quantity</TH><TH className="text-right">Rate</TH><TH className="text-right">Value</TH><TH>Note</TH></TR></THead>
                 <TBody>{movements.map((m) => (
                   <TR key={m.id}>
                     <TD>{fmtDate(m.date)}</TD>
                     <TD className="capitalize">{m.movement_type.replace('_', ' ')}</TD>
                     <TD>{m.asset_name || '-'}</TD>
                     <TD className={`tnum text-right font-semibold ${m.quantity < 0 ? 'text-destructive' : 'text-success'}`}>{m.quantity > 0 ? '+' : ''}{fmtQty(m.quantity)} {m.unit}</TD>
+                    <TD className="tnum text-right text-muted-foreground">{m.rate != null ? `₹${fmtMoney(m.rate)}` : '-'}</TD>
+                    <TD className="tnum text-right">{m.amount != null ? `₹${fmtMoney(m.amount)}` : '-'}</TD>
                     <TD className="text-muted-foreground">{m.note || '-'}</TD>
                   </TR>
                 ))}</TBody>
@@ -193,8 +215,10 @@ export function SpareParts(): React.JSX.Element {
         <Modal open onClose={() => setForm(null)} title={form.id ? 'Edit Spare Part' : 'New Spare Part'} width="max-w-xl">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Part Name" required><Input value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Bearing 22220, fan belt..." /></Field>
+            <Field label="Part No." hint="Manufacturer / catalogue number"><Input value={form.part_no || ''} onChange={(e) => setForm({ ...form, part_no: e.target.value })} placeholder="BRG-22220, FB-1750..." /></Field>
             <Field label="Stock Type" required><SearchSelect value={form.part_type} onChange={(v) => setForm({ ...form, part_type: v })} options={TYPES} /></Field>
             <Field label="UOM"><SearchSelect value={form.unit || 'PCS'} onChange={(v) => setForm({ ...form, unit: v })} options={UNITS.map((u) => ({ value: u, label: u }))} /></Field>
+            <Field label="Rate per Unit (₹)" hint="Default rate; updated by the latest Stock In"><Input type="number" min="0" step="0.01" value={form.rate ?? ''} onChange={(e) => setForm({ ...form, rate: e.target.value })} placeholder="0.00" /></Field>
             {!form.id && <Field label="Opening Stock"><Input type="number" step="0.001" value={form.opening_qty} onChange={(e) => setForm({ ...form, opening_qty: e.target.value })} /></Field>}
             <Field label="Low-stock Level"><Input type="number" step="0.001" value={form.min_qty} onChange={(e) => setForm({ ...form, min_qty: e.target.value })} /></Field>
             <Field label="Plant"><SearchSelect value={form.plant_id ?? ''} onChange={(v) => setForm({ ...form, plant_id: v ? Number(v) : null })} options={[{ value: '', label: 'All plants' }, ...plants.map((p) => ({ value: p.id, label: p.name }))]} /></Field>
@@ -218,7 +242,8 @@ export function SpareParts(): React.JSX.Element {
                         ...stockMove,
                         part_id: v,
                         name: existing?.name || '',
-                        unit: existing?.unit || stockMove.unit || 'PCS'
+                        unit: existing?.unit || stockMove.unit || 'PCS',
+                        rate: existing?.rate ?? stockMove.rate ?? ''
                       })
                     }}
                     options={[
@@ -231,6 +256,7 @@ export function SpareParts(): React.JSX.Element {
                 {stockMove.part_id === '__new__' && (
                   <>
                     <Field label="New Part Name" required><Input value={stockMove.new_name || ''} onChange={(e) => setStockMove({ ...stockMove, new_name: e.target.value })} placeholder="Type the new part name" /></Field>
+                    <Field label="Part No."><Input value={stockMove.part_no || ''} onChange={(e) => setStockMove({ ...stockMove, part_no: e.target.value })} placeholder="BRG-22220, FB-1750..." /></Field>
                     <Field label="Stock Type" required><SearchSelect value={stockMove.part_type || 'new'} onChange={(v) => setStockMove({ ...stockMove, part_type: v })} options={TYPES} /></Field>
                     <Field label="Plant"><SearchSelect value={stockMove.plant_id ?? ''} onChange={(v) => setStockMove({ ...stockMove, plant_id: v ? Number(v) : null })} options={[{ value: '', label: 'All plants' }, ...plants.map((p) => ({ value: p.id, label: p.name }))]} /></Field>
                   </>
@@ -240,7 +266,19 @@ export function SpareParts(): React.JSX.Element {
                 </Field>
               </>
             )}
-            <Field label="Quantity" hint={stockMove.mode === 'out' ? 'Quantity issued for use' : 'Quantity received into stock'}><Input autoFocus type="number" min="0" step="0.001" value={stockMove.quantity} onChange={(e) => setStockMove({ ...stockMove, quantity: e.target.value })} /></Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Quantity" hint={stockMove.mode === 'out' ? 'Quantity issued for use' : 'Quantity received into stock'}><Input autoFocus type="number" min="0" step="0.001" value={stockMove.quantity} onChange={(e) => setStockMove({ ...stockMove, quantity: e.target.value })} /></Field>
+              <Field
+                label="Rate per Unit (₹)"
+                hint={
+                  Number(stockMove.quantity) > 0 && Number(stockMove.rate) > 0
+                    ? `= ₹${(Number(stockMove.quantity) * Number(stockMove.rate)).toFixed(2)}`
+                    : stockMove.mode === 'out' ? 'Issue value (optional)' : 'Purchase rate (optional)'
+                }
+              >
+                <Input type="number" min="0" step="0.01" value={stockMove.rate ?? ''} onChange={(e) => setStockMove({ ...stockMove, rate: e.target.value })} placeholder="0.00" />
+              </Field>
+            </div>
             <Field label="Date"><Input type="date" value={stockMove.date} onChange={(e) => setStockMove({ ...stockMove, date: e.target.value })} /></Field>
             {stockMove.mode === 'out' && (
               <Field label="Used For Machine / Vehicle" required>

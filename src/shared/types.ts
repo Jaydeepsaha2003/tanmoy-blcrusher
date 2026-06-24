@@ -768,11 +768,14 @@ export type SparePartType = 'new' | 'repairable' | 'scrap'
 export interface SparePart {
   id: number
   name: string
+  part_no: string
   part_type: SparePartType
   unit: string
   plant_id: number | null
   plant_name?: string | null
   min_qty: number
+  /** Default/last rate per unit (₹). */
+  rate: number | null
   remarks: string
   created_at: string
   balance_qty: number
@@ -789,6 +792,9 @@ export interface SparePartMovement {
   movement_type: 'opening' | 'stock_in' | 'stock_out' | 'adjustment'
   ref_no: string
   quantity: number
+  /** Rate per unit and the line value (qty × rate) for this stock-in/out. */
+  rate: number | null
+  amount: number | null
   date: string
   note: string
   created_at: string
@@ -975,6 +981,11 @@ export interface DieselIssue {
   plant_name?: string
   asset_id: number | null
   asset_name?: string
+  /** Optional transporter the diesel is charged to (debited on their ledger). */
+  transporter_id: number | null
+  transporter_name?: string | null
+  rate: number | null
+  amount: number | null
   litres: number
   date: string
   remarks: string

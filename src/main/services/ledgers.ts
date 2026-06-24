@@ -1189,6 +1189,28 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
           debit: 0,
           credit: x.charge
         })
+    // Diesel issued and charged to this transporter — recovered from what we owe (debit).
+    const dsl = (await d
+      .prepare(
+        `SELECT issue_no, date, created_at, COALESCE(litres,0) AS litres, COALESCE(amount,0) AS amount
+         FROM diesel_issues WHERE transporter_id = ? AND COALESCE(amount,0) > 0`
+      )
+      .all(partyId)) as {
+      issue_no: string
+      date: string
+      created_at: string
+      litres: number
+      amount: number
+    }[]
+    for (const x of dsl)
+      entries.push({
+        date: x.date,
+        created_at: x.created_at,
+        particulars: `Diesel issued — ${x.litres} L`,
+        ref: x.issue_no,
+        debit: x.amount,
+        credit: 0
+      })
   }
 
   const payments = (await getDb()

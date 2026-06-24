@@ -897,6 +897,18 @@ CREATE INDEX idx_part_moves_asset ON spare_part_movements(asset_id)`
     sql: `ALTER TABLE productions ADD COLUMN uom VARCHAR(8) NOT NULL DEFAULT 'CM';
 ALTER TABLE productions ADD COLUMN quantity DOUBLE NOT NULL DEFAULT 0;
 UPDATE productions SET quantity = raw_qty WHERE quantity = 0`
+  },
+  {
+    // Spare parts gain a part number + rate; stock movements record a rate/value;
+    // diesel issues can be charged to a transporter.
+    id: '021_parts_rate_diesel_transporter',
+    sql: `ALTER TABLE spare_parts ADD COLUMN part_no VARCHAR(191) NOT NULL DEFAULT '';
+ALTER TABLE spare_parts ADD COLUMN rate DOUBLE;
+ALTER TABLE spare_part_movements ADD COLUMN rate DOUBLE;
+ALTER TABLE spare_part_movements ADD COLUMN amount DOUBLE;
+ALTER TABLE diesel_issues ADD COLUMN transporter_id INT;
+ALTER TABLE diesel_issues ADD COLUMN rate DOUBLE;
+ALTER TABLE diesel_issues ADD COLUMN amount DOUBLE`
   }
 ]
 
@@ -985,6 +997,14 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   await addColumn('productions', 'uom', `TEXT NOT NULL DEFAULT 'CM'`)
   await addColumn('productions', 'quantity', 'REAL NOT NULL DEFAULT 0')
   await adapter.execRaw(`UPDATE productions SET quantity = raw_qty WHERE quantity = 0`)
+  // Spare-part number + rate, movement value, diesel charged to a transporter.
+  await addColumn('spare_parts', 'part_no', `TEXT NOT NULL DEFAULT ''`)
+  await addColumn('spare_parts', 'rate', 'REAL')
+  await addColumn('spare_part_movements', 'rate', 'REAL')
+  await addColumn('spare_part_movements', 'amount', 'REAL')
+  await addColumn('diesel_issues', 'transporter_id', 'INTEGER')
+  await addColumn('diesel_issues', 'rate', 'REAL')
+  await addColumn('diesel_issues', 'amount', 'REAL')
 }
 
 /**

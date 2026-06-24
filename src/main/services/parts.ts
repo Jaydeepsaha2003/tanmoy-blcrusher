@@ -7,6 +7,13 @@ const TYPES: SparePartType[] = ['new', 'repairable', 'scrap']
 function round3(n: number): number {
   return Math.round((Number(n) + Number.EPSILON) * 1000) / 1000
 }
+function round2(n: number): number {
+  return Math.round((Number(n) + Number.EPSILON) * 100) / 100
+}
+function rateOrNull(v: unknown): number | null {
+  const n = Number(v)
+  return v != null && (v as string) !== '' && n > 0 ? round2(n) : null
+}
 
 function normalizeType(value: unknown): SparePartType {
   return TYPES.includes(value as SparePartType) ? (value as SparePartType) : 'new'
@@ -27,17 +34,20 @@ export async function addPartMovement(
     movement_type: SparePartMovement['movement_type']
     ref_no?: string
     quantity: number
+    rate?: number | null
     date: string
     note?: string
   }
 ): Promise<void> {
   const qty = round3(input.quantity)
   if (!qty) return
+  const rate = rateOrNull(input.rate)
+  const amount = rate != null ? round2(Math.abs(qty) * rate) : null
   await d
     .prepare(
       `INSERT INTO spare_part_movements
-       (part_id, asset_id, movement_type, ref_no, quantity, date, note)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+       (part_id, asset_id, movement_type, ref_no, quantity, rate, amount, date, note)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       input.part_id,
@@ -45,6 +55,8 @@ export async function addPartMovement(
       input.movement_type,
       input.ref_no ?? '',
       qty,
+      rate,
+      amount,
       input.date,
       input.note ?? ''
     )
@@ -80,12 +92,14 @@ export async function listParts(payload: {
 
 export async function createPart(p: {
   name: string
+  part_no?: string
   part_type?: SparePartType
   unit?: string
   plant_id?: number | null
   opening_qty?: number
   opening_date?: string
   opening_note?: string
+  rate?: number | null
   min_qty?: number
   remarks?: string
 }): Promise<SparePart> {
@@ -94,6 +108,8 @@ export async function createPart(p: {
   if (!name) throw new Error('Part name is required.')
   const partType = normalizeType(p.part_type)
   const unit = properCase(p.unit || 'PCS') || 'PCS'
+  const partNo = (p.part_no || '').trim().toUpperCase()
+  const rate = rateOrNull(p.rate)
   const duplicate = await d
     .prepare(
       `SELECT id FROM spare_parts
@@ -104,15 +120,17 @@ export async function createPart(p: {
   const id = await d.transaction(async () => {
     const info = await d
       .prepare(
-        `INSERT INTO spare_parts (name, part_type, unit, plant_id, min_qty, remarks)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO spare_parts (name, part_no, part_type, unit, plant_id, min_qty, rate, remarks)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         name,
+        partNo,
         partType,
         unit,
         p.plant_id ?? null,
         Math.max(0, Number(p.min_qty) || 0),
+        rate,
         p.remarks ?? ''
       )
     const partId = Number(info.lastInsertRowid)
@@ -123,6 +141,7 @@ export async function createPart(p: {
         asset_id: null,
         movement_type: 'opening',
         quantity: opening,
+        rate,
         date: p.opening_date || new Date().toISOString().slice(0, 10),
         note: p.opening_note || 'Opening stock'
       })
@@ -135,9 +154,11 @@ export async function createPart(p: {
 export async function updatePart(p: {
   id: number
   name: string
+  part_no?: string
   part_type?: SparePartType
   unit?: string
   plant_id?: number | null
+  rate?: number | null
   min_qty?: number
   remarks?: string
 }): Promise<SparePart> {
@@ -146,14 +167,16 @@ export async function updatePart(p: {
   if (!name) throw new Error('Part name is required.')
   await getDb()
     .prepare(
-      `UPDATE spare_parts SET name=?, part_type=?, unit=?, plant_id=?, min_qty=?, remarks=? WHERE id=?`
+      `UPDATE spare_parts SET name=?, part_no=?, part_type=?, unit=?, plant_id=?, min_qty=?, rate=?, remarks=? WHERE id=?`
     )
     .run(
       name,
+      (p.part_no || '').trim().toUpperCase(),
       normalizeType(p.part_type),
       properCase(p.unit || 'PCS') || 'PCS',
       p.plant_id ?? null,
       Math.max(0, Number(p.min_qty) || 0),
+      rateOrNull(p.rate),
       p.remarks ?? '',
       p.id
     )
@@ -163,19 +186,28 @@ export async function updatePart(p: {
 export async function stockIn(payload: {
   part_id: number
   quantity: number
+  rate?: number | null
   date: string
   note?: string
 }): Promise<{ ok: boolean }> {
   const d = getDb()
   const qty = round3(Math.abs(Number(payload.quantity)))
   if (!(qty > 0)) throw new Error('Stock-in quantity must be greater than 0.')
-  await addPartMovement(d, {
-    part_id: payload.part_id,
-    asset_id: null,
-    movement_type: 'stock_in',
-    quantity: qty,
-    date: payload.date,
-    note: payload.note || 'Stock received'
+  const rate = rateOrNull(payload.rate)
+  await d.transaction(async () => {
+    await addPartMovement(d, {
+      part_id: payload.part_id,
+      asset_id: null,
+      movement_type: 'stock_in',
+      quantity: qty,
+      rate,
+      date: payload.date,
+      note: payload.note || 'Stock received'
+    })
+    // Keep the part's reference rate in step with the latest purchase.
+    if (rate != null) {
+      await d.prepare(`UPDATE spare_parts SET rate=? WHERE id=?`).run(rate, payload.part_id)
+    }
   })
   return { ok: true }
 }
@@ -184,6 +216,7 @@ export async function stockOut(payload: {
   part_id: number
   asset_id: number
   quantity: number
+  rate?: number | null
   date: string
   note?: string
 }): Promise<{ ok: boolean }> {
@@ -197,6 +230,7 @@ export async function stockOut(payload: {
       asset_id: payload.asset_id,
       movement_type: 'stock_out',
       quantity: -qty,
+      rate: payload.rate,
       date: payload.date,
       note: payload.note || 'Issued to machine / vehicle'
     })
