@@ -60481,9 +60481,14 @@ function FinishedGoods() {
   });
   const products = Array.from(new Set(data.map((d2) => d2.product_name)));
   const [open2, setOpen] = reactExports.useState(false);
-  const [form, setForm] = reactExports.useState({ product_name: "", opening_qty: 0 });
+  const [form, setForm] = reactExports.useState({ product_name: "", opening_qty: 0, uom: "CM" });
+  plants.find((p2) => p2.id === form.plant_id);
+  const openingCm = toCm(Number(form.opening_qty) || 0, form.uom);
   const save = useMutation({
-    mutationFn: () => api.finished.setOpening(form.plant_id, form.product_name, Number(form.opening_qty) || 0),
+    // Opening can be entered in any UOM; it's stored as m³ (the base unit). Saving
+    // the same plant + product overwrites the previous opening, so wrong entries
+    // are corrected by editing the row.
+    mutationFn: () => api.finished.setOpening(form.plant_id, form.product_name, openingCm),
     onSuccess: () => {
       qc2.invalidateQueries({ queryKey: ["finished"] });
       setOpen(false);
@@ -60491,6 +60496,10 @@ function FinishedGoods() {
     },
     onError: (e3) => toast.error(e3.message)
   });
+  function openEdit(f2) {
+    setForm({ plant_id: f2.plant_id, product_name: f2.product_name, opening_qty: f2.opening_qty, uom: "CM", editing: true });
+    setOpen(true);
+  }
   function exportExcel() {
     downloadExcel(
       "finished-goods",
@@ -60511,7 +60520,7 @@ function FinishedGoods() {
             " Excel"
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { onClick: () => {
-            setForm({ plant_id: plantId ?? plants[0]?.id, product_name: "", opening_qty: 0 });
+            setForm({ plant_id: plantId ?? plants[0]?.id, product_name: "", opening_qty: 0, uom: "CM" });
             setOpen(true);
           }, disabled: !plants.length, children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(PencilLine, { size: 16 }),
@@ -60544,7 +60553,8 @@ function FinishedGoods() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Purchased" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Dispatched" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "To Rack" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Balance (m³)" })
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Balance (m³)" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Opening" })
         ] }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: data.map((f2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: f2.plant_name }),
@@ -60554,22 +60564,33 @@ function FinishedGoods() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right text-success", children: fmtQty(f2.purchased_qty) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right text-destructive", children: fmtQty(f2.dispatched_qty) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right text-warning", children: fmtQty(f2.loaded_qty) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right font-semibold", children: fmtQty(f2.balance_qty) })
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right font-semibold", children: fmtQty(f2.balance_qty) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Edit opening stock", onClick: () => openEdit({ plant_id: f2.plant_id, product_name: f2.product_name, opening_qty: f2.opening_qty }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }) })
         ] }, `${f2.plant_id}-${f2.product_name}`)) })
       ] })
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(Modal, { open: open2, onClose: () => setOpen(false), title: "Set Opening Finished Goods", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", hint: plantId ? "Locked to active plant" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Modal, { open: open2, onClose: () => setOpen(false), title: form.editing ? `Edit Opening — ${form.product_name}` : "Set Opening Finished Goods", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", hint: form.editing ? "Locked for this opening" : plantId ? "Locked to active plant" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
         SearchSelect,
         {
           value: form.plant_id || "",
-          disabled: !!plantId,
+          disabled: form.editing || !!plantId,
           onChange: (v2) => setForm({ ...form, plant_id: Number(v2) }),
           options: plants.map((p2) => ({ value: p2.id, label: p2.name }))
         }
       ) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product Name", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.product_name, onChange: (e3) => setForm({ ...form, product_name: e3.target.value }), placeholder: "e.g. 30/40" }) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Opening Quantity (m³)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.opening_qty, onChange: (e3) => setForm({ ...form, opening_qty: Number(e3.target.value) }) }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product Name", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.product_name, disabled: form.editing, onChange: (e3) => setForm({ ...form, product_name: e3.target.value }), placeholder: "e.g. 30/40" }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Unit (UOM)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            value: form.uom,
+            onChange: (v2) => setForm({ ...form, uom: v2 }),
+            options: UOMS.map((u2) => ({ value: u2, label: u2 === "CM" ? "m³" : u2 === "TON" ? "Ton" : "CFT" }))
+          }
+        ) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `Opening Quantity (${form.uom === "CM" ? "m³" : form.uom})`, hint: form.uom !== "CM" && openingCm > 0 ? `= ${fmtQty(openingCm)} m³` : "Stored as m³", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.opening_qty, onChange: (e3) => setForm({ ...form, opening_qty: e3.target.value }) }) })
+      ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-end gap-2 pt-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setOpen(false), children: "Cancel" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: () => save.mutate(), disabled: !form.plant_id || !form.product_name.trim(), children: "Save" })
@@ -63580,6 +63601,7 @@ function SpareParts() {
   const qc2 = useQueryClient();
   const toast = useToast();
   const [type, setType] = reactExports.useState("");
+  const [q2, setQ] = reactExports.useState("");
   const [form, setForm] = reactExports.useState(null);
   const [stockMove, setStockMove] = reactExports.useState(null);
   const [selected, setSelected] = reactExports.useState();
@@ -63598,6 +63620,13 @@ function SpareParts() {
   });
   const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
   const { data: assets = [] } = useQuery({ queryKey: ["assets", plantId], queryFn: () => api.assets.list(plantId) });
+  const filtered = reactExports.useMemo(() => {
+    const term = q2.trim().toLowerCase();
+    if (!term) return parts;
+    return parts.filter(
+      (p2) => `${p2.name} ${p2.remarks ?? ""} ${p2.unit ?? ""} ${p2.part_type ?? ""} ${p2.part_no ?? ""}`.toLowerCase().includes(term)
+    );
+  }, [parts, q2]);
   const refresh = () => {
     qc2.invalidateQueries({ queryKey: ["spareParts"] });
     qc2.invalidateQueries({ queryKey: ["partMovements"] });
@@ -63613,11 +63642,13 @@ function SpareParts() {
   });
   const moveStock = useMutation({
     mutationFn: async (p2) => {
+      const rate = p2.rate === "" || p2.rate == null ? null : Number(p2.rate);
       if (p2.mode === "out") {
         return api.parts.stockOut({
           part_id: p2.part_id,
           asset_id: Number(p2.asset_id),
           quantity: Number(p2.quantity),
+          rate,
           date: p2.date,
           note: p2.note
         });
@@ -63625,9 +63656,11 @@ function SpareParts() {
       if (p2.part_id === "__new__") {
         await api.parts.create({
           name: p2.new_name,
+          part_no: p2.part_no,
           part_type: p2.part_type,
           unit: p2.unit,
           plant_id: p2.plant_id ?? null,
+          rate,
           min_qty: Number(p2.min_qty) || 0,
           remarks: p2.remarks || "",
           opening_qty: Number(p2.quantity),
@@ -63643,6 +63676,7 @@ function SpareParts() {
       return api.parts.stockIn({
         part_id: p2.part_id,
         quantity: Number(p2.quantity),
+        rate,
         date: p2.date,
         note: p2.note
       });
@@ -63666,12 +63700,14 @@ function SpareParts() {
     downloadExcel(
       "spare-parts-stock",
       "Spare Parts",
-      ["Part", "Type", "Unit", "Plant", "Balance", "Minimum", "Status", "Remarks"],
+      ["Part", "Part No.", "Type", "Unit", "Plant", "Rate", "Balance", "Minimum", "Status", "Remarks"],
       parts.map((p2) => [
         p2.name,
+        p2.part_no ?? "",
         p2.part_type,
         p2.unit,
         p2.plant_name ?? "All plants",
+        p2.rate ?? "",
         p2.balance_qty,
         p2.min_qty,
         p2.balance_qty <= p2.min_qty ? "LOW" : "OK",
@@ -63702,31 +63738,45 @@ function SpareParts() {
       }
     ),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Page, { children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-4 flex flex-wrap gap-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-        SearchSelect,
-        {
-          className: "w-full sm:w-52",
-          value: type,
-          onChange: (v2) => setType(v2),
-          options: [{ value: "", label: "All stock types" }, ...TYPES]
-        }
-      ) }),
-      parts.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No spare parts recorded." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap items-center gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { className: "w-full sm:w-60", placeholder: "Search part name, no., remarks…", value: q2, onChange: (e3) => setQ(e3.target.value) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            className: "w-full sm:w-52",
+            value: type,
+            onChange: (v2) => setType(v2),
+            options: [{ value: "", label: "All stock types" }, ...TYPES]
+          }
+        ),
+        (q2 || type) && /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "sm", onClick: () => {
+          setQ("");
+          setType("");
+        }, children: "Clear" }),
+        parts.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "ml-auto text-sm text-muted-foreground", children: [
+          filtered.length,
+          " of ",
+          parts.length
+        ] })
+      ] }),
+      parts.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No spare parts recorded." }) : filtered.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No parts match your search." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Part Name" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Type" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plant" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Rate" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Balance" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Status" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
         ] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: parts.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { className: "cursor-pointer", onClick: () => setSelected(p2.id), children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: filtered.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { className: "cursor-pointer", onClick: () => setSelected(p2.id), children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "font-medium", children: p2.name }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] text-muted-foreground", children: p2.remarks || p2.unit })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] text-muted-foreground", children: [p2.part_no, p2.remarks || p2.unit].filter(Boolean).join(" · ") })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: tone[p2.part_type], children: TYPES.find((x2) => x2.value === p2.part_type)?.label }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: p2.plant_name || "All plants" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right text-muted-foreground", children: p2.rate != null ? `₹${fmtMoney(p2.rate)}` : "-" }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "tnum text-right text-base font-bold", children: [
             fmtQty(p2.balance_qty),
             " ",
@@ -63752,6 +63802,8 @@ function SpareParts() {
             /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Activity" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Used For" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Quantity" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Rate" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Value" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Note" })
           ] }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: movements.map((m2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
@@ -63764,6 +63816,8 @@ function SpareParts() {
               " ",
               m2.unit
             ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right text-muted-foreground", children: m2.rate != null ? `₹${fmtMoney(m2.rate)}` : "-" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: m2.amount != null ? `₹${fmtMoney(m2.amount)}` : "-" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: m2.note || "-" })
           ] }, m2.id)) })
         ] })
@@ -63772,8 +63826,10 @@ function SpareParts() {
     form && /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { open: true, onClose: () => setForm(null), title: form.id ? "Edit Spare Part" : "New Spare Part", width: "max-w-xl", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Part Name", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.name || "", onChange: (e3) => setForm({ ...form, name: e3.target.value }), placeholder: "Bearing 22220, fan belt..." }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Part No.", hint: "Manufacturer / catalogue number", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.part_no || "", onChange: (e3) => setForm({ ...form, part_no: e3.target.value }), placeholder: "BRG-22220, FB-1750..." }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Stock Type", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.part_type, onChange: (v2) => setForm({ ...form, part_type: v2 }), options: TYPES }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "UOM", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.unit || "PCS", onChange: (v2) => setForm({ ...form, unit: v2 }), options: UNITS.map((u2) => ({ value: u2, label: u2 })) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Rate per Unit (₹)", hint: "Default rate; updated by the latest Stock In", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", min: "0", step: "0.01", value: form.rate ?? "", onChange: (e3) => setForm({ ...form, rate: e3.target.value }), placeholder: "0.00" }) }),
         !form.id && /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Opening Stock", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.opening_qty, onChange: (e3) => setForm({ ...form, opening_qty: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Low-stock Level", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.min_qty, onChange: (e3) => setForm({ ...form, min_qty: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.plant_id ?? "", onChange: (v2) => setForm({ ...form, plant_id: v2 ? Number(v2) : null }), options: [{ value: "", label: "All plants" }, ...plants.map((p2) => ({ value: p2.id, label: p2.name }))] }) }),
@@ -63797,7 +63853,8 @@ function SpareParts() {
                   ...stockMove,
                   part_id: v2,
                   name: existing?.name || "",
-                  unit: existing?.unit || stockMove.unit || "PCS"
+                  unit: existing?.unit || stockMove.unit || "PCS",
+                  rate: existing?.rate ?? stockMove.rate ?? ""
                 });
               },
               options: [
@@ -63809,12 +63866,23 @@ function SpareParts() {
           ) }),
           stockMove.part_id === "__new__" && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "New Part Name", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: stockMove.new_name || "", onChange: (e3) => setStockMove({ ...stockMove, new_name: e3.target.value }), placeholder: "Type the new part name" }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Part No.", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: stockMove.part_no || "", onChange: (e3) => setStockMove({ ...stockMove, part_no: e3.target.value }), placeholder: "BRG-22220, FB-1750..." }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Stock Type", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: stockMove.part_type || "new", onChange: (v2) => setStockMove({ ...stockMove, part_type: v2 }), options: TYPES }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: stockMove.plant_id ?? "", onChange: (v2) => setStockMove({ ...stockMove, plant_id: v2 ? Number(v2) : null }), options: [{ value: "", label: "All plants" }, ...plants.map((p2) => ({ value: p2.id, label: p2.name }))] }) })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "UOM", required: true, hint: "Switch the unit used for this part.", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: stockMove.unit || "PCS", onChange: (v2) => setStockMove({ ...stockMove, unit: v2 }), options: UNITS.map((u2) => ({ value: u2, label: u2 })) }) })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Quantity", hint: stockMove.mode === "out" ? "Quantity issued for use" : "Quantity received into stock", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { autoFocus: true, type: "number", min: "0", step: "0.001", value: stockMove.quantity, onChange: (e3) => setStockMove({ ...stockMove, quantity: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-3", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Quantity", hint: stockMove.mode === "out" ? "Quantity issued for use" : "Quantity received into stock", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { autoFocus: true, type: "number", min: "0", step: "0.001", value: stockMove.quantity, onChange: (e3) => setStockMove({ ...stockMove, quantity: e3.target.value }) }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            Field,
+            {
+              label: "Rate per Unit (₹)",
+              hint: Number(stockMove.quantity) > 0 && Number(stockMove.rate) > 0 ? `= ₹${(Number(stockMove.quantity) * Number(stockMove.rate)).toFixed(2)}` : stockMove.mode === "out" ? "Issue value (optional)" : "Purchase rate (optional)",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", min: "0", step: "0.01", value: stockMove.rate ?? "", onChange: (e3) => setStockMove({ ...stockMove, rate: e3.target.value }), placeholder: "0.00" })
+            }
+          )
+        ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: stockMove.date, onChange: (e3) => setStockMove({ ...stockMove, date: e3.target.value }) }) }),
         stockMove.mode === "out" && /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Used For Machine / Vehicle", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: stockMove.asset_id ?? "", onChange: (v2) => setStockMove({ ...stockMove, asset_id: Number(v2) }), options: assets.map((a2) => ({ value: a2.id, label: a2.name })), placeholder: "Select machine / vehicle…" }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Reason / Note", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: stockMove.note, onChange: (e3) => setStockMove({ ...stockMove, note: e3.target.value }), placeholder: stockMove.mode === "out" ? "Repair, replacement, maintenance…" : "Supplier, invoice, opening stock…" }) })
@@ -64692,6 +64760,7 @@ function Diesel() {
   const [tab, setTab] = reactExports.useState("purchases");
   const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
   const { data: suppliers = [] } = useQuery({ queryKey: ["suppliers", plantId], queryFn: () => api.suppliers.list(plantId) });
+  const { data: transporters = [] } = useQuery({ queryKey: ["transporters", plantId], queryFn: () => api.transporters.list(plantId) });
   const { data: assets = [] } = useQuery({ queryKey: ["assets", plantId], queryFn: () => api.assets.list(plantId) });
   const { data: stock } = useQuery({ queryKey: ["dieselStock", plantId], queryFn: () => api.diesel.stock(plantId) });
   const { data: purchases = [] } = useQuery({ queryKey: ["dieselPurchases", plantId], queryFn: () => api.diesel.purchases(clean$2({ plant_id: plantId })) });
@@ -64747,17 +64816,18 @@ function Diesel() {
     setPForm({ supplier_id: suppliers[0]?.id, plant_id: plantId ?? plants[0]?.id, litres: "", rate: "", payment_status: "unpaid", paid_amount: "", date: today(), remarks: "" });
   }
   function openIssue() {
-    setIForm({ plant_id: plantId ?? plants[0]?.id, asset_id: null, litres: "", date: today(), remarks: "" });
+    setIForm({ plant_id: plantId ?? plants[0]?.id, asset_id: null, transporter_id: null, litres: "", rate: "", date: today(), remarks: "" });
   }
   const pAmount = pForm ? (Number(pForm.litres) || 0) * (Number(pForm.rate) || 0) : 0;
+  const iCharge = iForm && iForm.transporter_id ? (Number(iForm.litres) || 0) * (Number(iForm.rate) || 0) : 0;
   const issueAvail = (stock?.balance ?? 0) + (iForm?.id ? Number(issues.find((i2) => i2.id === iForm.id)?.litres || 0) : 0);
   function exportExcel() {
     if (tab === "issues") {
       downloadExcel(
         "diesel-issues",
         "Diesel Issues",
-        ["Issue No", "Date", "Machine/Vehicle", "Litres", "Remarks"],
-        issues.map((x2) => [x2.issue_no, fmtDate(x2.date), x2.asset_name ?? "Unassigned", x2.litres, x2.remarks])
+        ["Issue No", "Date", "Machine/Vehicle", "Litres", "Charged To", "Rate", "Charge", "Remarks"],
+        issues.map((x2) => [x2.issue_no, fmtDate(x2.date), x2.asset_name ?? "Unassigned", x2.litres, x2.transporter_name ?? "", x2.rate ?? "", x2.amount ?? "", x2.remarks])
       );
     } else {
       downloadExcel(
@@ -64829,6 +64899,8 @@ function Diesel() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Date" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Machine / Vehicle" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Litres" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Charged To" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Charge" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Remarks" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
         ] }) }),
@@ -64837,9 +64909,11 @@ function Diesel() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: fmtDate(x2.date) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: x2.asset_name ?? "Unassigned" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right font-semibold", children: fmtQty(x2.litres) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: x2.transporter_name || "-" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: x2.amount != null ? `₹${fmtMoney(x2.amount)}` : "-" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: x2.remarks || "-" }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => setIForm({ ...x2, asset_id: x2.asset_id, litres: x2.litres }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => setIForm({ ...x2, asset_id: x2.asset_id, transporter_id: x2.transporter_id ?? null, rate: x2.rate ?? "", litres: x2.litres }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => removeIssue(x2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
           ] })
         ] }, x2.id)) })
@@ -64903,6 +64977,21 @@ function Diesel() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Litres", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: iForm.litres, onChange: (e3) => setIForm({ ...iForm, litres: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: iForm.date, onChange: (e3) => setIForm({ ...iForm, date: e3.target.value }) }) })
       ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Charge to Transporter", hint: "Optional — recovers the diesel from what we owe this transporter", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        SearchSelect,
+        {
+          value: iForm.transporter_id ?? "",
+          onChange: (v2) => setIForm({ ...iForm, transporter_id: v2 ? Number(v2) : null }),
+          options: [
+            { value: "", label: "— Not charged —" },
+            ...transporters.map((t3) => ({ value: t3.id, label: t3.name }))
+          ]
+        }
+      ) }),
+      iForm.transporter_id && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Rate / Litre (₹)", required: true, hint: "Charged to the transporter", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: iForm.rate, onChange: (e3) => setIForm({ ...iForm, rate: e3.target.value }), placeholder: "0.00" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Amount Charged", hint: "= litres × rate", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: fmtMoney(iCharge), disabled: true }) })
+      ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: iForm.remarks || "", onChange: (e3) => setIForm({ ...iForm, remarks: e3.target.value }) }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-lg bg-muted/60 px-4 py-2.5 text-sm", children: [
         "In stock: ",
@@ -64914,7 +65003,19 @@ function Diesel() {
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-end gap-2 pt-1", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setIForm(null), children: "Cancel" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: () => saveIssue.mutate({ ...iForm, litres: Number(iForm.litres) }), disabled: !(Number(iForm.litres) > 0) || Number(iForm.litres) > issueAvail, children: "Save Issue" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Button,
+          {
+            onClick: () => saveIssue.mutate({
+              ...iForm,
+              litres: Number(iForm.litres),
+              transporter_id: iForm.transporter_id || null,
+              rate: iForm.transporter_id && iForm.rate !== "" ? Number(iForm.rate) : null
+            }),
+            disabled: !(Number(iForm.litres) > 0) || Number(iForm.litres) > issueAvail || !!iForm.transporter_id && !(Number(iForm.rate) > 0),
+            children: "Save Issue"
+          }
+        )
       ] })
     ] }) })
   ] });
@@ -77423,7 +77524,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-RUtuIUDi.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-DRnEHtXD.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;

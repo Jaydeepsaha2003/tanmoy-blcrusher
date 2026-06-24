@@ -408,10 +408,12 @@ CREATE TABLE IF NOT EXISTS production_outputs (
 CREATE TABLE IF NOT EXISTS spare_parts (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   name       TEXT NOT NULL,
+  part_no    TEXT NOT NULL DEFAULT '',
   part_type  TEXT NOT NULL DEFAULT 'new',
   unit       TEXT NOT NULL DEFAULT 'PCS',
   plant_id   INTEGER REFERENCES plants(id),
   min_qty    REAL NOT NULL DEFAULT 0,
+  rate       REAL,
   remarks    TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
@@ -423,6 +425,8 @@ CREATE TABLE IF NOT EXISTS spare_part_movements (
   movement_type TEXT NOT NULL,
   ref_no        TEXT NOT NULL DEFAULT '',
   quantity      REAL NOT NULL,
+  rate          REAL,
+  amount        REAL,
   date          TEXT NOT NULL,
   note          TEXT NOT NULL DEFAULT '',
   created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
@@ -730,14 +734,17 @@ CREATE TABLE IF NOT EXISTS diesel_purchases (
 );
 
 CREATE TABLE IF NOT EXISTS diesel_issues (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  issue_no   TEXT NOT NULL UNIQUE,
-  plant_id   INTEGER NOT NULL REFERENCES plants(id),
-  asset_id   INTEGER REFERENCES assets(id),
-  litres     REAL NOT NULL,
-  date       TEXT NOT NULL,
-  remarks    TEXT NOT NULL DEFAULT '',
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  issue_no      TEXT NOT NULL UNIQUE,
+  plant_id      INTEGER NOT NULL REFERENCES plants(id),
+  asset_id      INTEGER REFERENCES assets(id),
+  transporter_id INTEGER REFERENCES transporters(id),
+  rate          REAL,
+  amount        REAL,
+  litres        REAL NOT NULL,
+  date          TEXT NOT NULL,
+  remarks       TEXT NOT NULL DEFAULT '',
+  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS opening_balances (
@@ -1730,6 +1737,18 @@ CREATE INDEX idx_part_moves_asset ON spare_part_movements(asset_id)`
     sql: `ALTER TABLE productions ADD COLUMN uom VARCHAR(8) NOT NULL DEFAULT 'CM';
 ALTER TABLE productions ADD COLUMN quantity DOUBLE NOT NULL DEFAULT 0;
 UPDATE productions SET quantity = raw_qty WHERE quantity = 0`
+  },
+  {
+    // Spare parts gain a part number + rate; stock movements record a rate/value;
+    // diesel issues can be charged to a transporter.
+    id: "021_parts_rate_diesel_transporter",
+    sql: `ALTER TABLE spare_parts ADD COLUMN part_no VARCHAR(191) NOT NULL DEFAULT '';
+ALTER TABLE spare_parts ADD COLUMN rate DOUBLE;
+ALTER TABLE spare_part_movements ADD COLUMN rate DOUBLE;
+ALTER TABLE spare_part_movements ADD COLUMN amount DOUBLE;
+ALTER TABLE diesel_issues ADD COLUMN transporter_id INT;
+ALTER TABLE diesel_issues ADD COLUMN rate DOUBLE;
+ALTER TABLE diesel_issues ADD COLUMN amount DOUBLE`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -1803,6 +1822,13 @@ async function sqliteLegacyMigrate(adapter2) {
   await addColumn("productions", "uom", `TEXT NOT NULL DEFAULT 'CM'`);
   await addColumn("productions", "quantity", "REAL NOT NULL DEFAULT 0");
   await adapter2.execRaw(`UPDATE productions SET quantity = raw_qty WHERE quantity = 0`);
+  await addColumn("spare_parts", "part_no", `TEXT NOT NULL DEFAULT ''`);
+  await addColumn("spare_parts", "rate", "REAL");
+  await addColumn("spare_part_movements", "rate", "REAL");
+  await addColumn("spare_part_movements", "amount", "REAL");
+  await addColumn("diesel_issues", "transporter_id", "INTEGER");
+  await addColumn("diesel_issues", "rate", "REAL");
+  await addColumn("diesel_issues", "amount", "REAL");
 }
 async function importProductsFromSettings(adapter2) {
   const all = (await adapter2.exec(`SELECT id, name FROM products ORDER BY id`, void 0, null)).rows;
@@ -5608,6 +5634,19 @@ async function buildEntries(partyType, partyId) {
           debit: 0,
           credit: x.charge
         });
+    const dsl = await d.prepare(
+      `SELECT issue_no, date, created_at, COALESCE(litres,0) AS litres, COALESCE(amount,0) AS amount
+         FROM diesel_issues WHERE transporter_id = ? AND COALESCE(amount,0) > 0`
+    ).all(partyId);
+    for (const x of dsl)
+      entries.push({
+        date: x.date,
+        created_at: x.created_at,
+        particulars: `Diesel issued \u2014 ${x.litres} L`,
+        ref: x.issue_no,
+        debit: x.amount,
+        credit: 0
+      });
   }
   const payments = await getDb().prepare(`SELECT * FROM payments WHERE party_type = ? AND party_id = ?`).all(partyType, partyId);
   for (const p of payments) {
@@ -5904,13 +5943,20 @@ async function listDieselIssues(filter = {}) {
   }
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
   return await d.prepare(
-    `SELECT di.*, p.name AS plant_name, a.name AS asset_name
+    `SELECT di.*, p.name AS plant_name, a.name AS asset_name, t.name AS transporter_name
        FROM diesel_issues di
        JOIN plants p ON p.id = di.plant_id
        LEFT JOIN assets a ON a.id = di.asset_id
+       LEFT JOIN transporters t ON t.id = di.transporter_id
        ${clause}
        ORDER BY di.date DESC, di.id DESC`
   ).all(params);
+}
+function issueChargeFields(p) {
+  const transporter_id = p.transporter_id ? Number(p.transporter_id) : null;
+  const rate = p.rate == null || p.rate === "" ? null : Number(p.rate);
+  const amount = transporter_id && rate != null ? money2(litres(Number(p.litres)) * rate) : null;
+  return { transporter_id, rate: transporter_id ? rate : null, amount };
 }
 async function createDieselIssue(p) {
   const d = getDb();
@@ -5918,21 +5964,43 @@ async function createDieselIssue(p) {
   const available = (await stockOf(d, p.plant_id)).balance;
   if (Number(p.litres) > available)
     throw new Error(`Not enough diesel in stock. Available: ${available} L, requested: ${p.litres} L.`);
+  const charge = issueChargeFields(p);
   const no = await nextNumber("DIS", "diesel_issue");
   const info = await d.prepare(
-    `INSERT INTO diesel_issues (issue_no, plant_id, asset_id, litres, date, remarks)
-       VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(no, p.plant_id, p.asset_id ?? null, litres(Number(p.litres)), p.date, p.remarks ?? "");
+    `INSERT INTO diesel_issues (issue_no, plant_id, asset_id, transporter_id, litres, rate, amount, date, remarks)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    no,
+    p.plant_id,
+    p.asset_id ?? null,
+    charge.transporter_id,
+    litres(Number(p.litres)),
+    charge.rate,
+    charge.amount,
+    p.date,
+    p.remarks ?? ""
+  );
   return await d.prepare(`SELECT * FROM diesel_issues WHERE id = ?`).get(info.lastInsertRowid);
 }
 async function updateDieselIssue(p) {
   const d = getDb();
   if (!p.id) throw new Error("Missing issue id.");
   if (!(Number(p.litres) > 0)) throw new Error("Litres must be greater than 0.");
+  const charge = issueChargeFields(p);
   await d.transaction(async () => {
     await d.prepare(
-      `UPDATE diesel_issues SET plant_id=?, asset_id=?, litres=?, date=?, remarks=? WHERE id=?`
-    ).run(p.plant_id, p.asset_id ?? null, litres(Number(p.litres)), p.date, p.remarks ?? "", p.id);
+      `UPDATE diesel_issues SET plant_id=?, asset_id=?, transporter_id=?, litres=?, rate=?, amount=?, date=?, remarks=? WHERE id=?`
+    ).run(
+      p.plant_id,
+      p.asset_id ?? null,
+      charge.transporter_id,
+      litres(Number(p.litres)),
+      charge.rate,
+      charge.amount,
+      p.date,
+      p.remarks ?? "",
+      p.id
+    );
     if ((await stockOf(d, p.plant_id)).balance < 0)
       throw new Error("Edit would issue more diesel than is in stock.");
   });
@@ -6458,6 +6526,13 @@ var TYPES = ["new", "repairable", "scrap"];
 function round33(n) {
   return Math.round((Number(n) + Number.EPSILON) * 1e3) / 1e3;
 }
+function round24(n) {
+  return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+}
+function rateOrNull(v) {
+  const n = Number(v);
+  return v != null && v !== "" && n > 0 ? round24(n) : null;
+}
 function normalizeType(value) {
   return TYPES.includes(value) ? value : "new";
 }
@@ -6468,16 +6543,20 @@ async function partBalance(d, partId) {
 async function addPartMovement(d, input) {
   const qty = round33(input.quantity);
   if (!qty) return;
+  const rate = rateOrNull(input.rate);
+  const amount = rate != null ? round24(Math.abs(qty) * rate) : null;
   await d.prepare(
     `INSERT INTO spare_part_movements
-       (part_id, asset_id, movement_type, ref_no, quantity, date, note)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+       (part_id, asset_id, movement_type, ref_no, quantity, rate, amount, date, note)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     input.part_id,
     input.asset_id ?? null,
     input.movement_type,
     input.ref_no ?? "",
     qty,
+    rate,
+    amount,
     input.date,
     input.note ?? ""
   );
@@ -6510,6 +6589,8 @@ async function createPart(p) {
   if (!name) throw new Error("Part name is required.");
   const partType = normalizeType(p.part_type);
   const unit = properCase(p.unit || "PCS") || "PCS";
+  const partNo = (p.part_no || "").trim().toUpperCase();
+  const rate = rateOrNull(p.rate);
   const duplicate = await d.prepare(
     `SELECT id FROM spare_parts
        WHERE name=? AND part_type=? AND COALESCE(plant_id,0)=COALESCE(?,0)`
@@ -6517,14 +6598,16 @@ async function createPart(p) {
   if (duplicate) throw new Error("This part and stock type already exists for the selected plant.");
   const id = await d.transaction(async () => {
     const info = await d.prepare(
-      `INSERT INTO spare_parts (name, part_type, unit, plant_id, min_qty, remarks)
-         VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO spare_parts (name, part_no, part_type, unit, plant_id, min_qty, rate, remarks)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       name,
+      partNo,
       partType,
       unit,
       p.plant_id ?? null,
       Math.max(0, Number(p.min_qty) || 0),
+      rate,
       p.remarks ?? ""
     );
     const partId = Number(info.lastInsertRowid);
@@ -6535,6 +6618,7 @@ async function createPart(p) {
         asset_id: null,
         movement_type: "opening",
         quantity: opening,
+        rate,
         date: p.opening_date || (/* @__PURE__ */ new Date()).toISOString().slice(0, 10),
         note: p.opening_note || "Opening stock"
       });
@@ -6548,13 +6632,15 @@ async function updatePart(p) {
   const name = properCase(p.name);
   if (!name) throw new Error("Part name is required.");
   await getDb().prepare(
-    `UPDATE spare_parts SET name=?, part_type=?, unit=?, plant_id=?, min_qty=?, remarks=? WHERE id=?`
+    `UPDATE spare_parts SET name=?, part_no=?, part_type=?, unit=?, plant_id=?, min_qty=?, rate=?, remarks=? WHERE id=?`
   ).run(
     name,
+    (p.part_no || "").trim().toUpperCase(),
     normalizeType(p.part_type),
     properCase(p.unit || "PCS") || "PCS",
     p.plant_id ?? null,
     Math.max(0, Number(p.min_qty) || 0),
+    rateOrNull(p.rate),
     p.remarks ?? "",
     p.id
   );
@@ -6564,13 +6650,20 @@ async function stockIn(payload) {
   const d = getDb();
   const qty = round33(Math.abs(Number(payload.quantity)));
   if (!(qty > 0)) throw new Error("Stock-in quantity must be greater than 0.");
-  await addPartMovement(d, {
-    part_id: payload.part_id,
-    asset_id: null,
-    movement_type: "stock_in",
-    quantity: qty,
-    date: payload.date,
-    note: payload.note || "Stock received"
+  const rate = rateOrNull(payload.rate);
+  await d.transaction(async () => {
+    await addPartMovement(d, {
+      part_id: payload.part_id,
+      asset_id: null,
+      movement_type: "stock_in",
+      quantity: qty,
+      rate,
+      date: payload.date,
+      note: payload.note || "Stock received"
+    });
+    if (rate != null) {
+      await d.prepare(`UPDATE spare_parts SET rate=? WHERE id=?`).run(rate, payload.part_id);
+    }
   });
   return { ok: true };
 }
@@ -6585,6 +6678,7 @@ async function stockOut(payload) {
       asset_id: payload.asset_id,
       movement_type: "stock_out",
       quantity: -qty,
+      rate: payload.rate,
       date: payload.date,
       note: payload.note || "Issued to machine / vehicle"
     });
