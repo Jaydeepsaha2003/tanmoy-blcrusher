@@ -196,7 +196,7 @@ interface RawEntry {
  *              Positive balance = profit on the rack (excl. raw material cost).
  */
 /** Party ledgers that support a manual opening balance. */
-const OPENING_TYPES: LedgerType[] = ['customer', 'supplier', 'transporter', 'outsource']
+const OPENING_TYPES: LedgerType[] = ['customer', 'supplier', 'transporter', 'outsource', 'plant']
 
 /** A synthetic 'Opening Balance' entry from the stored opening, or null. */
 async function openingEntry(partyType: LedgerType, partyId: number): Promise<RawEntry | null> {
@@ -1325,6 +1325,14 @@ export async function getLedger(payload: {
     })
   }
 
+  // A plant statement also carries its outstanding receivable/payable and the
+  // manual opening carry-forward, shown as a summary above the P&L lines.
+  let extra: { opening?: number; receivable?: number; payable?: number } = {}
+  if (payload.party_type === 'plant') {
+    const rp = await plantReceivablePayable(payload.party_id)
+    extra = { opening: await plantOpeningNet(payload.party_id, sign), receivable: rp.receivable, payable: rp.payable }
+  }
+
   return {
     party_type: payload.party_type,
     party_id: payload.party_id,
@@ -1332,8 +1340,49 @@ export async function getLedger(payload: {
     entries,
     total_debit: roundMoney(totalDebit),
     total_credit: roundMoney(totalCredit),
-    closing: roundMoney(bal)
+    closing: roundMoney(bal),
+    ...extra
   }
+}
+
+/** A plant's outstanding receivable (unpaid sales) and payable (unpaid supplier/diesel/outsource bills). */
+async function plantReceivablePayable(plantId: number): Promise<{ receivable: number; payable: number }> {
+  const d = getDb()
+  const r = (await d
+    .prepare(
+      `SELECT COALESCE(SUM(
+          (COALESCE(amount,0)
+           + CASE WHEN transport_billed=1 THEN transport_charge ELSE 0 END
+           + CASE WHEN other_billed=1 THEN other_charge ELSE 0 END)
+          - COALESCE(paid_amount,0)),0) AS q
+       FROM dispatches WHERE plant_id = @pid AND to_plant_id IS NULL`
+    )
+    .get({ pid: plantId })) as { q: number }
+  const p = (await d
+    .prepare(
+      `SELECT
+        (SELECT COALESCE(SUM(COALESCE(amount,0)-COALESCE(paid_amount,0)),0)
+           FROM purchases WHERE plant_id=@pid AND linked_dispatch_id IS NULL) +
+        (SELECT COALESCE(SUM(COALESCE(amount,0)-COALESCE(paid_amount,0)),0)
+           FROM diesel_purchases WHERE plant_id=@pid) +
+        (SELECT COALESCE(SUM(COALESCE(amount,0)-COALESCE(paid_amount,0)),0)
+           FROM plant_expenses WHERE plant_id=@pid AND outsource_id IS NOT NULL) +
+        (SELECT COALESCE(SUM(ROUND(COALESCE(buy_rate,0)*COALESCE(sale_quantity,quantity),2)),0)
+           FROM dispatches WHERE plant_id=@pid AND outsourced=1 AND outsource_id IS NOT NULL AND to_plant_id IS NULL) AS q`
+    )
+    .get({ pid: plantId })) as { q: number }
+  return { receivable: roundMoney(r.q), payable: roundMoney(p.q) }
+}
+
+/** The plant's manual opening balance, sign-adjusted (profit positive). */
+async function plantOpeningNet(plantId: number, sign: 1 | -1): Promise<number> {
+  const row = (await getDb()
+    .prepare(`SELECT amount, direction FROM opening_balances WHERE party_type='plant' AND party_id=?`)
+    .get(plantId)) as { amount: number; direction: string } | undefined
+  if (!row || !(row.amount > 0)) return 0
+  const debit = row.direction === 'debit' ? row.amount : 0
+  const credit = row.direction === 'credit' ? row.amount : 0
+  return roundMoney(sign * (debit - credit))
 }
 
 export async function getPartyBalances(payload: {
@@ -1428,7 +1477,7 @@ export async function setOpeningBalance(payload: {
   remarks?: string
 }): Promise<{ ok: boolean; error?: string }> {
   if (!OPENING_TYPES.includes(payload.party_type))
-    return { ok: false, error: 'Opening balance is only available for customer, supplier, transporter and outsource ledgers.' }
+    return { ok: false, error: 'Opening balance is only available for customer, supplier, transporter, outsource and plant ledgers.' }
   if (!payload.party_id) return { ok: false, error: 'Select a party.' }
   const amount = roundMoney(Number(payload.amount) || 0)
   const direction = payload.direction === 'credit' ? 'credit' : 'debit'

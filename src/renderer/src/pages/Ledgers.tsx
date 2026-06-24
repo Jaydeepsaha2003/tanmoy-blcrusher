@@ -86,7 +86,7 @@ function balanceText(t: LedgerType, v: number): string {
 }
 
 /** Ledgers that support a manual opening balance. */
-const OPENING_TYPES: LedgerType[] = ['customer', 'supplier', 'transporter', 'outsource']
+const OPENING_TYPES: LedgerType[] = ['customer', 'supplier', 'transporter', 'outsource', 'plant']
 
 /** Financial year (Apr–Mar) start-year for a date, and its label e.g. "2025-26". */
 function fyStartYearOf(d: Date): number {
@@ -485,6 +485,15 @@ export function Ledgers(): React.JSX.Element {
               </div>
             </div>
 
+            {partyType === 'plant' && ledger && (
+              <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <PlantTile label="Opening Balance" value={ledger.opening ?? 0} good={(ledger.opening ?? 0) >= 0} hint="Carried forward (set via Opening Balance)" />
+                <PlantTile label="Receivable" value={ledger.receivable ?? 0} good={(ledger.receivable ?? 0) >= 0} hint="Unpaid on this plant's sales" />
+                <PlantTile label="Payable" value={ledger.payable ?? 0} good={(ledger.payable ?? 0) <= 0} hint="Unpaid supplier / diesel / outsource bills" />
+                <PlantTile label="Net (Profit / Loss)" value={ledger.closing} good={ledger.closing >= 0} hint="Income − costs (P&L)" />
+              </div>
+            )}
+
             {!ledger || ledger.entries.length === 0 ? (
               <EmptyState message="No transactions for this party in the selected period." />
             ) : (
@@ -638,5 +647,29 @@ export function Ledgers(): React.JSX.Element {
         </Modal>
       )}
     </>
+  )
+}
+
+/** A small summary tile for the plant statement — absolute amount coloured green (in your
+ *  favour) or red (against you), so it reads without a ± sign. */
+function PlantTile({
+  label,
+  value,
+  good,
+  hint
+}: {
+  label: string
+  value: number
+  good: boolean
+  hint: string
+}): React.JSX.Element {
+  return (
+    <div className="rounded-xl border bg-card p-4 shadow-sm">
+      <div className="truncate text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className={`tnum text-xl font-bold leading-tight ${good ? 'text-success' : 'text-destructive'}`}>
+        {fmtMoney(Math.abs(value))}
+      </div>
+      <div className="mt-0.5 text-[11px] text-muted-foreground">{hint}</div>
+    </div>
   )
 }

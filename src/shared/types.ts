@@ -603,6 +603,11 @@ export interface LedgerStatement {
   total_debit: number
   total_credit: number
   closing: number
+  /** Plant statements only: the manual opening carry-forward (sign-adjusted), plus the
+   *  plant's outstanding Receivable (unpaid sales) and Payable (unpaid bills). */
+  opening?: number
+  receivable?: number
+  payable?: number
 }
 
 export interface PartyBalance {
