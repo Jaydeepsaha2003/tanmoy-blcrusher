@@ -452,6 +452,7 @@ CREATE TABLE IF NOT EXISTS dispatches (
   outsource_id    INTEGER,
   transporter_id  INTEGER,
   rate            REAL,
+  buy_rate        REAL,
   amount          REAL,
   transport_charge REAL NOT NULL DEFAULT 0,
   transport_billed INTEGER NOT NULL DEFAULT 0,
@@ -1749,6 +1750,11 @@ ALTER TABLE spare_part_movements ADD COLUMN amount DOUBLE;
 ALTER TABLE diesel_issues ADD COLUMN transporter_id INT;
 ALTER TABLE diesel_issues ADD COLUMN rate DOUBLE;
 ALTER TABLE diesel_issues ADD COLUMN amount DOUBLE`
+  },
+  {
+    // Outsource sale: a buy rate so the vendor's payable + the live profit can be derived.
+    id: "022_dispatch_buy_rate",
+    sql: `ALTER TABLE dispatches ADD COLUMN buy_rate DOUBLE`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -1829,6 +1835,7 @@ async function sqliteLegacyMigrate(adapter2) {
   await addColumn("diesel_issues", "transporter_id", "INTEGER");
   await addColumn("diesel_issues", "rate", "REAL");
   await addColumn("diesel_issues", "amount", "REAL");
+  await addColumn("dispatches", "buy_rate", "REAL");
 }
 async function importProductsFromSettings(adapter2) {
   const all = (await adapter2.exec(`SELECT id, name FROM products ORDER BY id`, void 0, null)).rows;
@@ -3744,12 +3751,14 @@ function roundQty2(n) {
   return Math.round((n + Number.EPSILON) * 1e3) / 1e3;
 }
 function normalize(p, factors) {
-  if (!(Number(p.quantity) > 0)) throw new Error("Actual quantity must be greater than 0.");
   if (!["CM", "TON", "CFT"].includes(p.uom)) throw new Error("Invalid unit of measure.");
   const product = properCase(p.product_name);
-  const actualQty = Number(p.quantity);
+  const outsourcedFlag = !!p.outsourced;
   const saleQty = p.sale_quantity == null || p.sale_quantity === "" ? null : Number(p.sale_quantity);
   if (saleQty != null && saleQty < 0) throw new Error("Sale quantity cannot be negative.");
+  const rawActual = Number(p.quantity);
+  const actualQty = rawActual > 0 ? rawActual : outsourcedFlag && saleQty != null && saleQty > 0 ? saleQty : rawActual;
+  if (!(actualQty > 0)) throw new Error("Actual quantity must be greater than 0.");
   const billableQty = saleQty != null ? saleQty : actualQty;
   const qtyCm = roundQty2(toCm(actualQty, p.uom, factors));
   const amount = computeAmount2(p.rate, billableQty);
@@ -3757,7 +3766,8 @@ function normalize(p, factors) {
   const other = Number(p.other_charge) || 0;
   const billed = (amount ?? 0) + (p.transport_billed ? transport : 0) + (p.other_billed ? other : 0);
   const paid = Number(p.paid_amount) || 0;
-  const outsourced = !!p.outsourced;
+  const outsourced = outsourcedFlag;
+  const buyRate = outsourced && p.buy_rate != null && p.buy_rate !== "" ? Number(p.buy_rate) : null;
   return {
     product,
     qtyCm,
@@ -3772,6 +3782,7 @@ function normalize(p, factors) {
       qty_cm: qtyCm,
       sale_quantity: saleQty,
       rate: p.rate,
+      buy_rate: buyRate,
       amount,
       transport_charge: transport,
       transport_billed: p.transport_billed ? 1 : 0,
@@ -3830,11 +3841,11 @@ async function createDispatch(p) {
     const no = await resolveInvoiceNo(d, p.dispatch_no);
     const info = await d.prepare(
       `INSERT INTO dispatches
-          (dispatch_no, customer_id, plant_id, product_name, uom, quantity, qty_cm, sale_quantity, rate, amount,
+          (dispatch_no, customer_id, plant_id, product_name, uom, quantity, qty_cm, sale_quantity, rate, buy_rate, amount,
            transport_charge, transport_billed, other_charge, other_billed,
            vehicle_no, vehicle_type, transporter_id, driver, challan_no, outsourced, outsource_id,
            delivery_status, dispatch_status, payment_status, paid_amount, to_plant_id, linked_purchase_id, date, remarks)
-         VALUES (@dispatch_no,@customer_id,@plant_id,@product_name,@uom,@quantity,@qty_cm,@sale_quantity,@rate,@amount,
+         VALUES (@dispatch_no,@customer_id,@plant_id,@product_name,@uom,@quantity,@qty_cm,@sale_quantity,@rate,@buy_rate,@amount,
            @transport_charge,@transport_billed,@other_charge,@other_billed,
            @vehicle_no,@vehicle_type,@transporter_id,@driver,@challan_no,@outsourced,@outsource_id,
            @delivery_status,@dispatch_status,@payment_status,@paid_amount,@to_plant_id,@linked_purchase_id,@date,@remarks)`
@@ -3889,7 +3900,7 @@ async function updateDispatch(p) {
     }
     await d.prepare(
       `UPDATE dispatches SET dispatch_no=@dispatch_no, customer_id=@customer_id, plant_id=@plant_id, product_name=@product_name,
-        uom=@uom, quantity=@quantity, qty_cm=@qty_cm, sale_quantity=@sale_quantity, rate=@rate, amount=@amount,
+        uom=@uom, quantity=@quantity, qty_cm=@qty_cm, sale_quantity=@sale_quantity, rate=@rate, buy_rate=@buy_rate, amount=@amount,
         transport_charge=@transport_charge, transport_billed=@transport_billed,
         other_charge=@other_charge, other_billed=@other_billed,
         vehicle_no=@vehicle_no, vehicle_type=@vehicle_type, transporter_id=@transporter_id, driver=@driver, challan_no=@challan_no,
@@ -5415,6 +5426,25 @@ async function buildEntries(partyType, partyId) {
           created_at: x.created_at,
           particulars: `Machine hire \u2014 ${x.aname}`,
           ref: x.sale_no,
+          debit: 0,
+          credit: x.amount
+        });
+    const osale = await d.prepare(
+      `SELECT dispatch_no, date, created_at, product_name, uom,
+                COALESCE(sale_quantity, quantity) AS qty,
+                ROUND(COALESCE(buy_rate,0) * COALESCE(sale_quantity, quantity), 2) AS amount
+         FROM dispatches
+         WHERE outsourced = 1 AND outsource_id = ? AND COALESCE(buy_rate,0) > 0`
+    ).all(partyId);
+    for (const x of osale)
+      if (x.amount > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Outsourced supply \u2014 ${x.product_name}`,
+          ref: x.dispatch_no,
+          qty: x.qty,
+          uom: x.uom,
           debit: 0,
           credit: x.amount
         });
@@ -7553,7 +7583,9 @@ async function getDashboard(payload = {}) {
           (SELECT COALESCE(SUM(COALESCE(amount,0) - COALESCE(paid_amount,0)),0)
              FROM diesel_purchases WHERE 1=1${plAnd}) +
           (SELECT COALESCE(SUM(COALESCE(amount,0) - COALESCE(paid_amount,0)),0)
-             FROM plant_expenses WHERE outsource_id IS NOT NULL${plAnd}) AS q`
+             FROM plant_expenses WHERE outsource_id IS NOT NULL${plAnd}) +
+          (SELECT COALESCE(SUM(ROUND(COALESCE(buy_rate,0) * COALESCE(sale_quantity, quantity), 2)),0)
+             FROM dispatches WHERE outsourced=1 AND outsource_id IS NOT NULL AND to_plant_id IS NULL${plAnd}) AS q`
     ).get()
   );
   const openingBalance = money7(

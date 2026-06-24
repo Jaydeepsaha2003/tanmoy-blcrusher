@@ -12072,6 +12072,16 @@ const Copy = createLucideIcon("Copy", [
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
+const CornerDownLeft = createLucideIcon("CornerDownLeft", [
+  ["polyline", { points: "9 10 4 15 9 20", key: "r3jprv" }],
+  ["path", { d: "M20 4v7a4 4 0 0 1-4 4H4", key: "6o5b7l" }]
+]);
+/**
+ * @license lucide-react v0.468.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
 const ExternalLink = createLucideIcon("ExternalLink", [
   ["path", { d: "M15 3h6v6", key: "1q9fwt" }],
   ["path", { d: "M10 14 21 3", key: "gplh6r" }],
@@ -12442,6 +12452,28 @@ const Package = createLucideIcon("Package", [
   ["path", { d: "M12 22V12", key: "d0xqtd" }],
   ["path", { d: "m3.3 7 7.703 4.734a2 2 0 0 0 1.994 0L20.7 7", key: "yx3hmr" }],
   ["path", { d: "m7.5 4.27 9 5.15", key: "1c824w" }]
+]);
+/**
+ * @license lucide-react v0.468.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const PanelLeftClose = createLucideIcon("PanelLeftClose", [
+  ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", key: "afitv7" }],
+  ["path", { d: "M9 3v18", key: "fh3hqa" }],
+  ["path", { d: "m16 15-3-3 3-3", key: "14y99z" }]
+]);
+/**
+ * @license lucide-react v0.468.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const PanelLeftOpen = createLucideIcon("PanelLeftOpen", [
+  ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", key: "afitv7" }],
+  ["path", { d: "M9 3v18", key: "fh3hqa" }],
+  ["path", { d: "m14 9 3 3-3 3", key: "8010ee" }]
 ]);
 /**
  * @license lucide-react v0.468.0 - ISC
@@ -36047,6 +36079,7 @@ const ROLE_BADGE = {
   admin: "Administrator",
   staff: "Staff"
 };
+const COLLAPSE_KEY = "bl_sidebar_collapsed";
 function AppShell({
   children,
   onLogout
@@ -36055,8 +36088,21 @@ function AppShell({
   const groups = useVisibleNav();
   const { data: branding } = useQuery({ queryKey: ["branding"], queryFn: api.rates.getBranding });
   const [navOpen, setNavOpen] = reactExports.useState(false);
+  const [collapsed, setCollapsed] = reactExports.useState(() => {
+    try {
+      return localStorage.getItem(COLLAPSE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
   const loc = useLocation();
   reactExports.useEffect(() => setNavOpen(false), [loc.pathname]);
+  reactExports.useEffect(() => {
+    try {
+      localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
+    } catch {
+    }
+  }, [collapsed]);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex h-full", children: [
     navOpen && /* @__PURE__ */ jsxRuntimeExports.jsx(
       "div",
@@ -36070,11 +36116,12 @@ function AppShell({
       "aside",
       {
         className: cn(
-          "fixed inset-y-0 left-0 z-40 flex w-[260px] shrink-0 flex-col border-r bg-card transition-transform duration-200 lg:static lg:z-auto lg:w-[244px] lg:translate-x-0",
-          navOpen ? "translate-x-0" : "-translate-x-full"
+          "fixed inset-y-0 left-0 z-40 flex w-[260px] shrink-0 flex-col border-r bg-card transition-all duration-200 lg:static lg:z-auto lg:translate-x-0",
+          navOpen ? "translate-x-0" : "-translate-x-full",
+          collapsed ? "lg:w-[68px]" : "lg:w-[244px]"
         ),
         children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 border-b px-5 py-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: cn("flex items-center gap-3 border-b py-4", collapsed ? "lg:justify-center lg:px-2 px-5" : "px-5"), children: [
             branding?.logo ? /* @__PURE__ */ jsxRuntimeExports.jsx(
               "img",
               {
@@ -36083,33 +36130,35 @@ function AppShell({
                 className: "h-10 w-10 shrink-0 rounded-xl object-cover shadow-sm ring-1 ring-black/5"
               }
             ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Mountain, { size: 21 }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: cn("min-w-0", collapsed && "lg:hidden"), children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "truncate text-sm font-bold leading-tight", children: branding?.business_name || "BL Crushing" }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] text-muted-foreground", children: "Stone Crusher" })
             ] })
           ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("nav", { className: "flex-1 space-y-5 overflow-y-auto px-3 py-4", children: groups.map((g2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-2.5 pb-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-muted-foreground/80", children: g2.heading }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("nav", { className: cn("flex-1 space-y-5 overflow-y-auto py-4", collapsed ? "lg:px-2 px-3" : "px-3"), children: groups.map((g2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: cn("px-2.5 pb-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-muted-foreground/80", collapsed && "lg:hidden"), children: g2.heading }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-0.5", children: g2.items.map((it2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
               NavLink,
               {
                 to: it2.to,
+                title: collapsed ? it2.label : void 0,
                 className: ({ isActive }) => cn(
                   "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-all",
+                  collapsed && "lg:justify-center lg:px-0",
                   isActive ? "bg-primary text-primary-foreground shadow-sm" : "text-foreground/70 hover:bg-accent hover:text-accent-foreground"
                 ),
                 children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsx(it2.icon, { size: 17, className: "shrink-0" }),
-                  it2.label
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: cn(collapsed && "lg:hidden"), children: it2.label })
                 ]
               },
               it2.to
             )) })
           ] }, g2.heading)) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "border-t p-3", children: [
-            user && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-2 flex items-center gap-2.5 rounded-lg px-2.5 py-1.5", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-bold uppercase text-primary", children: (user.name || user.username).slice(0, 2) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: cn("border-t p-3", collapsed && "lg:px-2"), children: [
+            user && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: cn("mb-2 flex items-center gap-2.5 rounded-lg px-2.5 py-1.5", collapsed && "lg:justify-center lg:px-0"), children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold uppercase text-primary", children: (user.name || user.username).slice(0, 2) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: cn("min-w-0", collapsed && "lg:hidden"), children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "truncate text-[13px] font-semibold leading-tight", children: user.name || user.username }),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "truncate text-[11px] text-muted-foreground", children: [
                   ROLE_BADGE[user.role] ?? user.role,
@@ -36117,15 +36166,19 @@ function AppShell({
                 ] })
               ] })
             ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(ChangePassword, {}),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(ChangePassword, { collapsed }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs(
               "button",
               {
                 onClick: onLogout,
-                className: "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium text-foreground/70 transition-colors hover:bg-destructive/10 hover:text-destructive",
+                title: collapsed ? "Lock / Logout" : void 0,
+                className: cn(
+                  "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium text-foreground/70 transition-colors hover:bg-destructive/10 hover:text-destructive",
+                  collapsed && "lg:justify-center lg:px-0"
+                ),
                 children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsx(LogOut, { size: 17 }),
-                  "Lock / Logout"
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: cn(collapsed && "lg:hidden"), children: "Lock / Logout" })
                 ]
               }
             )
@@ -36144,13 +36197,106 @@ function AppShell({
             children: /* @__PURE__ */ jsxRuntimeExports.jsx(Menu, { size: 20 })
           }
         ),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-1 items-center justify-end gap-2.5", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            className: "hidden rounded-md p-1.5 text-muted-foreground hover:bg-accent lg:inline-flex",
+            onClick: () => setCollapsed((c2) => !c2),
+            "aria-label": collapsed ? "Expand sidebar" : "Collapse sidebar",
+            title: collapsed ? "Expand sidebar" : "Collapse sidebar",
+            children: collapsed ? /* @__PURE__ */ jsxRuntimeExports.jsx(PanelLeftOpen, { size: 20 }) : /* @__PURE__ */ jsxRuntimeExports.jsx(PanelLeftClose, { size: 20 })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(MenuSearch, {}),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ml-auto flex items-center gap-2.5", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "hidden text-xs font-medium text-muted-foreground sm:inline", children: "Active plant" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(PlantSwitcher, {})
         ] })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex-1 overflow-y-auto", children })
     ] })
+  ] });
+}
+function MenuSearch() {
+  const groups = useVisibleNav();
+  const navigate = useNavigate();
+  const [q2, setQ] = reactExports.useState("");
+  const [open2, setOpen] = reactExports.useState(false);
+  const [active, setActive] = reactExports.useState(0);
+  const boxRef = reactExports.useRef(null);
+  const items = reactExports.useMemo(
+    () => groups.flatMap((g2) => g2.items.map((it2) => ({ ...it2, group: g2.heading }))),
+    [groups]
+  );
+  const matches = reactExports.useMemo(() => {
+    const term = q2.trim().toLowerCase();
+    if (!term) return [];
+    return items.filter((it2) => `${it2.label} ${it2.group}`.toLowerCase().includes(term)).slice(0, 8);
+  }, [items, q2]);
+  reactExports.useEffect(() => {
+    function onDoc(e3) {
+      if (boxRef.current && !boxRef.current.contains(e3.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+  reactExports.useEffect(() => setActive(0), [q2]);
+  function go(to) {
+    navigate(to);
+    setQ("");
+    setOpen(false);
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { ref: boxRef, className: "relative w-full max-w-md", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Search, { size: 15, className: "pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "input",
+      {
+        value: q2,
+        onChange: (e3) => {
+          setQ(e3.target.value);
+          setOpen(true);
+        },
+        onFocus: () => setOpen(true),
+        onKeyDown: (e3) => {
+          if (e3.key === "ArrowDown") {
+            e3.preventDefault();
+            setActive((a2) => Math.min(a2 + 1, matches.length - 1));
+          } else if (e3.key === "ArrowUp") {
+            e3.preventDefault();
+            setActive((a2) => Math.max(a2 - 1, 0));
+          } else if (e3.key === "Enter" && matches[active]) {
+            go(matches[active].to);
+          } else if (e3.key === "Escape") {
+            setQ("");
+            setOpen(false);
+          }
+        },
+        placeholder: "Search menus…",
+        className: "h-8 w-full rounded-md border border-input bg-background pl-8 pr-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      }
+    ),
+    open2 && q2.trim() && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute z-50 mt-1 max-h-80 w-full overflow-y-auto rounded-lg border bg-popover py-1 text-popover-foreground shadow-lg", children: matches.length ? matches.map((m2, i2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "button",
+      {
+        onMouseEnter: () => setActive(i2),
+        onClick: () => go(m2.to),
+        className: cn(
+          "flex w-full items-center gap-2.5 px-3 py-2 text-sm",
+          i2 === active ? "bg-accent text-accent-foreground" : "hover:bg-accent/60"
+        ),
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(m2.icon, { size: 16, className: "shrink-0 text-muted-foreground" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex-1 text-left", children: m2.label }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11px] text-muted-foreground", children: m2.group }),
+          i2 === active && /* @__PURE__ */ jsxRuntimeExports.jsx(CornerDownLeft, { size: 13, className: "text-muted-foreground" })
+        ]
+      },
+      m2.to
+    )) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "px-3 py-2 text-sm text-muted-foreground", children: [
+      "No menus match “",
+      q2.trim(),
+      "”."
+    ] }) })
   ] });
 }
 function PlantSwitcher() {
@@ -36202,7 +36348,7 @@ function PageHeader({
 function Page({ children }) {
   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-4 py-5 sm:px-7 sm:py-6", children });
 }
-function ChangePassword() {
+function ChangePassword({ collapsed }) {
   const toast = useToast();
   const [open2, setOpen] = reactExports.useState(false);
   const [current, setCurrent] = reactExports.useState("");
@@ -36229,10 +36375,14 @@ function ChangePassword() {
       "button",
       {
         onClick: () => setOpen(true),
-        className: "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium text-foreground/70 transition-colors hover:bg-accent hover:text-accent-foreground",
+        title: collapsed ? "Change password" : void 0,
+        className: cn(
+          "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium text-foreground/70 transition-colors hover:bg-accent hover:text-accent-foreground",
+          collapsed && "lg:justify-center lg:px-0"
+        ),
         children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(KeyRound, { size: 17 }),
-          "Change password"
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: cn(collapsed && "lg:hidden"), children: "Change password" })
         ]
       }
     ),
@@ -61296,6 +61446,7 @@ function Dispatch() {
       quantity: "",
       sale_quantity: "",
       rate: "",
+      buy_rate: "",
       transport_charge: "",
       transport_billed: false,
       other_charge: "",
@@ -61323,8 +61474,9 @@ function Dispatch() {
     const src = det ?? d2;
     setForm({
       ...src,
-      sell_mode: src.to_plant_id ? "plant" : "customer",
+      sell_mode: src.to_plant_id ? "plant" : src.outsourced ? "outsource" : "customer",
       rate: src.rate ?? "",
+      buy_rate: src.buy_rate ?? "",
       sale_quantity: src.sale_quantity ?? "",
       transport_charge: src.transport_charge ?? "",
       other_charge: src.other_charge ?? "",
@@ -61367,19 +61519,24 @@ function Dispatch() {
   }
   function submit() {
     const interPlant2 = form.sell_mode === "plant";
+    const isOut = form.sell_mode === "outsource";
+    const actual = Number(form.quantity) || 0;
+    const sale = form.sale_quantity === "" || form.sale_quantity == null ? null : Number(form.sale_quantity);
+    const qtyForBackend = isOut ? actual || sale || 0 : actual;
     save.mutate({
       ...form,
       to_plant_id: interPlant2 ? Number(form.to_plant_id) || null : null,
-      quantity: Number(form.quantity),
-      sale_quantity: form.sale_quantity === "" || form.sale_quantity == null ? null : Number(form.sale_quantity),
+      quantity: qtyForBackend,
+      sale_quantity: sale,
       rate: form.rate === "" || form.rate == null ? null : Number(form.rate),
+      buy_rate: isOut && form.buy_rate !== "" && form.buy_rate != null ? Number(form.buy_rate) : null,
       transport_charge: Number(form.transport_charge) || 0,
       other_charge: Number(form.other_charge) || 0,
       paid_amount: Number(form.paid_amount) || 0,
       transport_billed: !!form.transport_billed,
       other_billed: !!form.other_billed,
-      // Inter-plant always uses real plant stock (never outsourced).
-      outsourced: interPlant2 ? false : !!form.outsourced,
+      // Outsource sale = sold without plant stock; inter-plant always uses real stock.
+      outsourced: isOut,
       transporters: (form.transporters ?? []).filter((t3) => t3.transporter_id).map((t3) => ({
         transporter_id: Number(t3.transporter_id),
         vehicle_no: t3.vehicle_no || "",
@@ -61401,10 +61558,14 @@ function Dispatch() {
         "Customer / Plant",
         "Plant",
         "Product",
+        "Outsourced",
+        "Vendor",
         "Qty",
         "UOM",
-        "Rate",
+        "Buy Rate",
+        "Sales Rate",
         "Goods Amt",
+        "Profit",
         "Transport",
         "Other",
         "Invoice Total",
@@ -61418,32 +61579,41 @@ function Dispatch() {
         "Payment",
         "Remarks"
       ],
-      data.map((d2) => [
-        d2.dispatch_no,
-        fmtDate(d2.date),
-        d2.to_plant_id ? `${d2.to_plant_name} (plant)` : d2.customer_name,
-        d2.plant_name,
-        d2.product_name,
-        d2.quantity,
-        d2.uom,
-        d2.rate ?? "",
-        d2.amount ?? "",
-        d2.transport_charge,
-        d2.other_charge,
-        d2.billed_total ?? "",
-        d2.transport_total ?? 0,
-        d2.machine_total ?? 0,
-        d2.paid_amount,
-        d2.vehicle_no,
-        vehicleLabel[d2.vehicle_type],
-        d2.challan_no,
-        d2.delivery_status,
-        d2.payment_status,
-        d2.remarks ?? ""
-      ])
+      data.map((d2) => {
+        const bq = d2.sale_quantity ?? d2.quantity;
+        const outProfit = d2.outsourced && d2.buy_rate != null ? (d2.amount ?? 0) - (d2.buy_rate || 0) * bq : "";
+        return [
+          d2.dispatch_no,
+          fmtDate(d2.date),
+          d2.to_plant_id ? `${d2.to_plant_name} (plant)` : d2.customer_name,
+          d2.plant_name,
+          d2.product_name,
+          d2.outsourced ? "Yes" : "",
+          d2.outsourced ? d2.outsource_name ?? "" : "",
+          d2.quantity,
+          d2.uom,
+          d2.buy_rate ?? "",
+          d2.rate ?? "",
+          d2.amount ?? "",
+          outProfit,
+          d2.transport_charge,
+          d2.other_charge,
+          d2.billed_total ?? "",
+          d2.transport_total ?? 0,
+          d2.machine_total ?? 0,
+          d2.paid_amount,
+          d2.vehicle_no,
+          vehicleLabel[d2.vehicle_type],
+          d2.challan_no,
+          d2.delivery_status,
+          d2.payment_status,
+          d2.remarks ?? ""
+        ];
+      })
     );
   }
   const interPlant = form?.sell_mode === "plant";
+  const isOutsource = form?.sell_mode === "outsource";
   plants.find((pl2) => pl2.id === form?.plant_id);
   const actualQty = Number(form?.quantity) || 0;
   const saleSet = !!form && form.sale_quantity !== "" && form.sale_quantity != null;
@@ -61452,6 +61622,8 @@ function Dispatch() {
   const shortageQty = saleQty != null ? actualQty - saleQty : 0;
   const qtyCm = form ? toCm(actualQty, form.uom) : 0;
   const goods = form && form.rate !== "" ? billableQty * Number(form.rate) : 0;
+  const buyAmount = isOutsource && form && form.buy_rate !== "" && form.buy_rate != null ? billableQty * Number(form.buy_rate) : 0;
+  const profit = goods - buyAmount;
   const billedExtra = form ? (form.transport_billed ? Number(form.transport_charge) || 0 : 0) + (form.other_billed ? Number(form.other_charge) || 0 : 0) : 0;
   const invoiceTotal = goods + billedExtra;
   const available = form ? (selProduct?.balance_qty ?? 0) + (form.id ? Number(form.qty_cm) || 0 : 0) : 0;
@@ -61459,13 +61631,13 @@ function Dispatch() {
   const transportCost = (form?.transporters ?? []).reduce((s2, t3) => s2 + lineCharge(t3), 0);
   const machineCost = (form?.machines ?? []).reduce((s2, m2) => s2 + (Number(m2.qty) || 0) * (Number(m2.rate) || 0), 0);
   const destPlants = plants.filter((p2) => p2.id !== form?.plant_id);
-  const canSave = !!form && !!form.product_name && Number(form.quantity) > 0 && (interPlant ? !!form.to_plant_id : !!form.customer_id) && (interPlant || !form.outsourced ? qtyCm <= available : true);
+  const canSave = !!form && !!form.product_name && (isOutsource ? billableQty > 0 && !!form.outsource_id : Number(form.quantity) > 0) && (interPlant ? !!form.to_plant_id : !!form.customer_id) && (interPlant || !isOutsource ? qtyCm <= available : true);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       PageHeader,
       {
         title: "Direct Sale",
-        description: "Load from the plant and sell to a customer — or transfer to your own other plant",
+        description: "Sell from plant stock, sell outsourced goods (no stock — ledger only), or transfer to your own other plant",
         actions: /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", onClick: exportExcel, disabled: !data.length, children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(FileSpreadsheet, { size: 16 }),
@@ -61539,7 +61711,21 @@ function Dispatch() {
             ] }),
             d2.outsourced ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-[11px] text-muted-foreground", children: [
               "Outsourced",
-              d2.outsource_name ? ` · ${d2.outsource_name}${d2.outsource_head ? ` (${d2.outsource_head})` : ""}` : ""
+              d2.outsource_name ? ` · ${d2.outsource_name}${d2.outsource_head ? ` (${d2.outsource_head})` : ""}` : "",
+              d2.buy_rate != null && (() => {
+                const bq = d2.sale_quantity ?? d2.quantity;
+                const buy = (d2.buy_rate || 0) * bq;
+                const pf2 = (d2.amount ?? 0) - buy;
+                return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                  " · buy ",
+                  fmtMoney(buy),
+                  " · ",
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: pf2 >= 0 ? "text-success" : "text-destructive", children: [
+                    "profit ",
+                    fmtMoney(pf2)
+                  ] })
+                ] });
+              })()
             ] }) : null,
             (d2.vehicle_no || d2.challan_no) && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-[11px] text-muted-foreground", children: [
               vehicleLabel[d2.vehicle_type],
@@ -61591,11 +61777,21 @@ function Dispatch() {
     ] }),
     form && /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { open: open2, onClose: () => setOpen(false), title: form.id ? `Edit ${form.dispatch_no}` : "New Direct Sale", width: "max-w-4xl", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-5", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-wrap gap-2", children: [["customer", "Sell to Customer"], ["plant", "Transfer to Own Plant"]].map(([key, label]) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-wrap gap-2", children: [["customer", "Sell to Customer"], ["outsource", "Outsource Sale"], ["plant", "Transfer to Own Plant"]].map(([key, label]) => /* @__PURE__ */ jsxRuntimeExports.jsx(
           "button",
           {
             type: "button",
-            onClick: () => setForm({ ...form, sell_mode: key, to_plant_id: key === "plant" ? form.to_plant_id : null, outsourced: key === "plant" ? false : form.outsourced }),
+            onClick: () => {
+              if (form.sell_mode === key) return;
+              setForm({
+                ...form,
+                sell_mode: key,
+                to_plant_id: key === "plant" ? form.to_plant_id : null,
+                outsourced: key === "outsource",
+                product_name: "",
+                outsource_id: key === "outsource" ? form.outsource_id : null
+              });
+            },
             className: cn(
               "rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors",
               form.sell_mode === key ? "border-primary bg-primary/5 text-foreground" : "border-input text-muted-foreground hover:bg-accent"
@@ -61656,33 +61852,9 @@ function Dispatch() {
                 ],
                 placeholder: "Select product…"
               }
-            ) }) }),
-            !interPlant && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              "label",
-              {
-                className: cn(
-                  "flex cursor-pointer items-start gap-2 self-end rounded-lg border px-3 py-2 text-sm transition-colors",
-                  form.outsourced ? "border-primary bg-primary/5" : "border-input hover:bg-accent"
-                ),
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    "input",
-                    {
-                      type: "checkbox",
-                      className: "mt-0.5 h-4 w-4 shrink-0",
-                      checked: !!form.outsourced,
-                      onChange: (e3) => setForm({ ...form, outsourced: e3.target.checked, product_name: "", outsource_id: e3.target.checked ? form.outsource_id : null })
-                    }
-                  ),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "font-medium leading-tight", children: [
-                    "Outsourced",
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "block text-[11px] font-normal text-muted-foreground", children: "Sold without using plant stock" })
-                  ] })
-                ]
-              }
-            )
+            ) }) })
           ] }),
-          form.outsourced && !interPlant && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Outsource Vendor", hint: "Who the outsourced material came from", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          isOutsource && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Outsource Vendor", required: true, hint: "Who the outsourced material came from — gets the buy posted to their ledger", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
             SearchSelect,
             {
               value: form.outsource_id ?? "",
@@ -61692,17 +61864,26 @@ function Dispatch() {
             }
           ) }) })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Section, { title: "Quantity & Rate", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4 sm:grid-cols-3", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `Actual Qty (${form.uom})`, required: true, hint: qtyCm > 0 ? `${fmtQty(qtyCm)} m³ off stock` : "Dispatched from plant", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.quantity, onChange: (e3) => setForm({ ...form, quantity: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Section, { title: "Quantity & Rate", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: cn("grid grid-cols-2 gap-4", isOutsource ? "sm:grid-cols-4" : "sm:grid-cols-3"), children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            Field,
+            {
+              label: `Actual Qty (${form.uom})`,
+              required: !isOutsource,
+              hint: isOutsource ? "Optional — no stock moves" : qtyCm > 0 ? `${fmtQty(qtyCm)} m³ off stock` : "Dispatched from plant",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.quantity, onChange: (e3) => setForm({ ...form, quantity: e3.target.value }), placeholder: isOutsource ? "Optional" : "" })
+            }
+          ),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             Field,
             {
               label: `Sale Qty (${form.uom})`,
-              hint: saleQty != null ? shortageQty > 0 ? `Shortage ${fmtQty(shortageQty)} ${form.uom}` : shortageQty < 0 ? `Excess ${fmtQty(-shortageQty)} ${form.uom}` : "No shortage" : "Add later — bills actual until set",
-              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.sale_quantity, onChange: (e3) => setForm({ ...form, sale_quantity: e3.target.value }), placeholder: "Optional" })
+              hint: isOutsource ? "Quantity sold to the customer" : saleQty != null ? shortageQty > 0 ? `Shortage ${fmtQty(shortageQty)} ${form.uom}` : shortageQty < 0 ? `Excess ${fmtQty(-shortageQty)} ${form.uom}` : "No shortage" : "Add later — bills actual until set",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.sale_quantity, onChange: (e3) => setForm({ ...form, sale_quantity: e3.target.value }), placeholder: isOutsource ? "" : "Optional" })
             }
           ),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `Rate per ${form.uom}`, hint: interPlant ? "Transfer price to the other plant" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.rate, onChange: (e3) => setForm({ ...form, rate: e3.target.value }), placeholder: "Optional" }) })
+          isOutsource && /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `Buy Rate / ${form.uom}`, hint: "What you pay the vendor", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.buy_rate, onChange: (e3) => setForm({ ...form, buy_rate: e3.target.value }), placeholder: "Optional" }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: isOutsource ? `Sales Rate / ${form.uom}` : `Rate per ${form.uom}`, hint: interPlant ? "Transfer price to the other plant" : isOutsource ? "What the customer pays" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.rate, onChange: (e3) => setForm({ ...form, rate: e3.target.value }), placeholder: "Optional" }) })
         ] }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Section, { title: "Vehicle & Delivery", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4 sm:grid-cols-3", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Vehicle Type", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -61867,10 +62048,10 @@ function Dispatch() {
             /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sm:col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.remarks || "", onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) }) })
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-3 sm:grid-cols-3", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: cn("grid grid-cols-1 gap-3", isOutsource ? "sm:grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-3"), children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border bg-muted/40 px-4 py-3 text-sm", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: "Stock" }),
-            form.outsourced && !interPlant ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-1 font-medium text-primary", children: "Outsourced — no plant stock used" }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-1", children: [
+            isOutsource ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-1 font-medium text-primary", children: "Outsourced — no plant stock used" }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-1", children: [
               "Available ",
               /* @__PURE__ */ jsxRuntimeExports.jsxs("b", { children: [
                 fmtQty(available),
@@ -61902,6 +62083,17 @@ function Dispatch() {
               ] }),
               " = ",
               /* @__PURE__ */ jsxRuntimeExports.jsx("b", { className: "text-primary", children: fmtMoney(invoiceTotal) })
+            ] })
+          ] }),
+          isOutsource && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: cn("rounded-xl border px-4 py-3 text-sm", profit >= 0 ? "border-success/40 bg-success/5" : "border-destructive/40 bg-destructive/5"), children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: "Profit (live)" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-1", children: [
+              "Sale ",
+              /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: fmtMoney(goods) }),
+              " − Buy ",
+              /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: fmtMoney(buyAmount) }),
+              " = ",
+              /* @__PURE__ */ jsxRuntimeExports.jsx("b", { className: profit >= 0 ? "text-success" : "text-destructive", children: fmtMoney(profit) })
             ] })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border bg-muted/40 px-4 py-3 text-sm", children: [
@@ -77524,7 +77716,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-DRnEHtXD.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-1_r9wgpQ.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
