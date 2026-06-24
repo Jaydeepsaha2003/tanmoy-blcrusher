@@ -61410,6 +61410,7 @@ function Dispatch() {
     queryFn: () => api.customers.list(plantId)
   });
   const { data: outsourceVendors = [] } = useQuery({ queryKey: ["outsource"], queryFn: () => api.outsource.list() });
+  const { data: products = [] } = useQuery({ queryKey: ["products"], queryFn: api.products.list });
   const { data: transporters = [] } = useQuery({ queryKey: ["transporters", plantId], queryFn: () => api.transporters.list(plantId) });
   const { data: assets = [] } = useQuery({ queryKey: ["assets", plantId], queryFn: () => api.assets.list(plantId) });
   const [filter, setFilter] = reactExports.useState({});
@@ -61842,7 +61843,19 @@ function Dispatch() {
                 options: UOMS.map((u2) => ({ value: u2, label: uomLabel(u2) }))
               }
             ) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sm:col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product", required: true, hint: !form.outsourced && selProduct ? `Available: ${fmtQty(fromCm(selProduct.balance_qty, form.uom))} ${uomLabel(form.uom)}` : void 0, children: form.outsourced ? /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.product_name, onChange: (e3) => setForm({ ...form, product_name: e3.target.value }), placeholder: "Outsourced product name" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sm:col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product", required: true, hint: isOutsource ? "Pick a product or type a new one" : selProduct ? `Available: ${fmtQty(fromCm(selProduct.balance_qty, form.uom))} ${uomLabel(form.uom)}` : void 0, children: isOutsource ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
+              {
+                value: form.product_name,
+                onChange: (v2) => setForm({ ...form, product_name: v2 }),
+                creatable: true,
+                options: [
+                  ...products.map((p2) => ({ value: p2.name, label: p2.name })),
+                  ...form.product_name && !products.some((p2) => p2.name === form.product_name) ? [{ value: form.product_name, label: form.product_name }] : []
+                ],
+                placeholder: "Select or type a product…"
+              }
+            ) : /* @__PURE__ */ jsxRuntimeExports.jsx(
               SearchSelect,
               {
                 value: form.product_name,
@@ -77756,7 +77769,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-sCHuDolP.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-lIkiynwW.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
