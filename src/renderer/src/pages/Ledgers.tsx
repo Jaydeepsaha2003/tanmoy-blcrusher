@@ -71,6 +71,20 @@ function drcr(t: LedgerType, v: number): string {
   return (debitPositive ? v > 0 : v < 0) ? 'Dr' : 'Cr'
 }
 
+/** P&L-style ledgers (rack/plant/business/machine) show a signed net — a loss reads as
+ *  a negative number, matching the column total — instead of an unsigned Dr/Cr figure. */
+function isPnlLedger(t: LedgerType): boolean {
+  return t === 'rack' || t === 'plant' || t === 'business' || t === 'machine'
+}
+/** Balance for the on-screen amount: signed for P&L ledgers, absolute for Dr/Cr ledgers. */
+function balanceAmount(t: LedgerType, v: number): string {
+  return isPnlLedger(t) ? fmtMoney(v) : fmtMoney(Math.abs(v))
+}
+/** Balance as a single string for exports/headers (includes the Dr/Cr tag where it applies). */
+function balanceText(t: LedgerType, v: number): string {
+  return isPnlLedger(t) ? fmtMoney(v) : `${fmtMoney(Math.abs(v))} ${drcr(t, v)}`.trim()
+}
+
 /** Ledgers that support a manual opening balance. */
 const OPENING_TYPES: LedgerType[] = ['customer', 'supplier', 'transporter', 'outsource']
 
@@ -203,7 +217,7 @@ export function Ledgers(): React.JSX.Element {
     const title: (string | number)[][] = [
       [`${ledger.party_name} — ${partyLabel[partyType]} Ledger`],
       [`Period: ${period}`],
-      [`Closing ${balanceLabel[partyType]}: ${fmtMoney(Math.abs(ledger.closing))} ${drcr(partyType, ledger.closing)}`]
+      [`Closing ${balanceLabel[partyType]}: ${balanceText(partyType, ledger.closing)}`]
     ]
     const rows: (string | number)[][] = ledger.entries.map((e) => [
       fmtDate(e.date),
@@ -212,7 +226,7 @@ export function Ledgers(): React.JSX.Element {
       e.ref,
       e.debit || '',
       e.credit || '',
-      `${fmtMoney(Math.abs(e.balance))} ${drcr(partyType, e.balance)}`.trim()
+      balanceText(partyType, e.balance)
     ])
     rows.push([
       '',
@@ -221,7 +235,7 @@ export function Ledgers(): React.JSX.Element {
       '',
       ledger.total_debit,
       ledger.total_credit,
-      `${fmtMoney(Math.abs(ledger.closing))} ${drcr(partyType, ledger.closing)}`.trim()
+      balanceText(partyType, ledger.closing)
     ])
     downloadExcel(
       `ledger-${partyType}-${ledger.party_name}`,
@@ -270,7 +284,7 @@ export function Ledgers(): React.JSX.Element {
     doc.setFont(FONT, 'normal').setFontSize(9).setTextColor(120, 120, 120)
     doc.text('Ledger Account', textX, topY + 11.5)
 
-    const closingStr = `${fmtMoney(Math.abs(ledger.closing))} ${drcr(partyType, ledger.closing)}`.trim()
+    const closingStr = balanceText(partyType, ledger.closing)
     const goodTypes = ['rack', 'plant', 'business', 'machine', 'company']
     const good = goodTypes.includes(partyType) ? ledger.closing >= 0 : ledger.closing <= 0
     doc.setFontSize(8).setTextColor(120, 120, 120)
@@ -300,7 +314,7 @@ export function Ledgers(): React.JSX.Element {
         e.ref || '',
         e.debit ? fmtMoney(e.debit) : '',
         e.credit ? fmtMoney(e.credit) : '',
-        `${fmtMoney(Math.abs(e.balance))} ${drcr(partyType, e.balance)}`.trim()
+        balanceText(partyType, e.balance)
       ]),
       foot: [['', 'Total', '', '', fmtMoney(ledger.total_debit), fmtMoney(ledger.total_credit), closingStr]],
       styles: { font: FONT, fontSize: 8.5, cellPadding: 2, lineColor: [230, 232, 236], lineWidth: 0.1, textColor: [31, 41, 55] },
@@ -437,7 +451,7 @@ export function Ledgers(): React.JSX.Element {
                     <TD className="text-right">{fmtMoney(b.total_debit)}</TD>
                     <TD className="text-right">{fmtMoney(b.total_credit)}</TD>
                     <TD className={`tnum text-right font-semibold ${balanceClass(partyType, b.balance)}`}>
-                      {fmtMoney(Math.abs(b.balance))}
+                      {balanceAmount(partyType, b.balance)}
                       <span className="ml-1 text-[11px] font-normal text-muted-foreground">{drcr(partyType, b.balance)}</span>
                     </TD>
                   </TR>
@@ -465,7 +479,7 @@ export function Ledgers(): React.JSX.Element {
                   Closing — {balanceLabel[partyType]}
                 </div>
                 <div className={`tnum text-2xl font-bold ${balanceClass(partyType, ledger?.closing ?? 0)}`}>
-                  {fmtMoney(Math.abs(ledger?.closing ?? 0))}
+                  {balanceAmount(partyType, ledger?.closing ?? 0)}
                   <span className="ml-1.5 text-sm font-medium">{drcr(partyType, ledger?.closing ?? 0)}</span>
                 </div>
               </div>
@@ -499,7 +513,7 @@ export function Ledgers(): React.JSX.Element {
                         <TD className="tnum text-right">{e.debit ? fmtMoney(e.debit) : '-'}</TD>
                         <TD className="tnum text-right">{e.credit ? fmtMoney(e.credit) : '-'}</TD>
                         <TD className="tnum text-right font-semibold">
-                          {fmtMoney(Math.abs(e.balance))}
+                          {balanceAmount(partyType, e.balance)}
                           <span className="ml-1 text-[11px] font-normal text-muted-foreground">{drcr(partyType, e.balance)}</span>
                         </TD>
                         <TD className="text-right">
@@ -517,7 +531,7 @@ export function Ledgers(): React.JSX.Element {
                     <TD className="tnum text-right">{fmtMoney(ledger.total_debit)}</TD>
                     <TD className="tnum text-right">{fmtMoney(ledger.total_credit)}</TD>
                     <TD className="tnum text-right">
-                      {fmtMoney(Math.abs(ledger.closing))}
+                      {balanceAmount(partyType, ledger.closing)}
                       <span className="ml-1 text-[11px] font-medium">{drcr(partyType, ledger.closing)}</span>
                     </TD>
                     <TD />
