@@ -4931,7 +4931,7 @@ async function deletePayment(payload) {
   await d.prepare(`DELETE FROM payments WHERE id = ?`).run(payload.id);
   return { ok: true };
 }
-var OPENING_TYPES = ["customer", "supplier", "transporter", "outsource"];
+var OPENING_TYPES = ["customer", "supplier", "transporter", "outsource", "plant"];
 async function openingEntry(partyType, partyId) {
   if (!OPENING_TYPES.includes(partyType)) return null;
   const row = await getDb().prepare(`SELECT amount, direction, as_of_date FROM opening_balances WHERE party_type = ? AND party_id = ?`).get(partyType, partyId);
@@ -5741,6 +5741,11 @@ async function getLedger(payload) {
       payment_id: e.payment_id
     });
   }
+  let extra = {};
+  if (payload.party_type === "plant") {
+    const rp = await plantReceivablePayable(payload.party_id);
+    extra = { opening: await plantOpeningNet(payload.party_id, sign), receivable: rp.receivable, payable: rp.payable };
+  }
   return {
     party_type: payload.party_type,
     party_id: payload.party_id,
@@ -5748,8 +5753,39 @@ async function getLedger(payload) {
     entries,
     total_debit: roundMoney2(totalDebit),
     total_credit: roundMoney2(totalCredit),
-    closing: roundMoney2(bal)
+    closing: roundMoney2(bal),
+    ...extra
   };
+}
+async function plantReceivablePayable(plantId) {
+  const d = getDb();
+  const r = await d.prepare(
+    `SELECT COALESCE(SUM(
+          (COALESCE(amount,0)
+           + CASE WHEN transport_billed=1 THEN transport_charge ELSE 0 END
+           + CASE WHEN other_billed=1 THEN other_charge ELSE 0 END)
+          - COALESCE(paid_amount,0)),0) AS q
+       FROM dispatches WHERE plant_id = @pid AND to_plant_id IS NULL`
+  ).get({ pid: plantId });
+  const p = await d.prepare(
+    `SELECT
+        (SELECT COALESCE(SUM(COALESCE(amount,0)-COALESCE(paid_amount,0)),0)
+           FROM purchases WHERE plant_id=@pid AND linked_dispatch_id IS NULL) +
+        (SELECT COALESCE(SUM(COALESCE(amount,0)-COALESCE(paid_amount,0)),0)
+           FROM diesel_purchases WHERE plant_id=@pid) +
+        (SELECT COALESCE(SUM(COALESCE(amount,0)-COALESCE(paid_amount,0)),0)
+           FROM plant_expenses WHERE plant_id=@pid AND outsource_id IS NOT NULL) +
+        (SELECT COALESCE(SUM(ROUND(COALESCE(buy_rate,0)*COALESCE(sale_quantity,quantity),2)),0)
+           FROM dispatches WHERE plant_id=@pid AND outsourced=1 AND outsource_id IS NOT NULL AND to_plant_id IS NULL) AS q`
+  ).get({ pid: plantId });
+  return { receivable: roundMoney2(r.q), payable: roundMoney2(p.q) };
+}
+async function plantOpeningNet(plantId, sign) {
+  const row = await getDb().prepare(`SELECT amount, direction FROM opening_balances WHERE party_type='plant' AND party_id=?`).get(plantId);
+  if (!row || !(row.amount > 0)) return 0;
+  const debit = row.direction === "debit" ? row.amount : 0;
+  const credit = row.direction === "credit" ? row.amount : 0;
+  return roundMoney2(sign * (debit - credit));
 }
 async function getPartyBalances(payload) {
   const d = getDb();
@@ -5799,7 +5835,7 @@ async function getOpeningBalance(payload) {
 }
 async function setOpeningBalance(payload) {
   if (!OPENING_TYPES.includes(payload.party_type))
-    return { ok: false, error: "Opening balance is only available for customer, supplier, transporter and outsource ledgers." };
+    return { ok: false, error: "Opening balance is only available for customer, supplier, transporter, outsource and plant ledgers." };
   if (!payload.party_id) return { ok: false, error: "Select a party." };
   const amount = roundMoney2(Number(payload.amount) || 0);
   const direction = payload.direction === "credit" ? "credit" : "debit";

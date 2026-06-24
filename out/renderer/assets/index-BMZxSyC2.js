@@ -77802,7 +77802,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-bPhycmaX.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-Gj6HnWc1.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
@@ -80474,7 +80474,7 @@ function balanceAmount(t3, v2) {
 function balanceText(t3, v2) {
   return isPnlLedger(t3) ? fmtMoney(v2) : `${fmtMoney(Math.abs(v2))} ${drcr(t3, v2)}`.trim();
 }
-const OPENING_TYPES = ["customer", "supplier", "transporter", "outsource"];
+const OPENING_TYPES = ["customer", "supplier", "transporter", "outsource", "plant"];
 function fyStartYearOf(d2) {
   return d2.getMonth() >= 3 ? d2.getFullYear() : d2.getFullYear() - 1;
 }
@@ -80846,6 +80846,12 @@ function Ledgers() {
             ] })
           ] })
         ] }),
+        partyType === "plant" && ledger && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(PlantTile, { label: "Opening Balance", value: ledger.opening ?? 0, good: (ledger.opening ?? 0) >= 0, hint: "Carried forward (set via Opening Balance)" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(PlantTile, { label: "Receivable", value: ledger.receivable ?? 0, good: (ledger.receivable ?? 0) >= 0, hint: "Unpaid on this plant's sales" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(PlantTile, { label: "Payable", value: ledger.payable ?? 0, good: (ledger.payable ?? 0) <= 0, hint: "Unpaid supplier / diesel / outsource bills" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(PlantTile, { label: "Net (Profit / Loss)", value: ledger.closing, good: ledger.closing >= 0, hint: "Income − costs (P&L)" })
+        ] }),
         !ledger || ledger.entries.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No transactions for this party in the selected period." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Date" }),
@@ -80962,6 +80968,18 @@ function Ledgers() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: () => saveOpening.mutate({ ...openingForm, amount: Number(openingForm.amount) || 0 }), children: "Save Opening Balance" })
       ] })
     ] }) })
+  ] });
+}
+function PlantTile({
+  label,
+  value,
+  good,
+  hint
+}) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border bg-card p-4 shadow-sm", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "truncate text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: label }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `tnum text-xl font-bold leading-tight ${good ? "text-success" : "text-destructive"}`, children: fmtMoney(Math.abs(value)) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-0.5 text-[11px] text-muted-foreground", children: hint })
   ] });
 }
 const typeLabel$1 = {
