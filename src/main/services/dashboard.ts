@@ -1,5 +1,6 @@
 import { getDb } from '../db'
 import type { DashboardData } from '@shared/types'
+import { getPartyBalances } from './ledgers'
 
 function num(row: { q: number } | undefined): number {
   return Math.round(((row?.q ?? 0) + Number.EPSILON) * 1000) / 1000
@@ -151,45 +152,29 @@ export async function getDashboard(payload: { plant_id?: number } = {}): Promise
     .map((r) => ({ month: r.month, amount: money({ q: r.amount }) }))
     .reverse()
 
-  // ---- Plant-wise dues (attributed to the plant each bill was raised at) ----
-  // Shown as four figures so the picture is clear at a glance:
-  //  • Opening Balance — net carried forward (customers Dr − suppliers/outsource Cr)
-  //  • Bill Receivable — unpaid on this period's direct sales
-  //  • Bills Payable   — unpaid on this period's supplier/diesel/outsource bills
-  //  • Net Position    — Receivable − Payable + Opening (computed in the UI)
-  // Bills are attributed to the plant each was raised at; opening balances are
-  // party-level so they follow the party's plant (its own + common).
+  // ---- Receivables & payables (straight from the live ledgers) ----
+  // These are summed from the SAME per-party balances the Ledgers and Payment
+  // Status pages show (getPartyBalances → buildEntries), so the dashboard always
+  // reconciles with them. Each balance already folds in the opening balance, every
+  // bill AND every receipt/payment recorded on the Payments page.
+  //   • Receivable — what customers owe us (net; can be negative = advances held)
+  //   • Payable    — what we owe suppliers + transporters + outsource vendors
+  //   • Net         — Receivable − Payable (computed in the UI)
+  // The plant filter scopes the party list exactly like the Ledgers page.
+  const scope = pid ? { plant_id: pid } : {}
+  const [custBal, supBal, transBal, outBal] = await Promise.all([
+    getPartyBalances({ party_type: 'customer', ...scope }),
+    getPartyBalances({ party_type: 'supplier', ...scope }),
+    getPartyBalances({ party_type: 'transporter', ...scope }),
+    getPartyBalances({ party_type: 'outsource', ...scope })
+  ])
+  const sumBal = (arr: { balance: number }[]): number => arr.reduce((s, b) => s + b.balance, 0)
+  const billReceivable = money({ q: sumBal(custBal) })
+  const billsPayable = money({ q: sumBal(supBal) + sumBal(transBal) + sumBal(outBal) })
+  // Opening Balance is shown as an information-only card; it is already counted
+  // inside Receivable / Payable above, so the UI must NOT add it to Net again.
   const obCust = pid ? ` AND (c.plant_id = ${pid} OR c.plant_id IS NULL)` : ''
   const obSup = pid ? ` AND (s.plant_id = ${pid} OR s.plant_id IS NULL)` : ''
-  const billReceivable = money(
-    (await d
-      .prepare(
-        `SELECT COALESCE(SUM(
-            (COALESCE(amount,0)
-             + CASE WHEN transport_billed=1 THEN transport_charge ELSE 0 END
-             + CASE WHEN other_billed=1 THEN other_charge ELSE 0 END)
-            - COALESCE(paid_amount,0)),0) AS q
-         FROM dispatches WHERE to_plant_id IS NULL${plAnd}`
-      )
-      .get()) as { q: number }
-  )
-  const billsPayable = money(
-    (await d
-      .prepare(
-        `SELECT
-          (SELECT COALESCE(SUM(COALESCE(amount,0) - COALESCE(paid_amount,0)),0)
-             FROM purchases WHERE linked_dispatch_id IS NULL${plAnd}) +
-          (SELECT COALESCE(SUM(COALESCE(amount,0) - COALESCE(paid_amount,0)),0)
-             FROM diesel_purchases WHERE 1=1${plAnd}) +
-          (SELECT COALESCE(SUM(COALESCE(amount,0) - COALESCE(paid_amount,0)),0)
-             FROM plant_expenses WHERE outsource_id IS NOT NULL${plAnd}) +
-          (SELECT COALESCE(SUM(ROUND(COALESCE(buy_rate,0) * COALESCE(sale_quantity, quantity), 2)),0)
-             FROM dispatches WHERE outsourced=1 AND outsource_id IS NOT NULL AND to_plant_id IS NULL${plAnd}) AS q`
-      )
-      .get()) as { q: number }
-  )
-  // Net opening carried forward: customer debit balances add (they owe us),
-  // supplier/outsource credit balances subtract (we owe them).
   const openingBalance = money(
     (await d
       .prepare(

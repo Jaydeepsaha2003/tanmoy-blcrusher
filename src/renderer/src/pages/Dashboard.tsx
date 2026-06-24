@@ -159,24 +159,38 @@ export function Dashboard(): React.JSX.Element {
         {/* Receivables & payables — plant-specific */}
         <SectionLabel>Receivables &amp; Payables{plantId ? ` — ${activePlant}` : ''}</SectionLabel>
         {(() => {
-          const net = data.openingBalance + data.billReceivable - data.billsPayable
+          // Receivable / Payable already include opening balances and all payments
+          // (they come from the live ledger), so Net is simply Receivable − Payable.
+          const net = data.billReceivable - data.billsPayable
           return (
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
               <Stat
-                icon={Scale}
-                label="Opening Balance"
-                value={fmtMoney(data.openingBalance)}
-                tone={data.openingBalance < 0 ? 'destructive' : 'success'}
-                hint="Carried forward (Dr − Cr)"
+                icon={Coins}
+                label="Receivable"
+                value={fmtMoney(data.billReceivable)}
+                tone={data.billReceivable < 0 ? 'destructive' : 'success'}
+                hint="What customers owe you"
               />
-              <Stat icon={Coins} label="Bill Receivable" value={fmtMoney(data.billReceivable)} tone="warning" hint="Unpaid on sales" />
-              <Stat icon={Wallet} label="Bills Payable" value={fmtMoney(data.billsPayable)} tone="destructive" hint="Unpaid supplier/outsource bills" />
+              <Stat
+                icon={Wallet}
+                label="Payable"
+                value={fmtMoney(data.billsPayable)}
+                tone={data.billsPayable > 0 ? 'destructive' : 'success'}
+                hint="What you owe — suppliers, transporters, outsource"
+              />
               <Stat
                 icon={HandCoins}
                 label="Net Position"
                 value={fmtMoney(net)}
                 tone={net < 0 ? 'destructive' : 'success'}
-                hint={net < 0 ? 'Net payable (incl. opening)' : 'Net receivable (incl. opening)'}
+                hint={net < 0 ? 'Net payable' : 'Net receivable'}
+              />
+              <Stat
+                icon={Scale}
+                label="Opening Balance"
+                value={fmtMoney(data.openingBalance)}
+                tone={data.openingBalance < 0 ? 'destructive' : 'success'}
+                hint="Carried forward — already in the figures"
               />
             </div>
           )
