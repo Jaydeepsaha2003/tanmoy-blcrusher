@@ -11452,6 +11452,7 @@ const api = {
     addLog: (p2) => call("machinery.addLog", p2),
     updateLog: (p2) => call("machinery.updateLog", p2),
     deleteLog: (id2) => call("machinery.deleteLog", { id: id2 }),
+    lastMeter: (asset_id) => call("machinery.lastMeter", { asset_id }),
     balanceSheet: (asset_id, from, to) => call("machinery.balanceSheet", { asset_id, from, to }),
     documents: (asset_id) => call("machinery.documents", { asset_id }),
     addDocument: (p2) => call("machinery.addDocument", p2),
@@ -63630,6 +63631,16 @@ function MachineLogs() {
     qc2.invalidateQueries({ queryKey: ["mileage"] });
     toast.success("Deleted.");
   }
+  async function prefillOpening(asset_id) {
+    if (!asset_id) return;
+    const r2 = await api.machinery.lastMeter(asset_id).catch(() => ({ closing_meter: null }));
+    setForm((f2) => f2 && !f2.id && Number(f2.asset_id) === asset_id ? { ...f2, opening_meter: r2.closing_meter ?? "" } : f2);
+  }
+  function openNew() {
+    const asset_id = assets[0]?.id;
+    setForm({ asset_id, date: today(), work_type: "", opening_meter: "", closing_meter: "", rate: "", fuel_litres: "", remarks: "" });
+    if (asset_id) void prefillOpening(asset_id);
+  }
   const fUsage = form ? (Number(form.closing_meter) || 0) - (Number(form.opening_meter) || 0) : 0;
   const fIncome = form && form.rate !== "" && form.rate != null ? fUsage * Number(form.rate) : 0;
   const fUnit = form?.asset_id ? assetMeter(Number(form.asset_id)) : "hr";
@@ -63639,7 +63650,7 @@ function MachineLogs() {
       {
         title: "Logbook & Mileage",
         description: "Daily meter readings (with earning rates) across all machines, and standard-vs-actual fuel mileage",
-        actions: /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { onClick: () => setForm({ asset_id: assets[0]?.id, date: today(), work_type: "", opening_meter: "", closing_meter: "", rate: "", fuel_litres: "", remarks: "" }), disabled: !assets.length, children: [
+        actions: /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { onClick: openNew, disabled: !assets.length, children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 16 }),
           " Add Entry"
         ] })
@@ -63748,11 +63759,23 @@ function MachineLogs() {
     ] }),
     form && /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { open: true, onClose: () => setForm(null), title: form.id ? "Edit Logbook Entry" : "New Logbook Entry", width: "max-w-xl", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Machine / Vehicle", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.asset_id || "", onChange: (v2) => setForm({ ...form, asset_id: Number(v2) }), options: assets.map((a2) => ({ value: a2.id, label: a2.name })), placeholder: "Select…" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Machine / Vehicle", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            value: form.asset_id || "",
+            onChange: (v2) => {
+              const id2 = Number(v2);
+              setForm({ ...form, asset_id: id2 });
+              if (!form.id) void prefillOpening(id2);
+            },
+            options: assets.map((a2) => ({ value: a2.id, label: a2.name })),
+            placeholder: "Select…"
+          }
+        ) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: form.date, onChange: (e3) => setForm({ ...form, date: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Work Type", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.work_type, onChange: (e3) => setForm({ ...form, work_type: e3.target.value }), placeholder: "Loading, Transport…" }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `Rate per ${fUnit}`, hint: "Earning rate — usage × rate = income", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.rate, onChange: (e3) => setForm({ ...form, rate: e3.target.value }), placeholder: "Optional" }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `Opening meter (${fUnit})`, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.opening_meter, onChange: (e3) => setForm({ ...form, opening_meter: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `Opening meter (${fUnit})`, hint: form.id ? void 0 : "Continues from the last closing reading", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.opening_meter, onChange: (e3) => setForm({ ...form, opening_meter: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `Closing meter (${fUnit})`, hint: fUsage > 0 ? `Used ${fmtQty(fUsage)} ${fUnit}${fIncome > 0 ? ` · income ${fmtMoney(fIncome)}` : ""}` : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.closing_meter, onChange: (e3) => setForm({ ...form, closing_meter: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Fuel used (L)", hint: "Blank → use diesel issued", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.fuel_litres, onChange: (e3) => setForm({ ...form, fuel_litres: e3.target.value }), placeholder: "Optional" }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.remarks, onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) })
@@ -65008,7 +65031,7 @@ function Diesel() {
     setPForm({ supplier_id: suppliers[0]?.id, plant_id: plantId ?? plants[0]?.id, litres: "", rate: "", payment_status: "unpaid", paid_amount: "", date: today(), remarks: "" });
   }
   function openIssue() {
-    setIForm({ plant_id: plantId ?? plants[0]?.id, asset_id: null, transporter_id: null, litres: "", rate: "", date: today(), remarks: "" });
+    setIForm({ recipient: "asset", plant_id: plantId ?? plants[0]?.id, asset_id: null, transporter_id: null, litres: "", rate: "", date: today(), remarks: "" });
   }
   const pAmount = pForm ? (Number(pForm.litres) || 0) * (Number(pForm.rate) || 0) : 0;
   const iCharge = iForm && iForm.transporter_id ? (Number(iForm.litres) || 0) * (Number(iForm.rate) || 0) : 0;
@@ -65035,7 +65058,7 @@ function Diesel() {
       PageHeader,
       {
         title: "Diesel",
-        description: "Daily diesel purchases (creditor ledger), litre stock, and issuing to machines & vehicles",
+        description: "Daily diesel purchases (creditor ledger), litre stock, and issuing to a machine, vehicle or transporter",
         actions: /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", onClick: exportExcel, disabled: tab === "issues" ? !issues.length : !purchases.length, children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(FileSpreadsheet, { size: 16 }),
@@ -65105,7 +65128,7 @@ function Diesel() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: x2.amount != null ? `₹${fmtMoney(x2.amount)}` : "-" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: x2.remarks || "-" }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => setIForm({ ...x2, asset_id: x2.asset_id, transporter_id: x2.transporter_id ?? null, rate: x2.rate ?? "", litres: x2.litres }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => setIForm({ ...x2, recipient: x2.transporter_id ? "transporter" : "asset", asset_id: x2.asset_id, transporter_id: x2.transporter_id ?? null, rate: x2.rate ?? "", litres: x2.litres }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => removeIssue(x2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
           ] })
         ] }, x2.id)) })
@@ -65154,7 +65177,31 @@ function Diesel() {
       ] })
     ] }),
     iForm && /* @__PURE__ */ jsxRuntimeExports.jsx(Modal, { open: true, onClose: () => setIForm(null), title: iForm.id ? `Edit ${iForm.issue_no}` : "Issue Diesel", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Machine / Vehicle", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Issue To", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-wrap gap-2", children: [["asset", "Machine / Vehicle"], ["transporter", "Transporter"]].map(([key, label]) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          onClick: () => {
+            if (iForm.recipient === key) return;
+            setIForm({ ...iForm, recipient: key, asset_id: null, transporter_id: null, rate: key === "transporter" ? iForm.rate : "" });
+          },
+          className: cn(
+            "rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors",
+            iForm.recipient === key ? "border-primary bg-primary/5 text-foreground" : "border-input text-muted-foreground hover:bg-accent"
+          ),
+          children: label
+        },
+        key
+      )) }) }),
+      iForm.recipient === "transporter" ? /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Transporter", required: true, hint: "Diesel is charged to this transporter — debits their ledger", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        SearchSelect,
+        {
+          value: iForm.transporter_id ?? "",
+          onChange: (v2) => setIForm({ ...iForm, transporter_id: v2 ? Number(v2) : null }),
+          options: transporters.map((t3) => ({ value: t3.id, label: t3.name })),
+          placeholder: "Select transporter…"
+        }
+      ) }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Machine / Vehicle", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
         SearchSelect,
         {
           value: iForm.asset_id ?? "",
@@ -65169,18 +65216,7 @@ function Diesel() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Litres", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: iForm.litres, onChange: (e3) => setIForm({ ...iForm, litres: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: iForm.date, onChange: (e3) => setIForm({ ...iForm, date: e3.target.value }) }) })
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Charge to Transporter", hint: "Optional — recovers the diesel from what we owe this transporter", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-        SearchSelect,
-        {
-          value: iForm.transporter_id ?? "",
-          onChange: (v2) => setIForm({ ...iForm, transporter_id: v2 ? Number(v2) : null }),
-          options: [
-            { value: "", label: "— Not charged —" },
-            ...transporters.map((t3) => ({ value: t3.id, label: t3.name }))
-          ]
-        }
-      ) }),
-      iForm.transporter_id && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
+      iForm.recipient === "transporter" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Rate / Litre (₹)", required: true, hint: "Charged to the transporter", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: iForm.rate, onChange: (e3) => setIForm({ ...iForm, rate: e3.target.value }), placeholder: "0.00" }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Amount Charged", hint: "= litres × rate", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: fmtMoney(iCharge), disabled: true }) })
       ] }),
@@ -65198,13 +65234,17 @@ function Diesel() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           Button,
           {
-            onClick: () => saveIssue.mutate({
-              ...iForm,
-              litres: Number(iForm.litres),
-              transporter_id: iForm.transporter_id || null,
-              rate: iForm.transporter_id && iForm.rate !== "" ? Number(iForm.rate) : null
-            }),
-            disabled: !(Number(iForm.litres) > 0) || Number(iForm.litres) > issueAvail || !!iForm.transporter_id && !(Number(iForm.rate) > 0),
+            onClick: () => {
+              const toTransporter = iForm.recipient === "transporter";
+              saveIssue.mutate({
+                ...iForm,
+                litres: Number(iForm.litres),
+                asset_id: toTransporter ? null : iForm.asset_id || null,
+                transporter_id: toTransporter ? iForm.transporter_id || null : null,
+                rate: toTransporter && iForm.rate !== "" ? Number(iForm.rate) : null
+              });
+            },
+            disabled: !(Number(iForm.litres) > 0) || Number(iForm.litres) > issueAvail || iForm.recipient === "transporter" && (!iForm.transporter_id || !(Number(iForm.rate) > 0)),
             children: "Save Issue"
           }
         )
@@ -77716,7 +77756,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-1_r9wgpQ.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-sCHuDolP.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;

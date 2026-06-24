@@ -6266,6 +6266,13 @@ function normalizeLog(p) {
     amount: rate == null ? null : money3(usage * rate)
   };
 }
+async function lastMachineMeter(payload) {
+  if (!payload.asset_id) return { closing_meter: null };
+  const row = await getDb().prepare(
+    `SELECT closing_meter FROM machine_logs WHERE asset_id = ? ORDER BY date DESC, id DESC LIMIT 1`
+  ).get(payload.asset_id);
+  return { closing_meter: row ? Number(row.closing_meter) : null };
+}
 async function addMachineLog(p) {
   const d = getDb();
   if (!p.asset_id) throw new Error("Select a machine.");
@@ -7763,6 +7770,7 @@ var handlers = {
   "machinery.addLog": addMachineLog,
   "machinery.updateLog": updateMachineLog,
   "machinery.deleteLog": deleteMachineLog,
+  "machinery.lastMeter": lastMachineMeter,
   "machinery.balanceSheet": machineBalanceSheet,
   "machinery.documents": listAssetDocuments,
   "machinery.addDocument": addAssetDocument,
