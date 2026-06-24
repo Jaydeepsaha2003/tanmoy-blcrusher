@@ -35664,7 +35664,8 @@ function SearchSelect({
   placeholder = "Select…",
   disabled,
   className,
-  alwaysSearch
+  alwaysSearch,
+  creatable
 }) {
   const [open2, setOpen] = reactExports.useState(false);
   const [q2, setQ] = reactExports.useState("");
@@ -35677,9 +35678,11 @@ function SearchSelect({
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open2]);
   const sel = options.find((o2) => String(o2.value) === String(value ?? ""));
+  const display = sel ? sel.label : creatable && value != null && value !== "" ? String(value) : null;
   const ql2 = q2.trim().toLowerCase();
   const filtered = ql2 ? options.filter((o2) => o2.label.toLowerCase().includes(ql2)) : options;
-  const showSearch = alwaysSearch || options.length > 1;
+  const canAdd = !!creatable && !!q2.trim() && !options.some((o2) => o2.label.trim().toLowerCase() === ql2);
+  const showSearch = alwaysSearch || creatable || options.length > 1;
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { ref, className: cn("relative", className), children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs(
       "button",
@@ -35692,7 +35695,7 @@ function SearchSelect({
         },
         className: "flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-input bg-card px-3 text-left text-sm shadow-sm transition-all focus-visible:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-50",
         children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: cn("truncate", !sel && "text-muted-foreground"), children: sel ? sel.label : placeholder }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: cn("truncate", !display && "text-muted-foreground"), children: display ?? placeholder }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronDown, { size: 15, className: "shrink-0 text-muted-foreground" })
         ]
       }
@@ -35711,23 +35714,43 @@ function SearchSelect({
           }
         )
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "max-h-56 overflow-auto py-1", children: filtered.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-3 py-2 text-sm text-muted-foreground", children: "No matches" }) : filtered.map((o2) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "button",
-        {
-          type: "button",
-          onClick: () => {
-            onChange(String(o2.value));
-            setOpen(false);
-            setQ("");
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "max-h-56 overflow-auto py-1", children: [
+        filtered.map((o2) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            type: "button",
+            onClick: () => {
+              onChange(String(o2.value));
+              setOpen(false);
+              setQ("");
+            },
+            className: cn(
+              "block w-full truncate px-3 py-1.5 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground",
+              String(o2.value) === String(value ?? "") && "bg-accent/60 font-medium"
+            ),
+            children: o2.label
           },
-          className: cn(
-            "block w-full truncate px-3 py-1.5 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground",
-            String(o2.value) === String(value ?? "") && "bg-accent/60 font-medium"
-          ),
-          children: o2.label
-        },
-        o2.value
-      )) })
+          o2.value
+        )),
+        canAdd && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "button",
+          {
+            type: "button",
+            onClick: () => {
+              onChange(q2.trim());
+              setOpen(false);
+              setQ("");
+            },
+            className: "block w-full truncate px-3 py-1.5 text-left text-sm font-medium text-primary transition-colors hover:bg-accent",
+            children: [
+              "+ Add “",
+              q2.trim(),
+              "”"
+            ]
+          }
+        ),
+        filtered.length === 0 && !canAdd && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-3 py-2 text-sm text-muted-foreground", children: "No matches" })
+      ] })
     ] })
   ] });
 }
@@ -62802,6 +62825,14 @@ function Assets() {
   const meterUnit = (form.meter_type || (form.asset_type === "vehicle" ? "km" : "hour")) === "km" ? "km" : "hr";
   const isVehicle = meterUnit === "km";
   const stdInput = Number(form.std_input);
+  const categoryOptions = reactExports.useMemo(() => {
+    const set = /* @__PURE__ */ new Set();
+    for (const c2 of [...CATEGORIES, ...data.map((a2) => a2.category)]) {
+      const t3 = (c2 || "").trim();
+      if (t3) set.add(t3);
+    }
+    return [...set].sort((a2, b2) => a2.localeCompare(b2)).map((c2) => ({ value: c2, label: c2 }));
+  }, [data]);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       PageHeader,
@@ -62894,10 +62925,16 @@ function Assets() {
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Name", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.name || "", onChange: (e3) => setForm({ ...form, name: e3.target.value }), placeholder: "e.g. Crusher Unit 1" }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Type", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.asset_type || "machine", onChange: (v2) => setForm({ ...form, asset_type: v2 }), options: [{ value: "machine", label: "Machine" }, { value: "vehicle", label: "Vehicle" }] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(Field, { label: "Category", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { list: "asset-cats", value: form.category || "", onChange: (e3) => setForm({ ...form, category: e3.target.value }), placeholder: "Crusher, Tipper, JCB…" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("datalist", { id: "asset-cats", children: CATEGORIES.map((c2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: c2 }, c2)) })
-        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Category", hint: "Pick one, or type a new name to add it", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            creatable: true,
+            value: form.category || "",
+            onChange: (v2) => setForm({ ...form, category: v2 }),
+            options: categoryOptions,
+            placeholder: "Crusher, Tipper, JCB…"
+          }
+        ) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Identifier / Reg. No.", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.identifier || "", onChange: (e3) => setForm({ ...form, identifier: e3.target.value }), placeholder: "e.g. JH-01-AB-1234" }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Owning Business / Firm", hint: "Costs & rent of this machine roll up here", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.business_id ?? "", onChange: (v2) => setForm({ ...form, business_id: v2 ? Number(v2) : null }), options: [{ value: "", label: "— None —" }, ...businesses.map((b2) => ({ value: b2.id, label: b2.name }))] }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Meter", hint: "Machines run on hours; vehicles on km", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.meter_type || (form.asset_type === "vehicle" ? "km" : "hour"), onChange: (v2) => setForm({ ...form, meter_type: v2 }), options: [{ value: "hour", label: "Hours" }, { value: "km", label: "Kilometres" }] }) }),
@@ -77386,7 +77423,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-fPYlaMZE.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-RUtuIUDi.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
