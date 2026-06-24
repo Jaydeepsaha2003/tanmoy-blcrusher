@@ -53,6 +53,7 @@ function Stat({
   label,
   value,
   tone = 'default',
+  valueTone,
   suffix,
   hint
 }: {
@@ -60,6 +61,8 @@ function Stat({
   label: string
   value: string | number
   tone?: 'default' | 'success' | 'warning' | 'destructive'
+  /** When set, colours the value text itself (used so money reads red/green instead of ±). */
+  valueTone?: 'success' | 'warning' | 'destructive'
   suffix?: string
   hint?: string
 }): React.JSX.Element {
@@ -68,6 +71,11 @@ function Stat({
     success: 'bg-success/10 text-success',
     warning: 'bg-warning/15 text-warning',
     destructive: 'bg-destructive/10 text-destructive'
+  }
+  const valueTones = {
+    success: 'text-success',
+    warning: 'text-warning',
+    destructive: 'text-destructive'
   }
   return (
     <Card className="transition-shadow hover:shadow-md">
@@ -79,7 +87,7 @@ function Stat({
           <div className="truncate text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             {label}
           </div>
-          <div className="tnum text-xl font-bold leading-tight">
+          <div className={`tnum text-xl font-bold leading-tight ${valueTone ? valueTones[valueTone] : ''}`}>
             {value}
             {suffix && <span className="ml-1 text-sm font-normal text-muted-foreground">{suffix}</span>}
           </div>
@@ -161,36 +169,49 @@ export function Dashboard(): React.JSX.Element {
         {(() => {
           // Receivable / Payable already include opening balances and all payments
           // (they come from the live ledger), so Net is simply Receivable − Payable.
-          const net = data.billReceivable - data.billsPayable
+          // Sign is shown by colour (green = in your favour, red = against you) rather
+          // than a ± sign, so every figure is displayed as a positive amount.
+          const recv = data.billReceivable
+          const pay = data.billsPayable
+          const net = recv - pay
+          const ob = data.openingBalance
+          // A negative receivable isn't money you'll get — it's advances customers
+          // have paid you; flip the framing so it reads correctly.
+          const recvIsAdvance = recv < -0.005
+          const payIsAdvance = pay < -0.005
           return (
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
               <Stat
                 icon={Coins}
-                label="Receivable"
-                value={fmtMoney(data.billReceivable)}
-                tone={data.billReceivable < 0 ? 'destructive' : 'success'}
-                hint="What customers owe you"
+                label={recvIsAdvance ? 'Customer Advance' : 'Receivable'}
+                value={fmtMoney(Math.abs(recv))}
+                tone={recvIsAdvance ? 'destructive' : 'success'}
+                valueTone={recvIsAdvance ? 'destructive' : 'success'}
+                hint={recvIsAdvance ? 'Advance held from customers (you owe)' : 'What customers owe you'}
               />
               <Stat
                 icon={Wallet}
-                label="Payable"
-                value={fmtMoney(data.billsPayable)}
-                tone={data.billsPayable > 0 ? 'destructive' : 'success'}
-                hint="What you owe — suppliers, transporters, outsource"
+                label={payIsAdvance ? 'Vendor Advance' : 'Payable'}
+                value={fmtMoney(Math.abs(pay))}
+                tone={payIsAdvance ? 'success' : 'destructive'}
+                valueTone={payIsAdvance ? 'success' : 'destructive'}
+                hint={payIsAdvance ? 'Advance you’ve paid suppliers/transporters' : 'What you owe — suppliers, transporters, outsource'}
               />
               <Stat
                 icon={HandCoins}
                 label="Net Position"
-                value={fmtMoney(net)}
+                value={fmtMoney(Math.abs(net))}
                 tone={net < 0 ? 'destructive' : 'success'}
-                hint={net < 0 ? 'Net payable' : 'Net receivable'}
+                valueTone={net < 0 ? 'destructive' : 'success'}
+                hint={net < 0 ? 'Net payable — you owe' : 'Net receivable — you’ll get'}
               />
               <Stat
                 icon={Scale}
                 label="Opening Balance"
-                value={fmtMoney(data.openingBalance)}
-                tone={data.openingBalance < 0 ? 'destructive' : 'success'}
-                hint="Carried forward — already in the figures"
+                value={fmtMoney(Math.abs(ob))}
+                tone={ob < 0 ? 'destructive' : 'success'}
+                valueTone={ob < 0 ? 'destructive' : 'success'}
+                hint={`Carried forward (${ob < 0 ? 'Cr' : 'Dr'}) — already in the figures`}
               />
             </div>
           )
