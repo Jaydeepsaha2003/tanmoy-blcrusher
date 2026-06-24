@@ -59078,20 +59078,28 @@ function Dashboard() {
         plantId ? ` — ${activePlant}` : ""
       ] }),
       (() => {
-        const net = data.openingBalance + data.billReceivable - data.billsPayable;
+        const net = data.billReceivable - data.billsPayable;
         return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4 lg:grid-cols-4", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             Stat$1,
             {
-              icon: Scale,
-              label: "Opening Balance",
-              value: fmtMoney(data.openingBalance),
-              tone: data.openingBalance < 0 ? "destructive" : "success",
-              hint: "Carried forward (Dr − Cr)"
+              icon: Coins,
+              label: "Receivable",
+              value: fmtMoney(data.billReceivable),
+              tone: data.billReceivable < 0 ? "destructive" : "success",
+              hint: "What customers owe you"
             }
           ),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Stat$1, { icon: Coins, label: "Bill Receivable", value: fmtMoney(data.billReceivable), tone: "warning", hint: "Unpaid on sales" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Stat$1, { icon: Wallet, label: "Bills Payable", value: fmtMoney(data.billsPayable), tone: "destructive", hint: "Unpaid supplier/outsource bills" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            Stat$1,
+            {
+              icon: Wallet,
+              label: "Payable",
+              value: fmtMoney(data.billsPayable),
+              tone: data.billsPayable > 0 ? "destructive" : "success",
+              hint: "What you owe — suppliers, transporters, outsource"
+            }
+          ),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             Stat$1,
             {
@@ -59099,7 +59107,17 @@ function Dashboard() {
               label: "Net Position",
               value: fmtMoney(net),
               tone: net < 0 ? "destructive" : "success",
-              hint: net < 0 ? "Net payable (incl. opening)" : "Net receivable (incl. opening)"
+              hint: net < 0 ? "Net payable" : "Net receivable"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            Stat$1,
+            {
+              icon: Scale,
+              label: "Opening Balance",
+              value: fmtMoney(data.openingBalance),
+              tone: data.openingBalance < 0 ? "destructive" : "success",
+              hint: "Carried forward — already in the figures"
             }
           )
         ] });
@@ -77769,7 +77787,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-lIkiynwW.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-D1oh9gQp.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;

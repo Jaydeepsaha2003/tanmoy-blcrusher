@@ -7570,31 +7570,18 @@ async function getDashboard(payload = {}) {
   const monthlySales = (await d.prepare(
     `SELECT month, SUM(amount) AS amount FROM (${monthlySrc}) AS t GROUP BY month ORDER BY month DESC LIMIT 6`
   ).all()).map((r) => ({ month: r.month, amount: money7({ q: r.amount }) })).reverse();
+  const scope = pid ? { plant_id: pid } : {};
+  const [custBal, supBal, transBal, outBal] = await Promise.all([
+    getPartyBalances({ party_type: "customer", ...scope }),
+    getPartyBalances({ party_type: "supplier", ...scope }),
+    getPartyBalances({ party_type: "transporter", ...scope }),
+    getPartyBalances({ party_type: "outsource", ...scope })
+  ]);
+  const sumBal = (arr) => arr.reduce((s, b) => s + b.balance, 0);
+  const billReceivable = money7({ q: sumBal(custBal) });
+  const billsPayable = money7({ q: sumBal(supBal) + sumBal(transBal) + sumBal(outBal) });
   const obCust = pid ? ` AND (c.plant_id = ${pid} OR c.plant_id IS NULL)` : "";
   const obSup = pid ? ` AND (s.plant_id = ${pid} OR s.plant_id IS NULL)` : "";
-  const billReceivable = money7(
-    await d.prepare(
-      `SELECT COALESCE(SUM(
-            (COALESCE(amount,0)
-             + CASE WHEN transport_billed=1 THEN transport_charge ELSE 0 END
-             + CASE WHEN other_billed=1 THEN other_charge ELSE 0 END)
-            - COALESCE(paid_amount,0)),0) AS q
-         FROM dispatches WHERE to_plant_id IS NULL${plAnd}`
-    ).get()
-  );
-  const billsPayable = money7(
-    await d.prepare(
-      `SELECT
-          (SELECT COALESCE(SUM(COALESCE(amount,0) - COALESCE(paid_amount,0)),0)
-             FROM purchases WHERE linked_dispatch_id IS NULL${plAnd}) +
-          (SELECT COALESCE(SUM(COALESCE(amount,0) - COALESCE(paid_amount,0)),0)
-             FROM diesel_purchases WHERE 1=1${plAnd}) +
-          (SELECT COALESCE(SUM(COALESCE(amount,0) - COALESCE(paid_amount,0)),0)
-             FROM plant_expenses WHERE outsource_id IS NOT NULL${plAnd}) +
-          (SELECT COALESCE(SUM(ROUND(COALESCE(buy_rate,0) * COALESCE(sale_quantity, quantity), 2)),0)
-             FROM dispatches WHERE outsourced=1 AND outsource_id IS NOT NULL AND to_plant_id IS NULL${plAnd}) AS q`
-    ).get()
-  );
   const openingBalance = money7(
     await d.prepare(
       `SELECT
