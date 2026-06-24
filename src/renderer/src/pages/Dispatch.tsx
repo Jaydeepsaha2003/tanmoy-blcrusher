@@ -47,6 +47,7 @@ export function Dispatch(): React.JSX.Element {
     queryFn: () => api.customers.list(plantId)
   })
   const { data: outsourceVendors = [] } = useQuery({ queryKey: ['outsource'], queryFn: () => api.outsource.list() })
+  const { data: products = [] } = useQuery({ queryKey: ['products'], queryFn: api.products.list })
   const { data: transporters = [] } = useQuery({ queryKey: ['transporters', plantId], queryFn: () => api.transporters.list(plantId) })
   const { data: assets = [] } = useQuery({ queryKey: ['assets', plantId], queryFn: () => api.assets.list(plantId) })
   const [filter, setFilter] = React.useState<{
@@ -473,9 +474,20 @@ export function Dispatch(): React.JSX.Element {
                   />
                 </Field>
                 <div className="sm:col-span-2">
-                  <Field label="Product" required hint={!form.outsourced && selProduct ? `Available: ${fmtQty(fromCm(selProduct.balance_qty, form.uom, formPlant))} ${uomLabel(form.uom)}` : undefined}>
-                    {form.outsourced ? (
-                      <Input value={form.product_name} onChange={(e) => setForm({ ...form, product_name: e.target.value })} placeholder="Outsourced product name" />
+                  <Field label="Product" required hint={isOutsource ? 'Pick a product or type a new one' : selProduct ? `Available: ${fmtQty(fromCm(selProduct.balance_qty, form.uom, formPlant))} ${uomLabel(form.uom)}` : undefined}>
+                    {isOutsource ? (
+                      <SearchSelect
+                        value={form.product_name}
+                        onChange={(v) => setForm({ ...form, product_name: v })}
+                        creatable
+                        options={[
+                          ...products.map((p) => ({ value: p.name, label: p.name })),
+                          ...(form.product_name && !products.some((p) => p.name === form.product_name)
+                            ? [{ value: form.product_name, label: form.product_name }]
+                            : [])
+                        ]}
+                        placeholder="Select or type a product…"
+                      />
                     ) : (
                       <SearchSelect
                         value={form.product_name}
