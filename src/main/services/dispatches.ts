@@ -237,6 +237,8 @@ export interface DispatchInput {
   quantity: number
   sale_quantity?: number | null
   rate: number | null
+  /** Outsource sale only: vendor buy rate per unit. */
+  buy_rate?: number | null
   transport_charge?: number
   transport_billed?: boolean | number
   other_charge?: number
@@ -267,14 +269,18 @@ function normalize(p: DispatchInput, factors?: UomFactors): {
   outsourced: boolean
   fields: Record<string, unknown>
 } {
-  if (!(Number(p.quantity) > 0)) throw new Error('Actual quantity must be greater than 0.')
   if (!['CM', 'TON', 'CFT'].includes(p.uom)) throw new Error('Invalid unit of measure.')
   const product = properCase(p.product_name)
-  const actualQty = Number(p.quantity)
+  const outsourcedFlag = !!p.outsourced
   // Sale quantity is optional (added later). null = not set yet → bill the actual.
   const saleQty =
     p.sale_quantity == null || (p.sale_quantity as unknown) === '' ? null : Number(p.sale_quantity)
   if (saleQty != null && saleQty < 0) throw new Error('Sale quantity cannot be negative.')
+  // An outsource sale moves no stock, so the actual qty is optional — fall back to the sale qty.
+  const rawActual = Number(p.quantity)
+  const actualQty =
+    rawActual > 0 ? rawActual : outsourcedFlag && saleQty != null && saleQty > 0 ? saleQty : rawActual
+  if (!(actualQty > 0)) throw new Error('Actual quantity must be greater than 0.')
   const billableQty = saleQty != null ? saleQty : actualQty
   // Stock always moves by the ACTUAL quantity dispatched from the plant.
   const qtyCm = roundQty(toCm(actualQty, p.uom, factors))
@@ -283,7 +289,10 @@ function normalize(p: DispatchInput, factors?: UomFactors): {
   const other = Number(p.other_charge) || 0
   const billed = (amount ?? 0) + (p.transport_billed ? transport : 0) + (p.other_billed ? other : 0)
   const paid = Number(p.paid_amount) || 0
-  const outsourced = !!p.outsourced
+  const outsourced = outsourcedFlag
+  // Buy rate is only meaningful on an outsource sale (drives the vendor payable + profit).
+  const buyRate =
+    outsourced && p.buy_rate != null && (p.buy_rate as unknown) !== '' ? Number(p.buy_rate) : null
   return {
     product,
     qtyCm,
@@ -298,6 +307,7 @@ function normalize(p: DispatchInput, factors?: UomFactors): {
       qty_cm: qtyCm,
       sale_quantity: saleQty,
       rate: p.rate,
+      buy_rate: buyRate,
       amount,
       transport_charge: transport,
       transport_billed: p.transport_billed ? 1 : 0,
@@ -371,11 +381,11 @@ export async function createDispatch(p: DispatchInput): Promise<Dispatch> {
     const info = await d
       .prepare(
         `INSERT INTO dispatches
-          (dispatch_no, customer_id, plant_id, product_name, uom, quantity, qty_cm, sale_quantity, rate, amount,
+          (dispatch_no, customer_id, plant_id, product_name, uom, quantity, qty_cm, sale_quantity, rate, buy_rate, amount,
            transport_charge, transport_billed, other_charge, other_billed,
            vehicle_no, vehicle_type, transporter_id, driver, challan_no, outsourced, outsource_id,
            delivery_status, dispatch_status, payment_status, paid_amount, to_plant_id, linked_purchase_id, date, remarks)
-         VALUES (@dispatch_no,@customer_id,@plant_id,@product_name,@uom,@quantity,@qty_cm,@sale_quantity,@rate,@amount,
+         VALUES (@dispatch_no,@customer_id,@plant_id,@product_name,@uom,@quantity,@qty_cm,@sale_quantity,@rate,@buy_rate,@amount,
            @transport_charge,@transport_billed,@other_charge,@other_billed,
            @vehicle_no,@vehicle_type,@transporter_id,@driver,@challan_no,@outsourced,@outsource_id,
            @delivery_status,@dispatch_status,@payment_status,@paid_amount,@to_plant_id,@linked_purchase_id,@date,@remarks)`
@@ -437,7 +447,7 @@ export async function updateDispatch(p: DispatchInput): Promise<Dispatch> {
     }
     await d.prepare(
       `UPDATE dispatches SET dispatch_no=@dispatch_no, customer_id=@customer_id, plant_id=@plant_id, product_name=@product_name,
-        uom=@uom, quantity=@quantity, qty_cm=@qty_cm, sale_quantity=@sale_quantity, rate=@rate, amount=@amount,
+        uom=@uom, quantity=@quantity, qty_cm=@qty_cm, sale_quantity=@sale_quantity, rate=@rate, buy_rate=@buy_rate, amount=@amount,
         transport_charge=@transport_charge, transport_billed=@transport_billed,
         other_charge=@other_charge, other_billed=@other_billed,
         vehicle_no=@vehicle_no, vehicle_type=@vehicle_type, transporter_id=@transporter_id, driver=@driver, challan_no=@challan_no,

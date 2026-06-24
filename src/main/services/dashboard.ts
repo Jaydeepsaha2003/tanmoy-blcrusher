@@ -182,7 +182,9 @@ export async function getDashboard(payload: { plant_id?: number } = {}): Promise
           (SELECT COALESCE(SUM(COALESCE(amount,0) - COALESCE(paid_amount,0)),0)
              FROM diesel_purchases WHERE 1=1${plAnd}) +
           (SELECT COALESCE(SUM(COALESCE(amount,0) - COALESCE(paid_amount,0)),0)
-             FROM plant_expenses WHERE outsource_id IS NOT NULL${plAnd}) AS q`
+             FROM plant_expenses WHERE outsource_id IS NOT NULL${plAnd}) +
+          (SELECT COALESCE(SUM(ROUND(COALESCE(buy_rate,0) * COALESCE(sale_quantity, quantity), 2)),0)
+             FROM dispatches WHERE outsourced=1 AND outsource_id IS NOT NULL AND to_plant_id IS NULL${plAnd}) AS q`
       )
       .get()) as { q: number }
   )

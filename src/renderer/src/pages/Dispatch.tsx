@@ -91,6 +91,7 @@ export function Dispatch(): React.JSX.Element {
       quantity: '',
       sale_quantity: '',
       rate: '',
+      buy_rate: '',
       transport_charge: '',
       transport_billed: false,
       other_charge: '',
@@ -120,8 +121,9 @@ export function Dispatch(): React.JSX.Element {
     const src = det ?? d
     setForm({
       ...src,
-      sell_mode: src.to_plant_id ? 'plant' : 'customer',
+      sell_mode: src.to_plant_id ? 'plant' : src.outsourced ? 'outsource' : 'customer',
       rate: src.rate ?? '',
+      buy_rate: src.buy_rate ?? '',
       sale_quantity: src.sale_quantity ?? '',
       transport_charge: src.transport_charge ?? '',
       other_charge: src.other_charge ?? '',
@@ -158,19 +160,25 @@ export function Dispatch(): React.JSX.Element {
 
   function submit(): void {
     const interPlant = form.sell_mode === 'plant'
+    const isOut = form.sell_mode === 'outsource'
+    const actual = Number(form.quantity) || 0
+    const sale = form.sale_quantity === '' || form.sale_quantity == null ? null : Number(form.sale_quantity)
+    // Outsource sale moves no stock, so the actual qty is optional — fall back to sale qty.
+    const qtyForBackend = isOut ? actual || sale || 0 : actual
     save.mutate({
       ...form,
       to_plant_id: interPlant ? Number(form.to_plant_id) || null : null,
-      quantity: Number(form.quantity),
-      sale_quantity: form.sale_quantity === '' || form.sale_quantity == null ? null : Number(form.sale_quantity),
+      quantity: qtyForBackend,
+      sale_quantity: sale,
       rate: form.rate === '' || form.rate == null ? null : Number(form.rate),
+      buy_rate: isOut && form.buy_rate !== '' && form.buy_rate != null ? Number(form.buy_rate) : null,
       transport_charge: Number(form.transport_charge) || 0,
       other_charge: Number(form.other_charge) || 0,
       paid_amount: Number(form.paid_amount) || 0,
       transport_billed: !!form.transport_billed,
       other_billed: !!form.other_billed,
-      // Inter-plant always uses real plant stock (never outsourced).
-      outsourced: interPlant ? false : !!form.outsourced,
+      // Outsource sale = sold without plant stock; inter-plant always uses real stock.
+      outsourced: isOut,
       transporters: (form.transporters ?? [])
         .filter((t: any) => t.transporter_id)
         .map((t: any) => ({
@@ -191,18 +199,24 @@ export function Dispatch(): React.JSX.Element {
     downloadExcel(
       'direct-sales',
       'Direct Sales',
-      ['Sale No', 'Date', 'Customer / Plant', 'Plant', 'Product', 'Qty', 'UOM', 'Rate', 'Goods Amt',
+      ['Sale No', 'Date', 'Customer / Plant', 'Plant', 'Product', 'Outsourced', 'Vendor', 'Qty', 'UOM', 'Buy Rate', 'Sales Rate', 'Goods Amt', 'Profit',
         'Transport', 'Other', 'Invoice Total', 'Transport Cost', 'Machine Cost', 'Paid', 'Vehicle', 'Vehicle Type', 'Challan', 'Delivery', 'Payment', 'Remarks'],
-      data.map((d) => [
-        d.dispatch_no, fmtDate(d.date), d.to_plant_id ? `${d.to_plant_name} (plant)` : d.customer_name, d.plant_name, d.product_name,
-        d.quantity, d.uom, d.rate ?? '', d.amount ?? '', d.transport_charge, d.other_charge,
-        d.billed_total ?? '', d.transport_total ?? 0, d.machine_total ?? 0, d.paid_amount, d.vehicle_no, vehicleLabel[d.vehicle_type], d.challan_no,
-        d.delivery_status, d.payment_status, d.remarks ?? ''
-      ])
+      data.map((d) => {
+        const bq = d.sale_quantity ?? d.quantity
+        const outProfit = d.outsourced && d.buy_rate != null ? (d.amount ?? 0) - (d.buy_rate || 0) * bq : ''
+        return [
+          d.dispatch_no, fmtDate(d.date), d.to_plant_id ? `${d.to_plant_name} (plant)` : d.customer_name, d.plant_name, d.product_name,
+          d.outsourced ? 'Yes' : '', d.outsourced ? d.outsource_name ?? '' : '',
+          d.quantity, d.uom, d.buy_rate ?? '', d.rate ?? '', d.amount ?? '', outProfit, d.transport_charge, d.other_charge,
+          d.billed_total ?? '', d.transport_total ?? 0, d.machine_total ?? 0, d.paid_amount, d.vehicle_no, vehicleLabel[d.vehicle_type], d.challan_no,
+          d.delivery_status, d.payment_status, d.remarks ?? ''
+        ]
+      })
     )
   }
 
   const interPlant = form?.sell_mode === 'plant'
+  const isOutsource = form?.sell_mode === 'outsource'
   const formPlant = plants.find((pl) => pl.id === form?.plant_id)
   const actualQty = Number(form?.quantity) || 0
   // Sale qty is optional; until it's entered the bill uses the actual quantity.
@@ -212,6 +226,9 @@ export function Dispatch(): React.JSX.Element {
   const shortageQty = saleQty != null ? actualQty - saleQty : 0
   const qtyCm = form ? toCm(actualQty, form.uom, formPlant) : 0
   const goods = form && form.rate !== '' ? billableQty * Number(form.rate) : 0
+  // Outsource sale: what we pay the vendor, and the live profit on the deal.
+  const buyAmount = isOutsource && form && form.buy_rate !== '' && form.buy_rate != null ? billableQty * Number(form.buy_rate) : 0
+  const profit = goods - buyAmount
   const billedExtra = form
     ? (form.transport_billed ? Number(form.transport_charge) || 0 : 0) +
       (form.other_billed ? Number(form.other_charge) || 0 : 0)
@@ -229,15 +246,15 @@ export function Dispatch(): React.JSX.Element {
   const canSave =
     !!form &&
     !!form.product_name &&
-    Number(form.quantity) > 0 &&
+    (isOutsource ? billableQty > 0 && !!form.outsource_id : Number(form.quantity) > 0) &&
     (interPlant ? !!form.to_plant_id : !!form.customer_id) &&
-    (interPlant || !form.outsourced ? qtyCm <= available : true)
+    (interPlant || !isOutsource ? qtyCm <= available : true)
 
   return (
     <>
       <PageHeader
         title="Direct Sale"
-        description="Load from the plant and sell to a customer — or transfer to your own other plant"
+        description="Sell from plant stock, sell outsourced goods (no stock — ledger only), or transfer to your own other plant"
         actions={
           <>
             <Button variant="outline" onClick={exportExcel} disabled={!data.length}>
@@ -315,6 +332,17 @@ export function Dispatch(): React.JSX.Element {
                     {d.outsourced ? (
                       <div className="text-[11px] text-muted-foreground">
                         Outsourced{d.outsource_name ? ` · ${d.outsource_name}${d.outsource_head ? ` (${d.outsource_head})` : ''}` : ''}
+                        {d.buy_rate != null && (() => {
+                          const bq = d.sale_quantity ?? d.quantity
+                          const buy = (d.buy_rate || 0) * bq
+                          const pf = (d.amount ?? 0) - buy
+                          return (
+                            <>
+                              {' · buy '}{fmtMoney(buy)}{' · '}
+                              <span className={pf >= 0 ? 'text-success' : 'text-destructive'}>profit {fmtMoney(pf)}</span>
+                            </>
+                          )
+                        })()}
                       </div>
                     ) : null}
                     {(d.vehicle_no || d.challan_no) && (
@@ -373,11 +401,21 @@ export function Dispatch(): React.JSX.Element {
           <div className="space-y-5">
             {/* Sell-to mode */}
             <div className="flex flex-wrap gap-2">
-              {([['customer', 'Sell to Customer'], ['plant', 'Transfer to Own Plant']] as const).map(([key, label]) => (
+              {([['customer', 'Sell to Customer'], ['outsource', 'Outsource Sale'], ['plant', 'Transfer to Own Plant']] as const).map(([key, label]) => (
                 <button
                   key={key}
                   type="button"
-                  onClick={() => setForm({ ...form, sell_mode: key, to_plant_id: key === 'plant' ? form.to_plant_id : null, outsourced: key === 'plant' ? false : form.outsourced })}
+                  onClick={() => {
+                    if (form.sell_mode === key) return
+                    setForm({
+                      ...form,
+                      sell_mode: key,
+                      to_plant_id: key === 'plant' ? form.to_plant_id : null,
+                      outsourced: key === 'outsource',
+                      product_name: '',
+                      outsource_id: key === 'outsource' ? form.outsource_id : null
+                    })
+                  }}
                   className={cn(
                     'rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors',
                     form.sell_mode === key ? 'border-primary bg-primary/5 text-foreground' : 'border-input text-muted-foreground hover:bg-accent'
@@ -453,29 +491,10 @@ export function Dispatch(): React.JSX.Element {
                     )}
                   </Field>
                 </div>
-                {!interPlant && (
-                  <label
-                    className={cn(
-                      'flex cursor-pointer items-start gap-2 self-end rounded-lg border px-3 py-2 text-sm transition-colors',
-                      form.outsourced ? 'border-primary bg-primary/5' : 'border-input hover:bg-accent'
-                    )}
-                  >
-                    <input
-                      type="checkbox"
-                      className="mt-0.5 h-4 w-4 shrink-0"
-                      checked={!!form.outsourced}
-                      onChange={(e) => setForm({ ...form, outsourced: e.target.checked, product_name: '', outsource_id: e.target.checked ? form.outsource_id : null })}
-                    />
-                    <span className="font-medium leading-tight">
-                      Outsourced
-                      <span className="block text-[11px] font-normal text-muted-foreground">Sold without using plant stock</span>
-                    </span>
-                  </label>
-                )}
               </div>
-              {form.outsourced && !interPlant && (
+              {isOutsource && (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <Field label="Outsource Vendor" hint="Who the outsourced material came from">
+                  <Field label="Outsource Vendor" required hint="Who the outsourced material came from — gets the buy posted to their ledger">
                     <SearchSelect
                       value={form.outsource_id ?? ''}
                       onChange={(v) => setForm({ ...form, outsource_id: v ? Number(v) : null })}
@@ -489,25 +508,36 @@ export function Dispatch(): React.JSX.Element {
 
             {/* Quantity & rate */}
             <Section title="Quantity & Rate">
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-                <Field label={`Actual Qty (${form.uom})`} required hint={qtyCm > 0 ? `${fmtQty(qtyCm)} m³ off stock` : 'Dispatched from plant'}>
-                  <Input type="number" step="0.001" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
+              <div className={cn('grid grid-cols-2 gap-4', isOutsource ? 'sm:grid-cols-4' : 'sm:grid-cols-3')}>
+                <Field
+                  label={`Actual Qty (${form.uom})`}
+                  required={!isOutsource}
+                  hint={isOutsource ? 'Optional — no stock moves' : qtyCm > 0 ? `${fmtQty(qtyCm)} m³ off stock` : 'Dispatched from plant'}
+                >
+                  <Input type="number" step="0.001" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} placeholder={isOutsource ? 'Optional' : ''} />
                 </Field>
                 <Field
                   label={`Sale Qty (${form.uom})`}
                   hint={
-                    saleQty != null
-                      ? shortageQty > 0
-                        ? `Shortage ${fmtQty(shortageQty)} ${form.uom}`
-                        : shortageQty < 0
-                          ? `Excess ${fmtQty(-shortageQty)} ${form.uom}`
-                          : 'No shortage'
-                      : 'Add later — bills actual until set'
+                    isOutsource
+                      ? 'Quantity sold to the customer'
+                      : saleQty != null
+                        ? shortageQty > 0
+                          ? `Shortage ${fmtQty(shortageQty)} ${form.uom}`
+                          : shortageQty < 0
+                            ? `Excess ${fmtQty(-shortageQty)} ${form.uom}`
+                            : 'No shortage'
+                        : 'Add later — bills actual until set'
                   }
                 >
-                  <Input type="number" step="0.001" value={form.sale_quantity} onChange={(e) => setForm({ ...form, sale_quantity: e.target.value })} placeholder="Optional" />
+                  <Input type="number" step="0.001" value={form.sale_quantity} onChange={(e) => setForm({ ...form, sale_quantity: e.target.value })} placeholder={isOutsource ? '' : 'Optional'} />
                 </Field>
-                <Field label={`Rate per ${form.uom}`} hint={interPlant ? 'Transfer price to the other plant' : undefined}>
+                {isOutsource && (
+                  <Field label={`Buy Rate / ${form.uom}`} hint="What you pay the vendor">
+                    <Input type="number" step="0.01" value={form.buy_rate} onChange={(e) => setForm({ ...form, buy_rate: e.target.value })} placeholder="Optional" />
+                  </Field>
+                )}
+                <Field label={isOutsource ? `Sales Rate / ${form.uom}` : `Rate per ${form.uom}`} hint={interPlant ? 'Transfer price to the other plant' : isOutsource ? 'What the customer pays' : undefined}>
                   <Input type="number" step="0.01" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} placeholder="Optional" />
                 </Field>
               </div>
@@ -667,10 +697,10 @@ export function Dispatch(): React.JSX.Element {
             </Section>
 
             {/* Summary */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className={cn('grid grid-cols-1 gap-3', isOutsource ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3')}>
               <div className="rounded-xl border bg-muted/40 px-4 py-3 text-sm">
                 <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Stock</div>
-                {form.outsourced && !interPlant ? (
+                {isOutsource ? (
                   <div className="mt-1 font-medium text-primary">Outsourced — no plant stock used</div>
                 ) : (
                   <div className="mt-1">
@@ -695,6 +725,16 @@ export function Dispatch(): React.JSX.Element {
                   <b className="text-primary">{fmtMoney(invoiceTotal)}</b>
                 </div>
               </div>
+              {isOutsource && (
+                <div className={cn('rounded-xl border px-4 py-3 text-sm', profit >= 0 ? 'border-success/40 bg-success/5' : 'border-destructive/40 bg-destructive/5')}>
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Profit (live)</div>
+                  <div className="mt-1">
+                    Sale <b>{fmtMoney(goods)}</b> − Buy <b>{fmtMoney(buyAmount)}</b>
+                    {' = '}
+                    <b className={profit >= 0 ? 'text-success' : 'text-destructive'}>{fmtMoney(profit)}</b>
+                  </div>
+                </div>
+              )}
               <div className="rounded-xl border bg-muted/40 px-4 py-3 text-sm">
                 <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Your costs</div>
                 <div className="mt-1">Transport <b>{fmtMoney(transportCost)}</b> · Machines <b>{fmtMoney(machineCost)}</b></div>

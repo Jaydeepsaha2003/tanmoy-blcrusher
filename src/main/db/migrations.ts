@@ -909,6 +909,11 @@ ALTER TABLE spare_part_movements ADD COLUMN amount DOUBLE;
 ALTER TABLE diesel_issues ADD COLUMN transporter_id INT;
 ALTER TABLE diesel_issues ADD COLUMN rate DOUBLE;
 ALTER TABLE diesel_issues ADD COLUMN amount DOUBLE`
+  },
+  {
+    // Outsource sale: a buy rate so the vendor's payable + the live profit can be derived.
+    id: '022_dispatch_buy_rate',
+    sql: `ALTER TABLE dispatches ADD COLUMN buy_rate DOUBLE`
   }
 ]
 
@@ -1005,6 +1010,8 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   await addColumn('diesel_issues', 'transporter_id', 'INTEGER')
   await addColumn('diesel_issues', 'rate', 'REAL')
   await addColumn('diesel_issues', 'amount', 'REAL')
+  // Outsource sale buy rate (vendor payable + live profit).
+  await addColumn('dispatches', 'buy_rate', 'REAL')
 }
 
 /**

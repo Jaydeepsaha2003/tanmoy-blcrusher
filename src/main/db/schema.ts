@@ -293,6 +293,7 @@ CREATE TABLE IF NOT EXISTS dispatches (
   outsource_id    INTEGER,
   transporter_id  INTEGER,
   rate            REAL,
+  buy_rate        REAL,
   amount          REAL,
   transport_charge REAL NOT NULL DEFAULT 0,
   transport_billed INTEGER NOT NULL DEFAULT 0,

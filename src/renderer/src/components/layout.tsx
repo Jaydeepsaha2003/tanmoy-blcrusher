@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import type { LucideIcon } from 'lucide-react'
 import type { ModuleKey } from '@shared/types'
@@ -46,7 +46,11 @@ import {
   IndianRupee,
   PackageCheck,
   PiggyBank,
-  Menu
+  Menu,
+  Search,
+  PanelLeftClose,
+  PanelLeftOpen,
+  CornerDownLeft
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -160,6 +164,8 @@ const ROLE_BADGE: Record<string, string> = {
   staff: 'Staff'
 }
 
+const COLLAPSE_KEY = 'bl_sidebar_collapsed'
+
 export function AppShell({
   children,
   onLogout
@@ -171,10 +177,25 @@ export function AppShell({
   const groups = useVisibleNav()
   const { data: branding } = useQuery({ queryKey: ['branding'], queryFn: api.rates.getBranding })
   const [navOpen, setNavOpen] = React.useState(false)
+  // Desktop icon-rail collapse — remembered across sessions.
+  const [collapsed, setCollapsed] = React.useState<boolean>(() => {
+    try {
+      return localStorage.getItem(COLLAPSE_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
   const loc = useLocation()
 
   // Close the mobile drawer whenever the route changes.
   React.useEffect(() => setNavOpen(false), [loc.pathname])
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0')
+    } catch {
+      /* storage unavailable — collapse just won't persist */
+    }
+  }, [collapsed])
 
   return (
     <div className="flex h-full">
@@ -189,11 +210,12 @@ export function AppShell({
 
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 flex w-[260px] shrink-0 flex-col border-r bg-card transition-transform duration-200 lg:static lg:z-auto lg:w-[244px] lg:translate-x-0',
-          navOpen ? 'translate-x-0' : '-translate-x-full'
+          'fixed inset-y-0 left-0 z-40 flex w-[260px] shrink-0 flex-col border-r bg-card transition-all duration-200 lg:static lg:z-auto lg:translate-x-0',
+          navOpen ? 'translate-x-0' : '-translate-x-full',
+          collapsed ? 'lg:w-[68px]' : 'lg:w-[244px]'
         )}
       >
-        <div className="flex items-center gap-3 border-b px-5 py-4">
+        <div className={cn('flex items-center gap-3 border-b py-4', collapsed ? 'lg:justify-center lg:px-2 px-5' : 'px-5')}>
           {branding?.logo ? (
             <img
               src={branding.logo}
@@ -205,15 +227,15 @@ export function AppShell({
               <Mountain size={21} />
             </div>
           )}
-          <div className="min-w-0">
+          <div className={cn('min-w-0', collapsed && 'lg:hidden')}>
             <div className="truncate text-sm font-bold leading-tight">{branding?.business_name || 'BL Crushing'}</div>
             <div className="text-[11px] text-muted-foreground">Stone Crusher</div>
           </div>
         </div>
-        <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
+        <nav className={cn('flex-1 space-y-5 overflow-y-auto py-4', collapsed ? 'lg:px-2 px-3' : 'px-3')}>
           {groups.map((g) => (
             <div key={g.heading}>
-              <div className="px-2.5 pb-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-muted-foreground/80">
+              <div className={cn('px-2.5 pb-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-muted-foreground/80', collapsed && 'lg:hidden')}>
                 {g.heading}
               </div>
               <div className="space-y-0.5">
@@ -221,9 +243,11 @@ export function AppShell({
                   <NavLink
                     key={it.to}
                     to={it.to}
+                    title={collapsed ? it.label : undefined}
                     className={({ isActive }) =>
                       cn(
                         'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-all',
+                        collapsed && 'lg:justify-center lg:px-0',
                         isActive
                           ? 'bg-primary text-primary-foreground shadow-sm'
                           : 'text-foreground/70 hover:bg-accent hover:text-accent-foreground'
@@ -231,20 +255,20 @@ export function AppShell({
                     }
                   >
                     <it.icon size={17} className="shrink-0" />
-                    {it.label}
+                    <span className={cn(collapsed && 'lg:hidden')}>{it.label}</span>
                   </NavLink>
                 ))}
               </div>
             </div>
           ))}
         </nav>
-        <div className="border-t p-3">
+        <div className={cn('border-t p-3', collapsed && 'lg:px-2')}>
           {user && (
-            <div className="mb-2 flex items-center gap-2.5 rounded-lg px-2.5 py-1.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-bold uppercase text-primary">
+            <div className={cn('mb-2 flex items-center gap-2.5 rounded-lg px-2.5 py-1.5', collapsed && 'lg:justify-center lg:px-0')}>
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold uppercase text-primary">
                 {(user.name || user.username).slice(0, 2)}
               </div>
-              <div className="min-w-0">
+              <div className={cn('min-w-0', collapsed && 'lg:hidden')}>
                 <div className="truncate text-[13px] font-semibold leading-tight">
                   {user.name || user.username}
                 </div>
@@ -255,13 +279,17 @@ export function AppShell({
               </div>
             </div>
           )}
-          <ChangePassword />
+          <ChangePassword collapsed={collapsed} />
           <button
             onClick={onLogout}
-            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium text-foreground/70 transition-colors hover:bg-destructive/10 hover:text-destructive"
+            title={collapsed ? 'Lock / Logout' : undefined}
+            className={cn(
+              'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium text-foreground/70 transition-colors hover:bg-destructive/10 hover:text-destructive',
+              collapsed && 'lg:justify-center lg:px-0'
+            )}
           >
             <LogOut size={17} />
-            Lock / Logout
+            <span className={cn(collapsed && 'lg:hidden')}>Lock / Logout</span>
           </button>
         </div>
       </aside>
@@ -275,13 +303,111 @@ export function AppShell({
           >
             <Menu size={20} />
           </button>
-          <div className="flex flex-1 items-center justify-end gap-2.5">
+          <button
+            className="hidden rounded-md p-1.5 text-muted-foreground hover:bg-accent lg:inline-flex"
+            onClick={() => setCollapsed((c) => !c)}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}
+          </button>
+          <MenuSearch />
+          <div className="ml-auto flex items-center gap-2.5">
             <span className="hidden text-xs font-medium text-muted-foreground sm:inline">Active plant</span>
             <PlantSwitcher />
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">{children}</div>
       </main>
+    </div>
+  )
+}
+
+/** Header search that jumps to any menu the current user can see. */
+function MenuSearch(): React.JSX.Element {
+  const groups = useVisibleNav()
+  const navigate = useNavigate()
+  const [q, setQ] = React.useState('')
+  const [open, setOpen] = React.useState(false)
+  const [active, setActive] = React.useState(0)
+  const boxRef = React.useRef<HTMLDivElement>(null)
+
+  const items = React.useMemo(
+    () => groups.flatMap((g) => g.items.map((it) => ({ ...it, group: g.heading }))),
+    [groups]
+  )
+  const matches = React.useMemo(() => {
+    const term = q.trim().toLowerCase()
+    if (!term) return []
+    return items.filter((it) => `${it.label} ${it.group}`.toLowerCase().includes(term)).slice(0, 8)
+  }, [items, q])
+
+  React.useEffect(() => {
+    function onDoc(e: MouseEvent): void {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [])
+  React.useEffect(() => setActive(0), [q])
+
+  function go(to: string): void {
+    navigate(to)
+    setQ('')
+    setOpen(false)
+  }
+
+  return (
+    <div ref={boxRef} className="relative w-full max-w-md">
+      <Search size={15} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+      <input
+        value={q}
+        onChange={(e) => {
+          setQ(e.target.value)
+          setOpen(true)
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault()
+            setActive((a) => Math.min(a + 1, matches.length - 1))
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault()
+            setActive((a) => Math.max(a - 1, 0))
+          } else if (e.key === 'Enter' && matches[active]) {
+            go(matches[active].to)
+          } else if (e.key === 'Escape') {
+            setQ('')
+            setOpen(false)
+          }
+        }}
+        placeholder="Search menus…"
+        className="h-8 w-full rounded-md border border-input bg-background pl-8 pr-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      />
+      {open && q.trim() && (
+        <div className="absolute z-50 mt-1 max-h-80 w-full overflow-y-auto rounded-lg border bg-popover py-1 text-popover-foreground shadow-lg">
+          {matches.length ? (
+            matches.map((m, i) => (
+              <button
+                key={m.to}
+                onMouseEnter={() => setActive(i)}
+                onClick={() => go(m.to)}
+                className={cn(
+                  'flex w-full items-center gap-2.5 px-3 py-2 text-sm',
+                  i === active ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/60'
+                )}
+              >
+                <m.icon size={16} className="shrink-0 text-muted-foreground" />
+                <span className="flex-1 text-left">{m.label}</span>
+                <span className="text-[11px] text-muted-foreground">{m.group}</span>
+                {i === active && <CornerDownLeft size={13} className="text-muted-foreground" />}
+              </button>
+            ))
+          ) : (
+            <div className="px-3 py-2 text-sm text-muted-foreground">No menus match “{q.trim()}”.</div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -340,7 +466,7 @@ export function Page({ children }: { children: React.ReactNode }): React.JSX.Ele
 }
 
 /** Self-service password change, available to every signed-in user. */
-function ChangePassword(): React.JSX.Element {
+function ChangePassword({ collapsed }: { collapsed?: boolean }): React.JSX.Element {
   const toast = useToast()
   const [open, setOpen] = React.useState(false)
   const [current, setCurrent] = React.useState('')
@@ -368,10 +494,14 @@ function ChangePassword(): React.JSX.Element {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium text-foreground/70 transition-colors hover:bg-accent hover:text-accent-foreground"
+        title={collapsed ? 'Change password' : undefined}
+        className={cn(
+          'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium text-foreground/70 transition-colors hover:bg-accent hover:text-accent-foreground',
+          collapsed && 'lg:justify-center lg:px-0'
+        )}
       >
         <KeyRound size={17} />
-        Change password
+        <span className={cn(collapsed && 'lg:hidden')}>Change password</span>
       </button>
       {open && (
         <Modal open onClose={() => setOpen(false)} title="Change Password" width="max-w-sm">

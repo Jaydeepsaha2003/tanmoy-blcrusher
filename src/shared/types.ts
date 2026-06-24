@@ -639,6 +639,8 @@ export interface Dispatch {
   /** Quantity actually sold/received at destination (added later). null = not set yet. */
   sale_quantity: number | null
   rate: number | null
+  /** Outsource sale only: what we pay the vendor per unit (drives the vendor payable + profit). */
+  buy_rate: number | null
   amount: number | null
   transport_charge: number
   transport_billed: number

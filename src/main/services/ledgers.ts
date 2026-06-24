@@ -887,6 +887,36 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
           debit: 0,
           credit: x.amount
         })
+    // Outsourced direct sales bought from this vendor — what we owe them for the goods (payable).
+    const osale = (await d
+      .prepare(
+        `SELECT dispatch_no, date, created_at, product_name, uom,
+                COALESCE(sale_quantity, quantity) AS qty,
+                ROUND(COALESCE(buy_rate,0) * COALESCE(sale_quantity, quantity), 2) AS amount
+         FROM dispatches
+         WHERE outsourced = 1 AND outsource_id = ? AND COALESCE(buy_rate,0) > 0`
+      )
+      .all(partyId)) as {
+      dispatch_no: string
+      date: string
+      created_at: string
+      product_name: string
+      uom: string
+      qty: number
+      amount: number
+    }[]
+    for (const x of osale)
+      if (x.amount > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Outsourced supply — ${x.product_name}`,
+          ref: x.dispatch_no,
+          qty: x.qty,
+          uom: x.uom,
+          debit: 0,
+          credit: x.amount
+        })
   }
 
   if (partyType === 'customer') {
