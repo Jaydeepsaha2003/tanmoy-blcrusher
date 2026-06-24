@@ -58992,6 +58992,7 @@ function Stat$1({
   label,
   value,
   tone: tone2 = "default",
+  valueTone,
   suffix,
   hint
 }) {
@@ -59001,11 +59002,16 @@ function Stat$1({
     warning: "bg-warning/15 text-warning",
     destructive: "bg-destructive/10 text-destructive"
   };
+  const valueTones = {
+    success: "text-success",
+    warning: "text-warning",
+    destructive: "text-destructive"
+  };
   return /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { className: "transition-shadow hover:shadow-md", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "flex items-center gap-3.5 p-4", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${tones[tone2]}`, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Icon2, { size: 21 }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "truncate text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: label }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "tnum text-xl font-bold leading-tight", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `tnum text-xl font-bold leading-tight ${valueTone ? valueTones[valueTone] : ""}`, children: [
         value,
         suffix && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ml-1 text-sm font-normal text-muted-foreground", children: suffix })
       ] }),
@@ -59078,26 +59084,33 @@ function Dashboard() {
         plantId ? ` — ${activePlant}` : ""
       ] }),
       (() => {
-        const net = data.billReceivable - data.billsPayable;
+        const recv = data.billReceivable;
+        const pay = data.billsPayable;
+        const net = recv - pay;
+        const ob2 = data.openingBalance;
+        const recvIsAdvance = recv < -5e-3;
+        const payIsAdvance = pay < -5e-3;
         return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4 lg:grid-cols-4", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             Stat$1,
             {
               icon: Coins,
-              label: "Receivable",
-              value: fmtMoney(data.billReceivable),
-              tone: data.billReceivable < 0 ? "destructive" : "success",
-              hint: "What customers owe you"
+              label: recvIsAdvance ? "Customer Advance" : "Receivable",
+              value: fmtMoney(Math.abs(recv)),
+              tone: recvIsAdvance ? "destructive" : "success",
+              valueTone: recvIsAdvance ? "destructive" : "success",
+              hint: recvIsAdvance ? "Advance held from customers (you owe)" : "What customers owe you"
             }
           ),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             Stat$1,
             {
               icon: Wallet,
-              label: "Payable",
-              value: fmtMoney(data.billsPayable),
-              tone: data.billsPayable > 0 ? "destructive" : "success",
-              hint: "What you owe — suppliers, transporters, outsource"
+              label: payIsAdvance ? "Vendor Advance" : "Payable",
+              value: fmtMoney(Math.abs(pay)),
+              tone: payIsAdvance ? "success" : "destructive",
+              valueTone: payIsAdvance ? "success" : "destructive",
+              hint: payIsAdvance ? "Advance you’ve paid suppliers/transporters" : "What you owe — suppliers, transporters, outsource"
             }
           ),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -59105,9 +59118,10 @@ function Dashboard() {
             {
               icon: HandCoins,
               label: "Net Position",
-              value: fmtMoney(net),
+              value: fmtMoney(Math.abs(net)),
               tone: net < 0 ? "destructive" : "success",
-              hint: net < 0 ? "Net payable" : "Net receivable"
+              valueTone: net < 0 ? "destructive" : "success",
+              hint: net < 0 ? "Net payable — you owe" : "Net receivable — you’ll get"
             }
           ),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -59115,9 +59129,10 @@ function Dashboard() {
             {
               icon: Scale,
               label: "Opening Balance",
-              value: fmtMoney(data.openingBalance),
-              tone: data.openingBalance < 0 ? "destructive" : "success",
-              hint: "Carried forward — already in the figures"
+              value: fmtMoney(Math.abs(ob2)),
+              tone: ob2 < 0 ? "destructive" : "success",
+              valueTone: ob2 < 0 ? "destructive" : "success",
+              hint: `Carried forward (${ob2 < 0 ? "Cr" : "Dr"}) — already in the figures`
             }
           )
         ] });
@@ -77787,7 +77802,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-_vXLxg24.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-bPhycmaX.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
