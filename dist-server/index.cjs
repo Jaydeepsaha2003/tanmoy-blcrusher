@@ -650,6 +650,22 @@ CREATE TABLE IF NOT EXISTS asset_plants (
   plant_id  INTEGER NOT NULL REFERENCES plants(id)
 );
 
+CREATE TABLE IF NOT EXISTS customer_plants (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id INTEGER NOT NULL REFERENCES customers(id),
+  plant_id    INTEGER NOT NULL REFERENCES plants(id)
+);
+CREATE TABLE IF NOT EXISTS supplier_plants (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  supplier_id INTEGER NOT NULL REFERENCES suppliers(id),
+  plant_id    INTEGER NOT NULL REFERENCES plants(id)
+);
+CREATE TABLE IF NOT EXISTS transporter_plants (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  transporter_id INTEGER NOT NULL REFERENCES transporters(id),
+  plant_id       INTEGER NOT NULL REFERENCES plants(id)
+);
+
 CREATE TABLE IF NOT EXISTS asset_plant_moves (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   asset_id      INTEGER NOT NULL REFERENCES assets(id),
@@ -826,6 +842,9 @@ CREATE INDEX IF NOT EXISTS idx_adoc_asset ON asset_documents(asset_id);
 CREATE INDEX IF NOT EXISTS idx_adoc_expiry ON asset_documents(expiry_date);
 CREATE INDEX IF NOT EXISTS idx_aplants_asset ON asset_plants(asset_id);
 CREATE INDEX IF NOT EXISTS idx_aplants_plant ON asset_plants(plant_id);
+CREATE INDEX IF NOT EXISTS idx_cplants_customer ON customer_plants(customer_id);
+CREATE INDEX IF NOT EXISTS idx_splants_supplier ON supplier_plants(supplier_id);
+CREATE INDEX IF NOT EXISTS idx_tplants_transporter ON transporter_plants(transporter_id);
 CREATE INDEX IF NOT EXISTS idx_amoves_asset ON asset_plant_moves(asset_id);
 CREATE INDEX IF NOT EXISTS idx_spare_parts_plant ON spare_parts(plant_id);
 CREATE INDEX IF NOT EXISTS idx_part_moves_part ON spare_part_movements(part_id);
@@ -1755,6 +1774,28 @@ ALTER TABLE diesel_issues ADD COLUMN amount DOUBLE`
     // Outsource sale: a buy rate so the vendor's payable + the live profit can be derived.
     id: "022_dispatch_buy_rate",
     sql: `ALTER TABLE dispatches ADD COLUMN buy_rate DOUBLE`
+  },
+  {
+    // Multi-plant customers / suppliers / transporters (junction tables).
+    id: "023_party_plants",
+    sql: `CREATE TABLE IF NOT EXISTS customer_plants (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  customer_id INT NOT NULL,
+  plant_id    INT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS supplier_plants (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  supplier_id INT NOT NULL,
+  plant_id    INT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS transporter_plants (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  transporter_id INT NOT NULL,
+  plant_id       INT NOT NULL
+);
+CREATE INDEX idx_cplants_customer ON customer_plants(customer_id);
+CREATE INDEX idx_splants_supplier ON supplier_plants(supplier_id);
+CREATE INDEX idx_tplants_transporter ON transporter_plants(transporter_id)`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -1923,6 +1964,31 @@ async function backfillAssetPlants(adapter2, kind) {
   const ins = kind === "mysql" ? "INSERT INTO settings (`key`, value) VALUES (?, '1') ON DUPLICATE KEY UPDATE value = '1'" : "INSERT INTO settings (`key`, value) VALUES (?, '1') ON CONFLICT(`key`) DO UPDATE SET value = '1'";
   await adapter2.exec(ins, [flag], null);
 }
+async function backfillPartyPlants(adapter2, kind) {
+  const flag = "party_plants_backfill_v1";
+  const done = (await adapter2.exec("SELECT value FROM settings WHERE `key` = ?", [flag], null)).rows;
+  if (done.length > 0) return;
+  const maps = [
+    { junction: "customer_plants", col: "customer_id", src: "customers" },
+    { junction: "supplier_plants", col: "supplier_id", src: "suppliers" },
+    { junction: "transporter_plants", col: "transporter_id", src: "transporters" }
+  ];
+  for (const m of maps) {
+    try {
+      await adapter2.exec(
+        `INSERT INTO ${m.junction} (${m.col}, plant_id)
+         SELECT s.id, s.plant_id FROM ${m.src} s
+         WHERE s.plant_id IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM ${m.junction} jp WHERE jp.${m.col} = s.id)`,
+        void 0,
+        null
+      );
+    } catch {
+    }
+  }
+  const ins = kind === "mysql" ? "INSERT INTO settings (`key`, value) VALUES (?, '1') ON DUPLICATE KEY UPDATE value = '1'" : "INSERT INTO settings (`key`, value) VALUES (?, '1') ON CONFLICT(`key`) DO UPDATE SET value = '1'";
+  await adapter2.exec(ins, [flag], null);
+}
 async function seedDefaults(adapter2) {
   const pwRow = (await adapter2.exec("SELECT value FROM settings WHERE `key` = 'admin_password'", void 0, null)).rows[0];
   if (!pwRow) {
@@ -1971,6 +2037,7 @@ async function runMigrations(adapter2, kind) {
   await importProductsFromSettings(adapter2);
   await uppercaseExistingNames(adapter2, kind);
   await backfillAssetPlants(adapter2, kind);
+  await backfillPartyPlants(adapter2, kind);
 }
 
 // src/main/db/index.ts
@@ -2717,10 +2784,55 @@ async function deletePlant(payload) {
   return { ok: true };
 }
 
+// src/main/services/partyPlants.ts
+var PARTY_PLANT_TABLE = {
+  customer: { junction: "customer_plants", col: "customer_id" },
+  supplier: { junction: "supplier_plants", col: "supplier_id" },
+  transporter: { junction: "transporter_plants", col: "transporter_id" }
+};
+function plantIdSet(p) {
+  if (Array.isArray(p.plant_ids)) return [...new Set(p.plant_ids.map(Number).filter((n) => n > 0))];
+  return p.plant_id ? [Number(p.plant_id)] : [];
+}
+async function writePartyPlants(d, partyType, partyId, plantIds) {
+  const m = PARTY_PLANT_TABLE[partyType];
+  if (!m) return;
+  await d.prepare(`DELETE FROM ${m.junction} WHERE ${m.col} = ?`).run(partyId);
+  const stmt = d.prepare(`INSERT INTO ${m.junction} (${m.col}, plant_id) VALUES (?, ?)`);
+  for (const pid of plantIds) await stmt.run(partyId, pid);
+}
+async function attachPartyPlants(d, partyType, rows) {
+  const m = PARTY_PLANT_TABLE[partyType];
+  if (!m || rows.length === 0) return rows;
+  const jrows = await d.prepare(
+    `SELECT jp.${m.col} AS party_id, jp.plant_id, p.name AS plant_name
+       FROM ${m.junction} jp JOIN plants p ON p.id = jp.plant_id ORDER BY p.name`
+  ).all();
+  const by = /* @__PURE__ */ new Map();
+  for (const r of jrows) {
+    const e = by.get(r.party_id) ?? { ids: [], names: [] };
+    e.ids.push(r.plant_id);
+    e.names.push(r.plant_name);
+    by.set(r.party_id, e);
+  }
+  for (const row of rows) {
+    const e = by.get(row.id);
+    row.plant_ids = e?.ids ?? [];
+    row.plant_names = e?.names ?? [];
+  }
+  return rows;
+}
+function plantScopeSql(alias, partyType, plantParam = "@plant_id") {
+  const m = PARTY_PLANT_TABLE[partyType];
+  if (!m) return "1=1";
+  return `(EXISTS (SELECT 1 FROM ${m.junction} jp WHERE jp.${m.col} = ${alias}.id AND jp.plant_id = ${plantParam})
+    OR NOT EXISTS (SELECT 1 FROM ${m.junction} jp2 WHERE jp2.${m.col} = ${alias}.id))`;
+}
+
 // src/main/services/suppliers.ts
 async function listSuppliers(payload = {}) {
   const d = getDb();
-  const clause = payload.plant_id ? `WHERE (s.plant_id IS NULL OR s.plant_id = @plant_id)` : "";
+  const clause = payload.plant_id ? `WHERE ${plantScopeSql("s", "supplier")}` : "";
   const rows = await d.prepare(
     `SELECT s.*, co.name AS company_name, pl.name AS plant_name
        FROM suppliers s
@@ -2729,6 +2841,7 @@ async function listSuppliers(payload = {}) {
        ${clause}
        ORDER BY s.name`
   ).all(payload);
+  await attachPartyPlants(d, "supplier", rows);
   for (const s of rows) {
     const agg = await d.prepare(
       `SELECT
@@ -2747,33 +2860,47 @@ async function listSuppliers(payload = {}) {
 async function createSupplier(p) {
   const d = getDb();
   await ensureUniqueName("suppliers", p.name, { label: "A supplier" });
-  const info = await d.prepare(
-    `INSERT INTO suppliers (name, contact, address, remarks, company_id, plant_id) VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(
-    properCase(p.name),
-    p.contact ?? "",
-    p.address ?? "",
-    p.remarks ?? "",
-    p.company_id ?? null,
-    p.plant_id ?? null
-  );
-  return await d.prepare(`SELECT * FROM suppliers WHERE id = ?`).get(info.lastInsertRowid);
+  const plants = plantIdSet(p);
+  const id = await d.transaction(async () => {
+    const info = await d.prepare(
+      `INSERT INTO suppliers (name, contact, address, remarks, company_id, plant_id) VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(
+      properCase(p.name),
+      p.contact ?? "",
+      p.address ?? "",
+      p.remarks ?? "",
+      p.company_id ?? null,
+      plants[0] ?? null
+    );
+    const sid = Number(info.lastInsertRowid);
+    await writePartyPlants(d, "supplier", sid, plants);
+    return sid;
+  });
+  const row = await d.prepare(`SELECT * FROM suppliers WHERE id = ?`).get(id);
+  await attachPartyPlants(d, "supplier", [row]);
+  return row;
 }
 async function updateSupplier(p) {
   const d = getDb();
   await ensureUniqueName("suppliers", p.name, { id: p.id, label: "A supplier" });
-  await d.prepare(
-    `UPDATE suppliers SET name=?, contact=?, address=?, remarks=?, company_id=?, plant_id=? WHERE id=?`
-  ).run(
-    properCase(p.name),
-    p.contact ?? "",
-    p.address ?? "",
-    p.remarks ?? "",
-    p.company_id ?? null,
-    p.plant_id ?? null,
-    p.id
-  );
-  return await d.prepare(`SELECT * FROM suppliers WHERE id = ?`).get(p.id);
+  const plants = plantIdSet(p);
+  await d.transaction(async () => {
+    await d.prepare(
+      `UPDATE suppliers SET name=?, contact=?, address=?, remarks=?, company_id=?, plant_id=? WHERE id=?`
+    ).run(
+      properCase(p.name),
+      p.contact ?? "",
+      p.address ?? "",
+      p.remarks ?? "",
+      p.company_id ?? null,
+      plants[0] ?? null,
+      p.id
+    );
+    await writePartyPlants(d, "supplier", p.id, plants);
+  });
+  const row = await d.prepare(`SELECT * FROM suppliers WHERE id = ?`).get(p.id);
+  await attachPartyPlants(d, "supplier", [row]);
+  return row;
 }
 async function deleteSupplier(payload) {
   const d = getDb();
@@ -2781,7 +2908,10 @@ async function deleteSupplier(payload) {
   if (used.c > 0) {
     return { ok: false, error: "Cannot delete: this supplier has purchase records." };
   }
-  await d.prepare(`DELETE FROM suppliers WHERE id = ?`).run(payload.id);
+  await d.transaction(async () => {
+    await d.prepare(`DELETE FROM supplier_plants WHERE supplier_id = ?`).run(payload.id);
+    await d.prepare(`DELETE FROM suppliers WHERE id = ?`).run(payload.id);
+  });
   return { ok: true };
 }
 function round3(n) {
@@ -2791,7 +2921,7 @@ function round3(n) {
 // src/main/services/customers.ts
 async function listCustomers(payload = {}) {
   const d = getDb();
-  const clause = payload.plant_id ? `WHERE (c.plant_id IS NULL OR c.plant_id = @plant_id)` : "";
+  const clause = payload.plant_id ? `WHERE ${plantScopeSql("c", "customer")}` : "";
   const rows = await d.prepare(
     `SELECT c.*, co.name AS company_name, pl.name AS plant_name
        FROM customers c
@@ -2800,6 +2930,7 @@ async function listCustomers(payload = {}) {
        ${clause}
        ORDER BY c.name`
   ).all(payload);
+  await attachPartyPlants(d, "customer", rows);
   for (const c of rows) {
     const agg = await d.prepare(
       `SELECT COALESCE(SUM(quantity),0) AS qty FROM dispatches WHERE customer_id = @id`
@@ -2812,33 +2943,47 @@ async function listCustomers(payload = {}) {
 async function createCustomer(p) {
   const d = getDb();
   await ensureUniqueName("customers", p.name, { label: "A customer" });
-  const info = await d.prepare(
-    `INSERT INTO customers (name, contact, address, remarks, company_id, plant_id) VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(
-    properCase(p.name),
-    p.contact ?? "",
-    p.address ?? "",
-    p.remarks ?? "",
-    p.company_id ?? null,
-    p.plant_id ?? null
-  );
-  return await d.prepare(`SELECT * FROM customers WHERE id = ?`).get(info.lastInsertRowid);
+  const plants = plantIdSet(p);
+  const id = await d.transaction(async () => {
+    const info = await d.prepare(
+      `INSERT INTO customers (name, contact, address, remarks, company_id, plant_id) VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(
+      properCase(p.name),
+      p.contact ?? "",
+      p.address ?? "",
+      p.remarks ?? "",
+      p.company_id ?? null,
+      plants[0] ?? null
+    );
+    const cid = Number(info.lastInsertRowid);
+    await writePartyPlants(d, "customer", cid, plants);
+    return cid;
+  });
+  const row = await d.prepare(`SELECT * FROM customers WHERE id = ?`).get(id);
+  await attachPartyPlants(d, "customer", [row]);
+  return row;
 }
 async function updateCustomer(p) {
   const d = getDb();
   await ensureUniqueName("customers", p.name, { id: p.id, label: "A customer" });
-  await d.prepare(
-    `UPDATE customers SET name=?, contact=?, address=?, remarks=?, company_id=?, plant_id=? WHERE id=?`
-  ).run(
-    properCase(p.name),
-    p.contact ?? "",
-    p.address ?? "",
-    p.remarks ?? "",
-    p.company_id ?? null,
-    p.plant_id ?? null,
-    p.id
-  );
-  return await d.prepare(`SELECT * FROM customers WHERE id = ?`).get(p.id);
+  const plants = plantIdSet(p);
+  await d.transaction(async () => {
+    await d.prepare(
+      `UPDATE customers SET name=?, contact=?, address=?, remarks=?, company_id=?, plant_id=? WHERE id=?`
+    ).run(
+      properCase(p.name),
+      p.contact ?? "",
+      p.address ?? "",
+      p.remarks ?? "",
+      p.company_id ?? null,
+      plants[0] ?? null,
+      p.id
+    );
+    await writePartyPlants(d, "customer", p.id, plants);
+  });
+  const row = await d.prepare(`SELECT * FROM customers WHERE id = ?`).get(p.id);
+  await attachPartyPlants(d, "customer", [row]);
+  return row;
 }
 async function deleteCustomer(payload) {
   const d = getDb();
@@ -2847,7 +2992,10 @@ async function deleteCustomer(payload) {
   if (used.c > 0 || rackUsed.c > 0) {
     return { ok: false, error: "Cannot delete: this customer has sales/dispatch records." };
   }
-  await d.prepare(`DELETE FROM customers WHERE id = ?`).run(payload.id);
+  await d.transaction(async () => {
+    await d.prepare(`DELETE FROM customer_plants WHERE customer_id = ?`).run(payload.id);
+    await d.prepare(`DELETE FROM customers WHERE id = ?`).run(payload.id);
+  });
   return { ok: true };
 }
 
@@ -3988,7 +4136,7 @@ async function deleteDispatch(payload) {
 // src/main/services/transporters.ts
 async function listTransporters(payload = {}) {
   const d = getDb();
-  const clause = payload.plant_id ? `WHERE (t.plant_id IS NULL OR t.plant_id = @plant_id)` : "";
+  const clause = payload.plant_id ? `WHERE ${plantScopeSql("t", "transporter")}` : "";
   const rows = await d.prepare(
     `SELECT t.*, co.name AS company_name, pl.name AS plant_name
        FROM transporters t
@@ -3997,6 +4145,7 @@ async function listTransporters(payload = {}) {
        ${clause}
        ORDER BY t.name`
   ).all(payload);
+  await attachPartyPlants(d, "transporter", rows);
   for (const t of rows) {
     const agg = await d.prepare(
       `SELECT
@@ -4028,33 +4177,47 @@ async function listTransporters(payload = {}) {
 async function createTransporter(p) {
   const d = getDb();
   await ensureUniqueName("transporters", p.name, { label: "A transporter" });
-  const info = await d.prepare(
-    `INSERT INTO transporters (name, contact, address, remarks, company_id, plant_id) VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(
-    properCase(p.name),
-    p.contact ?? "",
-    p.address ?? "",
-    p.remarks ?? "",
-    p.company_id ?? null,
-    p.plant_id ?? null
-  );
-  return await d.prepare(`SELECT * FROM transporters WHERE id = ?`).get(info.lastInsertRowid);
+  const plants = plantIdSet(p);
+  const id = await d.transaction(async () => {
+    const info = await d.prepare(
+      `INSERT INTO transporters (name, contact, address, remarks, company_id, plant_id) VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(
+      properCase(p.name),
+      p.contact ?? "",
+      p.address ?? "",
+      p.remarks ?? "",
+      p.company_id ?? null,
+      plants[0] ?? null
+    );
+    const tid = Number(info.lastInsertRowid);
+    await writePartyPlants(d, "transporter", tid, plants);
+    return tid;
+  });
+  const row = await d.prepare(`SELECT * FROM transporters WHERE id = ?`).get(id);
+  await attachPartyPlants(d, "transporter", [row]);
+  return row;
 }
 async function updateTransporter(p) {
   const d = getDb();
   await ensureUniqueName("transporters", p.name, { id: p.id, label: "A transporter" });
-  await d.prepare(
-    `UPDATE transporters SET name=?, contact=?, address=?, remarks=?, company_id=?, plant_id=? WHERE id=?`
-  ).run(
-    properCase(p.name),
-    p.contact ?? "",
-    p.address ?? "",
-    p.remarks ?? "",
-    p.company_id ?? null,
-    p.plant_id ?? null,
-    p.id
-  );
-  return await d.prepare(`SELECT * FROM transporters WHERE id = ?`).get(p.id);
+  const plants = plantIdSet(p);
+  await d.transaction(async () => {
+    await d.prepare(
+      `UPDATE transporters SET name=?, contact=?, address=?, remarks=?, company_id=?, plant_id=? WHERE id=?`
+    ).run(
+      properCase(p.name),
+      p.contact ?? "",
+      p.address ?? "",
+      p.remarks ?? "",
+      p.company_id ?? null,
+      plants[0] ?? null,
+      p.id
+    );
+    await writePartyPlants(d, "transporter", p.id, plants);
+  });
+  const row = await d.prepare(`SELECT * FROM transporters WHERE id = ?`).get(p.id);
+  await attachPartyPlants(d, "transporter", [row]);
+  return row;
 }
 async function deleteTransporter(payload) {
   const d = getDb();
@@ -4070,7 +4233,10 @@ async function deleteTransporter(payload) {
   if (paid.c > 0) {
     return { ok: false, error: "Cannot delete: this transporter has payment records." };
   }
-  await d.prepare(`DELETE FROM transporters WHERE id = ?`).run(payload.id);
+  await d.transaction(async () => {
+    await d.prepare(`DELETE FROM transporter_plants WHERE transporter_id = ?`).run(payload.id);
+    await d.prepare(`DELETE FROM transporters WHERE id = ?`).run(payload.id);
+  });
   return { ok: true };
 }
 function round7(n) {
@@ -5807,8 +5973,8 @@ async function getPartyBalances(payload) {
   } else {
     const table = PARTY_TABLE[payload.party_type];
     if (!table) throw new Error("Invalid party type.");
-    const clause = payload.plant_id ? `WHERE (plant_id IS NULL OR plant_id = @plant_id)` : "";
-    parties = await d.prepare(`SELECT id, name FROM ${table} ${clause} ORDER BY name`).all(payload.plant_id ? { plant_id: payload.plant_id } : {});
+    const clause = payload.plant_id ? `WHERE ${plantScopeSql("t", payload.party_type)}` : "";
+    parties = await d.prepare(`SELECT t.id, t.name FROM ${table} t ${clause} ORDER BY t.name`).all(payload.plant_id ? { plant_id: payload.plant_id } : {});
   }
   const sign = runningSign(payload.party_type);
   const result = [];
@@ -7616,8 +7782,8 @@ async function getDashboard(payload = {}) {
   const sumBal = (arr) => arr.reduce((s, b) => s + b.balance, 0);
   const billReceivable = money7({ q: sumBal(custBal) });
   const billsPayable = money7({ q: sumBal(supBal) + sumBal(transBal) + sumBal(outBal) });
-  const obCust = pid ? ` AND (c.plant_id = ${pid} OR c.plant_id IS NULL)` : "";
-  const obSup = pid ? ` AND (s.plant_id = ${pid} OR s.plant_id IS NULL)` : "";
+  const obCust = pid ? ` AND ${plantScopeSql("c", "customer", String(pid))}` : "";
+  const obSup = pid ? ` AND ${plantScopeSql("s", "supplier", String(pid))}` : "";
   const openingBalance = money7(
     await d.prepare(
       `SELECT
@@ -7631,12 +7797,12 @@ async function getDashboard(payload = {}) {
              FROM opening_balances ob WHERE ob.party_type='outsource') AS q`
     ).get()
   );
-  const partyWhere = pid ? ` WHERE (plant_id IS NULL OR plant_id = ${pid})` : "";
+  const scopeWhere = (table, type) => pid ? ` WHERE ${plantScopeSql(table, type, String(pid))}` : "";
   const counts = {
     plants: (await d.prepare(`SELECT COUNT(*) AS q FROM plants`).get()).q,
-    suppliers: (await d.prepare(`SELECT COUNT(*) AS q FROM suppliers${partyWhere}`).get()).q,
-    customers: (await d.prepare(`SELECT COUNT(*) AS q FROM customers${partyWhere}`).get()).q,
-    transporters: (await d.prepare(`SELECT COUNT(*) AS q FROM transporters${partyWhere}`).get()).q,
+    suppliers: (await d.prepare(`SELECT COUNT(*) AS q FROM suppliers${scopeWhere("suppliers", "supplier")}`).get()).q,
+    customers: (await d.prepare(`SELECT COUNT(*) AS q FROM customers${scopeWhere("customers", "customer")}`).get()).q,
+    transporters: (await d.prepare(`SELECT COUNT(*) AS q FROM transporters${scopeWhere("transporters", "transporter")}`).get()).q,
     companies: (await d.prepare(`SELECT COUNT(*) AS q FROM companies`).get()).q,
     racks: pid ? (await d.prepare(`SELECT COUNT(*) AS q FROM racks WHERE id IN (SELECT DISTINCT rack_id FROM rack_loadings WHERE plant_id = ${pid})`).get()).q : (await d.prepare(`SELECT COUNT(*) AS q FROM racks`).get()).q
   };

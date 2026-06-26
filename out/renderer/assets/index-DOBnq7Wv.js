@@ -35946,6 +35946,30 @@ function Modal({
 function EmptyState({ message }) {
   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-col items-center justify-center rounded-lg border border-dashed py-14 text-sm text-muted-foreground", children: message });
 }
+function PlantCheckboxes({
+  plants,
+  selected,
+  onToggle
+}) {
+  if (plants.length === 0) return /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-muted-foreground", children: "No plants yet." });
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-wrap gap-2", children: plants.map((p2) => {
+    const on = selected.includes(p2.id);
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "label",
+      {
+        className: cn(
+          "flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
+          on ? "border-primary bg-primary/5 text-foreground" : "border-input text-muted-foreground hover:bg-accent"
+        ),
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("input", { type: "checkbox", className: "h-4 w-4", checked: on, onChange: () => onToggle(p2.id) }),
+          p2.name
+        ]
+      },
+      p2.id
+    );
+  }) });
+}
 const Ctx = reactExports.createContext(null);
 function useToast() {
   const ctx = reactExports.useContext(Ctx);
@@ -59605,7 +59629,7 @@ function Suppliers() {
       data.map((s2) => [
         s2.name,
         s2.company_name ?? "",
-        s2.plant_name ?? "Common",
+        (s2.plant_names ?? []).length ? (s2.plant_names ?? []).join(", ") : "Common",
         s2.contact,
         s2.address,
         s2.total_purchased ?? 0,
@@ -59624,6 +59648,10 @@ function Suppliers() {
     },
     onError: (e3) => toast.error(e3.message)
   });
+  function togglePlant(id2) {
+    const cur = form.plant_ids ?? [];
+    setForm({ ...form, plant_ids: cur.includes(id2) ? cur.filter((x2) => x2 !== id2) : [...cur, id2] });
+  }
   async function remove(s2) {
     const ok2 = await confirmDialog({
       title: "Delete supplier",
@@ -59648,7 +59676,7 @@ function Suppliers() {
             " Excel"
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { onClick: () => {
-            setForm({ plant_id: plantId ?? null });
+            setForm({ plant_ids: plantId ? [plantId] : [] });
             setOpen(true);
           }, children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 16 }),
@@ -59702,7 +59730,7 @@ function Suppliers() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: filtered.map((s2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: s2.name }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: s2.company_name || "-" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: s2.plant_name || "Common" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: (s2.plant_names ?? []).length ? (s2.plant_names ?? []).join(", ") : "Common" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtQty(s2.total_purchased) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtMoney(s2.total_amount) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right font-semibold text-destructive", children: fmtMoney(s2.unpaid_amount) }),
@@ -59724,24 +59752,15 @@ function Suppliers() {
         title: form.id ? "Edit Supplier" : "New Supplier",
         children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Supplier Name", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.name || "", onChange: (e3) => setForm({ ...form, name: e3.target.value }) }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Company / Group (optional)", hint: "For a combined company ledger", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-              SearchSelect,
-              {
-                value: form.company_id ?? "",
-                onChange: (v2) => setForm({ ...form, company_id: v2 ? Number(v2) : null }),
-                options: [{ value: "", label: "— None —" }, ...companies.map((c2) => ({ value: c2.id, label: c2.name }))]
-              }
-            ) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", hint: "Common = available to all plants", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-              SearchSelect,
-              {
-                value: form.plant_id ?? "",
-                onChange: (v2) => setForm({ ...form, plant_id: v2 ? Number(v2) : null }),
-                options: [{ value: "", label: "Common (all plants)" }, ...plants.map((p2) => ({ value: p2.id, label: p2.name }))]
-              }
-            ) })
-          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Company / Group (optional)", hint: "For a combined company ledger", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SearchSelect,
+            {
+              value: form.company_id ?? "",
+              onChange: (v2) => setForm({ ...form, company_id: v2 ? Number(v2) : null }),
+              options: [{ value: "", label: "— None —" }, ...companies.map((c2) => ({ value: c2.id, label: c2.name }))]
+            }
+          ) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plants", hint: "Tick the plants this supplier works with — leave all unticked for common (all plants)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(PlantCheckboxes, { plants, selected: form.plant_ids ?? [], onToggle: togglePlant }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Contact Details", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
             Input,
             {
@@ -61091,7 +61110,7 @@ function Customers() {
       "customers",
       "Customers",
       ["Name", "Company", "Plant", "Contact", "Address", "Total Sold (m³)"],
-      data.map((c2) => [c2.name, c2.company_name ?? "", c2.plant_name ?? "Common", c2.contact, c2.address, c2.total_dispatched ?? 0])
+      data.map((c2) => [c2.name, c2.company_name ?? "", (c2.plant_names ?? []).length ? (c2.plant_names ?? []).join(", ") : "Common", c2.contact, c2.address, c2.total_dispatched ?? 0])
     );
   }
   const save = useMutation({
@@ -61103,6 +61122,10 @@ function Customers() {
     },
     onError: (e3) => toast.error(e3.message)
   });
+  function togglePlant(id2) {
+    const cur = form.plant_ids ?? [];
+    setForm({ ...form, plant_ids: cur.includes(id2) ? cur.filter((x2) => x2 !== id2) : [...cur, id2] });
+  }
   async function remove(c2) {
     const ok2 = await confirmDialog({ title: "Delete customer", message: `Delete "${c2.name}"?` });
     if (!ok2) return;
@@ -61138,7 +61161,7 @@ function Customers() {
             " Excel"
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { onClick: () => {
-            setForm({ plant_id: plantId ?? null });
+            setForm({ plant_ids: plantId ? [plantId] : [] });
             setOpen(true);
           }, children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 16 }),
@@ -61181,7 +61204,7 @@ function Customers() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: filtered.map((c2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: c2.name }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: c2.company_name || "-" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: c2.plant_name || "Common" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: (c2.plant_names ?? []).length ? (c2.plant_names ?? []).join(", ") : "Common" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: c2.contact || "-" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtQty(c2.total_dispatched) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
@@ -61204,24 +61227,15 @@ function Customers() {
         title: form.id ? "Edit Customer" : "New Customer",
         children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Customer / Party Name", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.name || "", onChange: (e3) => setForm({ ...form, name: e3.target.value }) }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Company / Group (optional)", hint: "For a combined company ledger", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-              SearchSelect,
-              {
-                value: form.company_id ?? "",
-                onChange: (v2) => setForm({ ...form, company_id: v2 ? Number(v2) : null }),
-                options: [{ value: "", label: "— None —" }, ...companies.map((c2) => ({ value: c2.id, label: c2.name }))]
-              }
-            ) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", hint: "Common = available to all plants", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-              SearchSelect,
-              {
-                value: form.plant_id ?? "",
-                onChange: (v2) => setForm({ ...form, plant_id: v2 ? Number(v2) : null }),
-                options: [{ value: "", label: "Common (all plants)" }, ...plants.map((p2) => ({ value: p2.id, label: p2.name }))]
-              }
-            ) })
-          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Company / Group (optional)", hint: "For a combined company ledger", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SearchSelect,
+            {
+              value: form.company_id ?? "",
+              onChange: (v2) => setForm({ ...form, company_id: v2 ? Number(v2) : null }),
+              options: [{ value: "", label: "— None —" }, ...companies.map((c2) => ({ value: c2.id, label: c2.name }))]
+            }
+          ) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plants", hint: "Tick the plants this customer works with — leave all unticked for common (all plants)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(PlantCheckboxes, { plants, selected: form.plant_ids ?? [], onToggle: togglePlant }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Contact Details", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
             Input,
             {
@@ -62438,7 +62452,7 @@ function Transporters() {
       data.map((t3) => [
         t3.name,
         t3.company_name ?? "",
-        t3.plant_name ?? "Common",
+        (t3.plant_names ?? []).length ? (t3.plant_names ?? []).join(", ") : "Common",
         t3.contact,
         t3.total_trips ?? 0,
         t3.total_cm ?? 0,
@@ -62458,6 +62472,10 @@ function Transporters() {
     },
     onError: (e3) => toast.error(e3.message)
   });
+  function togglePlant(id2) {
+    const cur = form.plant_ids ?? [];
+    setForm({ ...form, plant_ids: cur.includes(id2) ? cur.filter((x2) => x2 !== id2) : [...cur, id2] });
+  }
   async function remove(t3) {
     const ok2 = await confirmDialog({
       title: "Delete transporter",
@@ -62482,7 +62500,7 @@ function Transporters() {
             " Excel"
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { onClick: () => {
-            setForm({ plant_id: plantId ?? null });
+            setForm({ plant_ids: plantId ? [plantId] : [] });
             setOpen(true);
           }, children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 16 }),
@@ -62539,7 +62557,7 @@ function Transporters() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: filtered.map((t3) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: t3.name }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: t3.company_name || "-" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: t3.plant_name || "Common" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: (t3.plant_names ?? []).length ? (t3.plant_names ?? []).join(", ") : "Common" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtQty(t3.total_trips) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtQty(t3.total_cm) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtMoney(t3.total_amount) }),
@@ -62564,24 +62582,15 @@ function Transporters() {
         title: form.id ? "Edit Transporter" : "New Transporter",
         children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Transporter Name", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.name || "", onChange: (e3) => setForm({ ...form, name: e3.target.value }) }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Company / Group (optional)", hint: "For a combined company ledger", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-              SearchSelect,
-              {
-                value: form.company_id ?? "",
-                onChange: (v2) => setForm({ ...form, company_id: v2 ? Number(v2) : null }),
-                options: [{ value: "", label: "— None —" }, ...companies.map((c2) => ({ value: c2.id, label: c2.name }))]
-              }
-            ) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", hint: "Common = available to all plants", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-              SearchSelect,
-              {
-                value: form.plant_id ?? "",
-                onChange: (v2) => setForm({ ...form, plant_id: v2 ? Number(v2) : null }),
-                options: [{ value: "", label: "Common (all plants)" }, ...plants.map((p2) => ({ value: p2.id, label: p2.name }))]
-              }
-            ) })
-          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Company / Group (optional)", hint: "For a combined company ledger", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SearchSelect,
+            {
+              value: form.company_id ?? "",
+              onChange: (v2) => setForm({ ...form, company_id: v2 ? Number(v2) : null }),
+              options: [{ value: "", label: "— None —" }, ...companies.map((c2) => ({ value: c2.id, label: c2.name }))]
+            }
+          ) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plants", hint: "Tick the plants this transporter works with — leave all unticked for common (all plants)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(PlantCheckboxes, { plants, selected: form.plant_ids ?? [], onToggle: togglePlant }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Contact Details", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
             Input,
             {
@@ -77802,7 +77811,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-Gj6HnWc1.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-CXPWggDB.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
