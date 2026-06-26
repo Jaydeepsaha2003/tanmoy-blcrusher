@@ -25,6 +25,25 @@ export async function avgDieselRate(): Promise<number> {
   return r.lit > 0 ? r.amt / r.lit : 0
 }
 
+/** Source of a diesel issuance, so an edit can exclude its own litres when recomputing. */
+export type DieselSource = { src: 'issue' | 'loading' | 'unloading'; id: number }
+
+/** Total diesel litres issued from a plant across every source (issues + rack loadings/unloadings).
+ *  Rack unloadings carry no plant of their own, so they scope to the rack's source plant. */
+async function issuedLitres(d: Db, plantId: number | undefined, exclude?: DieselSource): Promise<number> {
+  const pid = plantId
+  const ex = (src: string, col = 'id'): string =>
+    exclude && exclude.src === src ? ` AND ${col} <> ${Number(exclude.id)}` : ''
+  const issuesWhere = pid ? 'WHERE plant_id = @pid' : 'WHERE 1=1'
+  const a = (await d.prepare(`SELECT COALESCE(SUM(litres),0) AS q FROM diesel_issues ${issuesWhere}${ex('issue')}`).get({ pid })) as { q: number }
+  const b = (await d.prepare(`SELECT COALESCE(SUM(diesel_litres),0) AS q FROM rack_loadings ${issuesWhere}${ex('loading')}`).get({ pid })) as { q: number }
+  const uWhere = pid ? 'WHERE r.plant_id = @pid' : 'WHERE 1=1'
+  const c = (await d
+    .prepare(`SELECT COALESCE(SUM(ru.diesel_litres),0) AS q FROM rack_unloadings ru JOIN racks r ON r.id = ru.rack_id ${uWhere}${ex('unloading', 'ru.id')}`)
+    .get({ pid })) as { q: number }
+  return litres((a.q || 0) + (b.q || 0) + (c.q || 0))
+}
+
 async function stockOf(d: Db, plantId?: number): Promise<DieselStock> {
   const pAnd = plantId ? ' WHERE plant_id = @pid' : ''
   const p = (
@@ -32,12 +51,70 @@ async function stockOf(d: Db, plantId?: number): Promise<DieselStock> {
       q: number
     }
   ).q
-  const i = (
-    (await d.prepare(`SELECT COALESCE(SUM(litres),0) AS q FROM diesel_issues${pAnd}`).get({ pid: plantId })) as {
-      q: number
-    }
-  ).q
+  const i = await issuedLitres(d, plantId)
   return { purchased: litres(p), issued: litres(i), balance: litres(p - i) }
+}
+
+/**
+ * FIFO cost of issuing `qty` litres from a plant's diesel: walk the plant's purchase
+ * layers oldest-first, skip the litres other issuances already consumed, then cost the
+ * next `qty` litres at each layer's rate. Throws if `qty` exceeds available stock (block).
+ */
+export async function dieselFifoCost(
+  d: Db,
+  plantId: number,
+  qty: number,
+  exclude?: DieselSource
+): Promise<{ amount: number; rate: number; available: number }> {
+  const q = litres(Number(qty) || 0)
+  const purchased = (
+    (await d.prepare(`SELECT COALESCE(SUM(litres),0) AS q FROM diesel_purchases WHERE plant_id = @pid`).get({ pid: plantId })) as { q: number }
+  ).q
+  const prior = await issuedLitres(d, plantId, exclude)
+  const available = litres(purchased - prior)
+  if (q <= 0) return { amount: 0, rate: 0, available }
+  if (q > available + 0.001)
+    throw new Error(`Not enough diesel in stock for this plant. Available: ${available} L, requested: ${q} L.`)
+  const layers = (await d
+    .prepare(`SELECT litres, rate FROM diesel_purchases WHERE plant_id = @pid ORDER BY date, id`)
+    .all({ pid: plantId })) as { litres: number; rate: number | null }[]
+  let skip = prior
+  let need = q
+  let cost = 0
+  for (const layer of layers) {
+    let avail = Number(layer.litres) || 0
+    if (skip > 0) {
+      const s = Math.min(skip, avail)
+      skip -= s
+      avail -= s
+    }
+    if (avail <= 0 || need <= 0) continue
+    const take = Math.min(avail, need)
+    cost += take * (layer.rate ?? 0)
+    need -= take
+  }
+  const amount = money(cost)
+  return { amount, rate: q > 0 ? money(amount / q) : 0, available }
+}
+
+/** Live FIFO quote for a UI preview (amount/rate for `litres` at `plant_id`, excluding an edited record). */
+export async function dieselFifoQuote(payload: {
+  plant_id: number
+  litres: number
+  exclude?: DieselSource
+}): Promise<{ amount: number; rate: number; available: number }> {
+  if (!payload.plant_id) return { amount: 0, rate: 0, available: 0 }
+  try {
+    return await dieselFifoCost(getDb(), Number(payload.plant_id), Number(payload.litres) || 0, payload.exclude)
+  } catch {
+    // Over-stock: still report availability so the UI can warn without throwing.
+    const d = getDb()
+    const purchased = (
+      (await d.prepare(`SELECT COALESCE(SUM(litres),0) AS q FROM diesel_purchases WHERE plant_id=@pid`).get({ pid: payload.plant_id })) as { q: number }
+    ).q
+    const prior = await issuedLitres(d, Number(payload.plant_id), payload.exclude)
+    return { amount: 0, rate: 0, available: litres(purchased - prior) }
+  }
 }
 
 /* ---------------- Purchases (from creditor) ---------------- */
@@ -210,72 +287,54 @@ export interface DieselIssueInput {
   plant_id: number
   asset_id: number | null
   transporter_id?: number | null
+  /** Tick to debit the FIFO diesel cost to the transporter's ledger. */
+  charged?: boolean | number
   litres: number
-  rate?: number | null
   date: string
   remarks: string
-}
-
-/** litres / charged-rate / amount — amount only set when this issue is charged to a transporter. */
-function issueChargeFields(p: DieselIssueInput): {
-  transporter_id: number | null
-  rate: number | null
-  amount: number | null
-} {
-  const transporter_id = p.transporter_id ? Number(p.transporter_id) : null
-  const rate = p.rate == null || (p.rate as unknown) === '' ? null : Number(p.rate)
-  const amount = transporter_id && rate != null ? money(litres(Number(p.litres)) * rate) : null
-  return { transporter_id, rate: transporter_id ? rate : null, amount }
 }
 
 export async function createDieselIssue(p: DieselIssueInput): Promise<DieselIssue> {
   const d = getDb()
   if (!(Number(p.litres) > 0)) throw new Error('Litres must be greater than 0.')
-  const available = (await stockOf(d, p.plant_id)).balance
-  if (Number(p.litres) > available)
-    throw new Error(`Not enough diesel in stock. Available: ${available} L, requested: ${p.litres} L.`)
-  const charge = issueChargeFields(p)
-  const no = await nextNumber('DIS', 'diesel_issue')
-  const info = await d
-    .prepare(
-      `INSERT INTO diesel_issues (issue_no, plant_id, asset_id, transporter_id, litres, rate, amount, date, remarks)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(
-      no,
-      p.plant_id,
-      p.asset_id ?? null,
-      charge.transporter_id,
-      litres(Number(p.litres)),
-      charge.rate,
-      charge.amount,
-      p.date,
-      p.remarks ?? ''
-    )
-  return (await d.prepare(`SELECT * FROM diesel_issues WHERE id = ?`).get(info.lastInsertRowid)) as DieselIssue
+  return d.transaction(async () => {
+    // FIFO cost of the issued litres; throws (blocks) if it exceeds the plant's stock.
+    const fifo = await dieselFifoCost(d, Number(p.plant_id), Number(p.litres))
+    const transporter_id = p.transporter_id ? Number(p.transporter_id) : null
+    const charged = transporter_id && p.charged ? 1 : 0
+    const no = await nextNumber('DIS', 'diesel_issue')
+    const info = await d
+      .prepare(
+        `INSERT INTO diesel_issues (issue_no, plant_id, asset_id, transporter_id, litres, rate, amount, charged, date, remarks)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(no, p.plant_id, p.asset_id ?? null, transporter_id, litres(Number(p.litres)), fifo.rate, fifo.amount, charged, p.date, p.remarks ?? '')
+    return (await d.prepare(`SELECT * FROM diesel_issues WHERE id = ?`).get(info.lastInsertRowid)) as DieselIssue
+  })
 }
 
 export async function updateDieselIssue(p: DieselIssueInput): Promise<DieselIssue> {
   const d = getDb()
   if (!p.id) throw new Error('Missing issue id.')
   if (!(Number(p.litres) > 0)) throw new Error('Litres must be greater than 0.')
-  const charge = issueChargeFields(p)
   await d.transaction(async () => {
+    const fifo = await dieselFifoCost(d, Number(p.plant_id), Number(p.litres), { src: 'issue', id: p.id! })
+    const transporter_id = p.transporter_id ? Number(p.transporter_id) : null
+    const charged = transporter_id && p.charged ? 1 : 0
     await d.prepare(
-      `UPDATE diesel_issues SET plant_id=?, asset_id=?, transporter_id=?, litres=?, rate=?, amount=?, date=?, remarks=? WHERE id=?`
+      `UPDATE diesel_issues SET plant_id=?, asset_id=?, transporter_id=?, litres=?, rate=?, amount=?, charged=?, date=?, remarks=? WHERE id=?`
     ).run(
       p.plant_id,
       p.asset_id ?? null,
-      charge.transporter_id,
+      transporter_id,
       litres(Number(p.litres)),
-      charge.rate,
-      charge.amount,
+      fifo.rate,
+      fifo.amount,
+      charged,
       p.date,
       p.remarks ?? '',
       p.id
     )
-    if ((await stockOf(d, p.plant_id)).balance < 0)
-      throw new Error('Edit would issue more diesel than is in stock.')
   })
   return (await d.prepare(`SELECT * FROM diesel_issues WHERE id = ?`).get(p.id)) as DieselIssue
 }

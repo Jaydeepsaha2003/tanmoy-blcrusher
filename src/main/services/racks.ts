@@ -18,7 +18,25 @@ import type {
 import { toCm, properCase } from '@shared/types'
 import { addMovement, finishedBalance } from './movements'
 import { plantUomFactors } from './plants'
+import { dieselFifoCost, type DieselSource } from './diesel'
 import type { Db } from '../db'
+
+/**
+ * FIFO-cost the diesel issued on a rack loading/unloading and draw it from the plant's
+ * stock. Returns the litres + computed amount; throws (blocks) if it exceeds stock.
+ */
+async function rackDiesel(
+  d: Db,
+  plantId: number | null | undefined,
+  dieselLitres: number | null | undefined,
+  exclude?: DieselSource
+): Promise<{ litres: number | null; amount: number | null }> {
+  const dl = dieselLitres == null || (dieselLitres as unknown) === '' ? null : Number(dieselLitres)
+  if (!dl || !(dl > 0)) return { litres: null, amount: null }
+  if (!plantId) throw new Error('Set the source plant before issuing diesel (so it can draw from that plant’s stock).')
+  const f = await dieselFifoCost(d, Number(plantId), dl, exclude)
+  return { litres: roundQty(dl), amount: f.amount }
+}
 
 /** Best-effort per-plant factors for a rack, taken from its first loading's plant. */
 async function rackPlantFactors(d: Db, rackId: number): Promise<UomFactors> {
@@ -333,6 +351,8 @@ export interface LoadingInput {
   rate: number | null
   diesel_litres: number | null
   diesel_amount: number | null
+  /** Tick to debit the FIFO diesel cost to this loading's transporter. */
+  diesel_charged?: boolean | number
   outsourced?: boolean | number
   date: string
   remarks: string
@@ -360,15 +380,18 @@ export async function addLoading(p: LoadingInput): Promise<RackLoading> {
         `Not enough finished goods. Available ${p.product_name}: ${available} m³, requested: ${total} m³.`
       )
   }
+  // FIFO-cost the diesel and draw it from the loading plant's stock (blocks if short).
+  const diesel = await rackDiesel(d, p.plant_id, p.diesel_litres)
+  const diesel_charged = diesel.litres && p.transporter_id && p.diesel_charged ? 1 : 0
   const id = await d.transaction(async () => {
     const no = await nextNumber('RKL', 'rack_loading')
     const info = await d
       .prepare(
         `INSERT INTO rack_loadings
           (loading_no, rack_id, plant_id, product_name, transporter_id, vehicle_no, trips, per_trip_cm,
-           total_cm, rate, amount, diesel_litres, diesel_amount, outsourced, date, remarks)
+           total_cm, rate, amount, diesel_litres, diesel_amount, diesel_charged, outsourced, date, remarks)
          VALUES (@loading_no,@rack_id,@plant_id,@product_name,@transporter_id,@vehicle_no,@trips,@per_trip_cm,
-           @total_cm,@rate,@amount,@diesel_litres,@diesel_amount,@outsourced,@date,@remarks)`
+           @total_cm,@rate,@amount,@diesel_litres,@diesel_amount,@diesel_charged,@outsourced,@date,@remarks)`
       )
       .run({
         loading_no: no,
@@ -382,8 +405,9 @@ export async function addLoading(p: LoadingInput): Promise<RackLoading> {
         total_cm: total,
         rate: p.rate,
         amount,
-        diesel_litres: p.diesel_litres,
-        diesel_amount: p.diesel_amount,
+        diesel_litres: diesel.litres,
+        diesel_amount: diesel.amount,
+        diesel_charged,
         outsourced: outsourced ? 1 : 0,
         date: p.date,
         remarks: p.remarks ?? ''
@@ -417,12 +441,14 @@ export async function updateLoading(p: LoadingInput): Promise<RackLoading> {
   if (!p.product_name?.trim()) throw new Error('Product is required.')
   const { total, amount } = resolveLoading(p)
   const outsourced = !!p.outsourced
+  const diesel = await rackDiesel(d, p.plant_id, p.diesel_litres, { src: 'loading', id: p.id })
+  const diesel_charged = diesel.litres && p.transporter_id && p.diesel_charged ? 1 : 0
   await d.transaction(async () => {
     await d.prepare(
       `UPDATE rack_loadings SET plant_id=@plant_id, product_name=@product_name, transporter_id=@transporter_id,
          vehicle_no=@vehicle_no, trips=@trips, per_trip_cm=@per_trip_cm, total_cm=@total_cm,
          rate=@rate, amount=@amount, diesel_litres=@diesel_litres, diesel_amount=@diesel_amount,
-         outsourced=@outsourced, date=@date, remarks=@remarks WHERE id=@id`
+         diesel_charged=@diesel_charged, outsourced=@outsourced, date=@date, remarks=@remarks WHERE id=@id`
     ).run({
       id: p.id,
       plant_id: p.plant_id,
@@ -434,8 +460,9 @@ export async function updateLoading(p: LoadingInput): Promise<RackLoading> {
       total_cm: total,
       rate: p.rate,
       amount,
-      diesel_litres: p.diesel_litres,
-      diesel_amount: p.diesel_amount,
+      diesel_litres: diesel.litres,
+      diesel_amount: diesel.amount,
+      diesel_charged,
       outsourced: outsourced ? 1 : 0,
       date: p.date,
       remarks: p.remarks ?? ''
@@ -502,6 +529,8 @@ export interface UnloadingInput {
   rate: number | null
   diesel_litres: number | null
   diesel_amount: number | null
+  /** Tick to debit the FIFO diesel cost to this unloading's transporter. */
+  diesel_charged?: boolean | number
   date: string
   remarks: string
 }
@@ -513,7 +542,13 @@ function resolveUnloading(p: UnloadingInput): { total: number; amount: number | 
   return { total: roundQty(total), amount: computeAmount(p.rate, total) }
 }
 
-function unloadingFields(p: UnloadingInput, total: number, amount: number | null): Record<string, unknown> {
+function unloadingFields(
+  p: UnloadingInput,
+  total: number,
+  amount: number | null,
+  diesel: { litres: number | null; amount: number | null },
+  dieselCharged: number
+): Record<string, unknown> {
   return {
     rack_id: p.rack_id,
     product_name: p.product_name.trim(),
@@ -527,8 +562,9 @@ function unloadingFields(p: UnloadingInput, total: number, amount: number | null
     qty_cm: total,
     rate: p.rate,
     amount,
-    diesel_litres: p.diesel_litres,
-    diesel_amount: p.diesel_amount,
+    diesel_litres: diesel.litres,
+    diesel_amount: diesel.amount,
+    diesel_charged: dieselCharged,
     date: p.date,
     remarks: p.remarks ?? ''
   }
@@ -546,16 +582,19 @@ export async function addUnloading(p: UnloadingInput): Promise<RackUnloading> {
     throw new Error(
       `Cannot unload more than was loaded. On rake — ${p.product_name}: ${onRake} m³, requested: ${total} m³.`
     )
+  // Unloadings have no plant of their own — diesel draws from the rack's source plant.
+  const diesel = await rackDiesel(d, rack.plant_id, p.diesel_litres)
+  const diesel_charged = diesel.litres && p.transporter_id && p.diesel_charged ? 1 : 0
   const no = await nextNumber('RKU', 'rack_unloading')
   const info = await d
     .prepare(
       `INSERT INTO rack_unloadings
         (unloading_no, rack_id, product_name, transporter_id, vehicle_no, trips, per_trip_cm, total_cm,
-         uom, quantity, qty_cm, rate, amount, diesel_litres, diesel_amount, date, remarks)
+         uom, quantity, qty_cm, rate, amount, diesel_litres, diesel_amount, diesel_charged, date, remarks)
        VALUES (@unloading_no,@rack_id,@product_name,@transporter_id,@vehicle_no,@trips,@per_trip_cm,@total_cm,
-         @uom,@quantity,@qty_cm,@rate,@amount,@diesel_litres,@diesel_amount,@date,@remarks)`
+         @uom,@quantity,@qty_cm,@rate,@amount,@diesel_litres,@diesel_amount,@diesel_charged,@date,@remarks)`
     )
-    .run({ unloading_no: no, ...unloadingFields(p, total, amount) })
+    .run({ unloading_no: no, ...unloadingFields(p, total, amount, diesel, diesel_charged) })
   return (await d.prepare(`SELECT * FROM rack_unloadings WHERE id = ?`).get(info.lastInsertRowid)) as RackUnloading
 }
 
@@ -568,13 +607,18 @@ export async function updateUnloading(p: UnloadingInput): Promise<RackUnloading>
   if (!old) throw new Error('Unloading not found.')
   if (!p.product_name?.trim()) throw new Error('Product is required.')
   const { total, amount } = resolveUnloading(p)
+  const rackRow = (await d.prepare(`SELECT plant_id FROM racks WHERE id = ?`).get(old.rack_id)) as
+    | { plant_id: number | null }
+    | undefined
+  const diesel = await rackDiesel(d, rackRow?.plant_id ?? null, p.diesel_litres, { src: 'unloading', id: p.id })
+  const diesel_charged = diesel.litres && p.transporter_id && p.diesel_charged ? 1 : 0
   await d.transaction(async () => {
     await d.prepare(
       `UPDATE rack_unloadings SET product_name=@product_name, transporter_id=@transporter_id,
          vehicle_no=@vehicle_no, trips=@trips, per_trip_cm=@per_trip_cm, total_cm=@total_cm,
          uom=@uom, quantity=@quantity, qty_cm=@qty_cm, rate=@rate, amount=@amount,
-         diesel_litres=@diesel_litres, diesel_amount=@diesel_amount, date=@date, remarks=@remarks WHERE id=@id`
-    ).run({ id: p.id, ...unloadingFields(p, total, amount) })
+         diesel_litres=@diesel_litres, diesel_amount=@diesel_amount, diesel_charged=@diesel_charged, date=@date, remarks=@remarks WHERE id=@id`
+    ).run({ id: p.id, ...unloadingFields(p, total, amount, diesel, diesel_charged) })
     if (
       (await rackUnloadable(d, old.rack_id, old.product_name)) < 0 ||
       (await rackUnloadable(d, old.rack_id, p.product_name.trim())) < 0

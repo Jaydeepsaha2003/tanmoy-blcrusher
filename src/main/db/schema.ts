@@ -389,6 +389,7 @@ CREATE TABLE IF NOT EXISTS rack_loadings (
   amount         REAL,
   diesel_litres  REAL,
   diesel_amount  REAL,
+  diesel_charged INTEGER NOT NULL DEFAULT 0,
   date           TEXT NOT NULL,
   remarks        TEXT NOT NULL DEFAULT '',
   created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
@@ -426,6 +427,7 @@ CREATE TABLE IF NOT EXISTS rack_unloadings (
   amount         REAL,
   diesel_litres  REAL,
   diesel_amount  REAL,
+  diesel_charged INTEGER NOT NULL DEFAULT 0,
   date           TEXT NOT NULL,
   remarks        TEXT NOT NULL DEFAULT '',
   created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
@@ -600,6 +602,7 @@ CREATE TABLE IF NOT EXISTS diesel_issues (
   transporter_id INTEGER REFERENCES transporters(id),
   rate          REAL,
   amount        REAL,
+  charged       INTEGER NOT NULL DEFAULT 0,
   litres        REAL NOT NULL,
   date          TEXT NOT NULL,
   remarks       TEXT NOT NULL DEFAULT '',

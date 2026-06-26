@@ -458,6 +458,8 @@ export interface RackLoading {
   amount: number | null
   diesel_litres: number | null
   diesel_amount: number | null
+  /** 1 = the FIFO diesel cost is debited to this loading's transporter. */
+  diesel_charged?: number
   outsourced: number
   date: string
   remarks: string
@@ -481,6 +483,8 @@ export interface RackUnloading {
   amount: number | null
   diesel_litres: number | null
   diesel_amount: number | null
+  /** 1 = the FIFO diesel cost is debited to this unloading's transporter. */
+  diesel_charged?: number
   date: string
   remarks: string
   created_at: string
@@ -1003,8 +1007,11 @@ export interface DieselIssue {
   /** Optional transporter the diesel is charged to (debited on their ledger). */
   transporter_id: number | null
   transporter_name?: string | null
+  /** FIFO unit cost and total cost of the issued litres. */
   rate: number | null
   amount: number | null
+  /** 1 = the FIFO cost is debited to the transporter. */
+  charged?: number
   litres: number
   date: string
   remarks: string

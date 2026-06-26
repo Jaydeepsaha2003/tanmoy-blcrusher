@@ -225,6 +225,7 @@ export const handlers: Record<string, (payload: any) => unknown> = {
   'diesel.updateIssue': diesel.updateDieselIssue,
   'diesel.deleteIssue': diesel.deleteDieselIssue,
   'diesel.byAsset': diesel.issuesByAsset,
+  'diesel.fifoQuote': diesel.dieselFifoQuote,
 
   'payments.add': ledgers.addPayment,
   'payments.list': ledgers.listPayments,

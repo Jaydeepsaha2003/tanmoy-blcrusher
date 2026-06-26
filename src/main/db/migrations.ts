@@ -941,6 +941,13 @@ CREATE INDEX idx_tplants_transporter ON transporter_plants(transporter_id)`
     // Source plant on a railway rack (default plant for its loadings).
     id: '024_rack_plant',
     sql: `ALTER TABLE racks ADD COLUMN plant_id INT`
+  },
+  {
+    // FIFO diesel: a "charged to transporter" flag on every diesel issuance.
+    id: '025_diesel_charged',
+    sql: `ALTER TABLE diesel_issues ADD COLUMN charged INT NOT NULL DEFAULT 0;
+ALTER TABLE rack_loadings ADD COLUMN diesel_charged INT NOT NULL DEFAULT 0;
+ALTER TABLE rack_unloadings ADD COLUMN diesel_charged INT NOT NULL DEFAULT 0`
   }
 ]
 
@@ -1041,6 +1048,10 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   await addColumn('dispatches', 'buy_rate', 'REAL')
   // Source plant on a railway rack.
   await addColumn('racks', 'plant_id', 'INTEGER')
+  // FIFO diesel: "charged to transporter" flag on every diesel issuance.
+  await addColumn('diesel_issues', 'charged', 'INTEGER NOT NULL DEFAULT 0')
+  await addColumn('rack_loadings', 'diesel_charged', 'INTEGER NOT NULL DEFAULT 0')
+  await addColumn('rack_unloadings', 'diesel_charged', 'INTEGER NOT NULL DEFAULT 0')
 }
 
 /**

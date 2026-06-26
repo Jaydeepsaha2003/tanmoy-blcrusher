@@ -85,6 +85,25 @@ export function RackDetail(): React.JSX.Element {
     queryFn: () => api.finished.available(loadingForm.plant_id),
     enabled: !!loadingForm?.plant_id
   })
+  // Live FIFO diesel quote for the loading/unloading forms.
+  const { data: loadDieselQuote } = useQuery({
+    queryKey: ['dieselQuote', 'loading', loadingForm?.plant_id, loadingForm?.diesel_litres, loadingForm?.id],
+    queryFn: () => api.diesel.fifoQuote({
+      plant_id: Number(loadingForm.plant_id),
+      litres: Number(loadingForm.diesel_litres) || 0,
+      exclude: loadingForm.id ? { src: 'loading', id: Number(loadingForm.id) } : undefined
+    }),
+    enabled: !!loadingForm?.plant_id && Number(loadingForm?.diesel_litres) > 0
+  })
+  const { data: unloadDieselQuote } = useQuery({
+    queryKey: ['dieselQuote', 'unloading', data?.rack?.plant_id, unloadForm?.diesel_litres, unloadForm?.id],
+    queryFn: () => api.diesel.fifoQuote({
+      plant_id: Number(data!.rack.plant_id),
+      litres: Number(unloadForm.diesel_litres) || 0,
+      exclude: unloadForm.id ? { src: 'unloading', id: Number(unloadForm.id) } : undefined
+    }),
+    enabled: !!data?.rack?.plant_id && Number(unloadForm?.diesel_litres) > 0
+  })
 
   function refresh(): void {
     qc.invalidateQueries({ queryKey: ['rack', rackId] })
@@ -216,7 +235,7 @@ export function RackDetail(): React.JSX.Element {
       per_trip_cm: '',
       rate: '',
       diesel_litres: '',
-      diesel_amount: '',
+      diesel_charged: false,
       outsourced: false,
       date: today(),
       remarks: ''
@@ -234,7 +253,7 @@ export function RackDetail(): React.JSX.Element {
       per_trip_cm: '',
       rate: '',
       diesel_litres: '',
-      diesel_amount: '',
+      diesel_charged: false,
       date: today(),
       remarks: ''
     })
@@ -466,7 +485,7 @@ export function RackDetail(): React.JSX.Element {
                           per_trip_cm: l.per_trip_cm || '',
                           rate: l.rate ?? '',
                           diesel_litres: l.diesel_litres ?? '',
-                          diesel_amount: l.diesel_amount ?? ''
+                          diesel_charged: !!l.diesel_charged
                         })
                       }>
                         <Pencil size={15} />
@@ -593,7 +612,7 @@ export function RackDetail(): React.JSX.Element {
                           per_trip_cm: u.per_trip_cm || '',
                           rate: u.rate ?? '',
                           diesel_litres: u.diesel_litres ?? '',
-                          diesel_amount: u.diesel_amount ?? ''
+                          diesel_charged: !!u.diesel_charged
                         })
                       }>
                         <Pencil size={15} />
@@ -757,14 +776,22 @@ export function RackDetail(): React.JSX.Element {
               <Input type="number" step="0.01" value={loadingForm.rate} onChange={(e) =>
                 setLoadingForm({ ...loadingForm, rate: e.target.value })} placeholder="Optional" />
             </Field>
-            <Field label="Diesel (litres, optional)">
+            <Field label="Diesel (litres, optional)" hint={Number(loadingForm.diesel_litres) > 0 ? `In stock: ${fmtQty(loadDieselQuote?.available ?? 0)} L` : 'Drawn from the plant’s diesel stock (FIFO)'}>
               <Input type="number" step="0.01" value={loadingForm.diesel_litres} onChange={(e) =>
                 setLoadingForm({ ...loadingForm, diesel_litres: e.target.value })} />
             </Field>
-            <Field label="Diesel Amount (deducted from transporter)">
-              <Input type="number" step="0.01" value={loadingForm.diesel_amount} onChange={(e) =>
-                setLoadingForm({ ...loadingForm, diesel_amount: e.target.value })} />
+            <Field label="Diesel Cost (FIFO)" hint="Valued at the oldest stock's rate first">
+              <Input value={Number(loadingForm.diesel_litres) > 0 ? `₹${fmtMoney(loadDieselQuote?.amount ?? 0)}` : '—'} disabled />
             </Field>
+            {Number(loadingForm.diesel_litres) > 0 && (
+              <div className="col-span-2">
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input type="checkbox" className="h-4 w-4" checked={!!loadingForm.diesel_charged} onChange={(e) =>
+                    setLoadingForm({ ...loadingForm, diesel_charged: e.target.checked })} />
+                  Charge this diesel ({`₹${fmtMoney(loadDieselQuote?.amount ?? 0)}`}) to the transporter
+                </label>
+              </div>
+            )}
             <Field label="Date">
               <Input type="date" value={loadingForm.date} onChange={(e) =>
                 setLoadingForm({ ...loadingForm, date: e.target.value })} />
@@ -788,7 +815,7 @@ export function RackDetail(): React.JSX.Element {
                   total_cm: loadingTotal,
                   rate: loadingForm.rate === '' ? null : Number(loadingForm.rate),
                   diesel_litres: loadingForm.diesel_litres === '' ? null : Number(loadingForm.diesel_litres),
-                  diesel_amount: loadingForm.diesel_amount === '' ? null : Number(loadingForm.diesel_amount)
+                  diesel_charged: !!loadingForm.diesel_charged
                 })
               }
               disabled={!loadingForm.plant_id || !loadingForm.product_name || !loadingForm.transporter_id || !(loadingTotal > 0)}
@@ -849,14 +876,22 @@ export function RackDetail(): React.JSX.Element {
               <Input type="number" step="0.01" value={unloadForm.rate} onChange={(e) =>
                 setUnloadForm({ ...unloadForm, rate: e.target.value })} placeholder="Optional" />
             </Field>
-            <Field label="Diesel (litres, optional)">
+            <Field label="Diesel (litres, optional)" hint={Number(unloadForm.diesel_litres) > 0 ? `In stock: ${fmtQty(unloadDieselQuote?.available ?? 0)} L` : 'Drawn from the rack’s source-plant diesel stock (FIFO)'}>
               <Input type="number" step="0.01" value={unloadForm.diesel_litres} onChange={(e) =>
                 setUnloadForm({ ...unloadForm, diesel_litres: e.target.value })} />
             </Field>
-            <Field label="Diesel Amount (deducted from transporter)">
-              <Input type="number" step="0.01" value={unloadForm.diesel_amount} onChange={(e) =>
-                setUnloadForm({ ...unloadForm, diesel_amount: e.target.value })} />
+            <Field label="Diesel Cost (FIFO)" hint="Valued at the oldest stock's rate first">
+              <Input value={Number(unloadForm.diesel_litres) > 0 ? `₹${fmtMoney(unloadDieselQuote?.amount ?? 0)}` : '—'} disabled />
             </Field>
+            {Number(unloadForm.diesel_litres) > 0 && (
+              <div className="col-span-2">
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input type="checkbox" className="h-4 w-4" checked={!!unloadForm.diesel_charged} onChange={(e) =>
+                    setUnloadForm({ ...unloadForm, diesel_charged: e.target.checked })} />
+                  Charge this diesel ({`₹${fmtMoney(unloadDieselQuote?.amount ?? 0)}`}) to the transporter
+                </label>
+              </div>
+            )}
             <Field label="Date">
               <Input type="date" value={unloadForm.date} onChange={(e) =>
                 setUnloadForm({ ...unloadForm, date: e.target.value })} />
@@ -886,7 +921,7 @@ export function RackDetail(): React.JSX.Element {
                   total_cm: unloadTotal,
                   rate: unloadForm.rate === '' ? null : Number(unloadForm.rate),
                   diesel_litres: unloadForm.diesel_litres === '' ? null : Number(unloadForm.diesel_litres),
-                  diesel_amount: unloadForm.diesel_amount === '' ? null : Number(unloadForm.diesel_amount)
+                  diesel_charged: !!unloadForm.diesel_charged
                 })
               }
               disabled={!unloadForm.product_name || !(unloadTotal > 0) || unloadTotal > unloadAvailable}

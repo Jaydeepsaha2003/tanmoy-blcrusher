@@ -363,7 +363,9 @@ export const api = {
     updateIssue: (p: unknown) => call<DieselIssue>('diesel.updateIssue', p),
     deleteIssue: (id: number) => call<{ ok: boolean }>('diesel.deleteIssue', { id }),
     byAsset: (plant_id?: number) =>
-      call<{ asset_id: number | null; asset_name: string; litres: number }[]>('diesel.byAsset', { plant_id })
+      call<{ asset_id: number | null; asset_name: string; litres: number }[]>('diesel.byAsset', { plant_id }),
+    fifoQuote: (p: { plant_id: number; litres: number; exclude?: { src: 'issue' | 'loading' | 'unloading'; id: number } }) =>
+      call<{ amount: number; rate: number; available: number }>('diesel.fifoQuote', p)
   },
   employees: {
     list: (plant_id?: number) => call<Employee[]>('employees.list', { plant_id }),

@@ -1073,7 +1073,7 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
     const loadings = (await d
       .prepare(
         `SELECT rl.loading_no, rl.date, rl.created_at, COALESCE(rl.amount,0) AS amount,
-                COALESCE(rl.diesel_amount,0) AS diesel, rl.total_cm, rl.trips, r.rack_no
+                COALESCE(rl.diesel_amount,0) AS diesel, COALESCE(rl.diesel_charged,0) AS diesel_charged, rl.total_cm, rl.trips, r.rack_no
          FROM rack_loadings rl JOIN racks r ON r.id = rl.rack_id
          WHERE rl.transporter_id = ?`
       )
@@ -1083,6 +1083,7 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
       created_at: string
       amount: number
       diesel: number
+      diesel_charged: number
       total_cm: number
       trips: number
       rack_no: string
@@ -1097,7 +1098,7 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
           debit: 0,
           credit: x.amount
         })
-      if (x.diesel > 0)
+      if (x.diesel > 0 && x.diesel_charged)
         entries.push({
           date: x.date,
           created_at: x.created_at,
@@ -1110,7 +1111,7 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
     const unloadings = (await d
       .prepare(
         `SELECT ru.unloading_no, ru.date, ru.created_at, COALESCE(ru.amount,0) AS amount,
-                COALESCE(ru.diesel_amount,0) AS diesel, ru.total_cm, ru.trips, r.rack_no
+                COALESCE(ru.diesel_amount,0) AS diesel, COALESCE(ru.diesel_charged,0) AS diesel_charged, ru.total_cm, ru.trips, r.rack_no
          FROM rack_unloadings ru JOIN racks r ON r.id = ru.rack_id
          WHERE ru.transporter_id = ?`
       )
@@ -1120,6 +1121,7 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
       created_at: string
       amount: number
       diesel: number
+      diesel_charged: number
       total_cm: number
       trips: number
       rack_no: string
@@ -1134,7 +1136,7 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
           debit: 0,
           credit: x.amount
         })
-      if (x.diesel > 0)
+      if (x.diesel > 0 && x.diesel_charged)
         entries.push({
           date: x.date,
           created_at: x.created_at,
@@ -1224,7 +1226,7 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
     const dsl = (await d
       .prepare(
         `SELECT issue_no, date, created_at, COALESCE(litres,0) AS litres, COALESCE(amount,0) AS amount
-         FROM diesel_issues WHERE transporter_id = ? AND COALESCE(amount,0) > 0`
+         FROM diesel_issues WHERE transporter_id = ? AND charged = 1 AND COALESCE(amount,0) > 0`
       )
       .all(partyId)) as {
       issue_no: string
