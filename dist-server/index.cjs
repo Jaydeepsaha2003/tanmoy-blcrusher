@@ -548,6 +548,7 @@ CREATE TABLE IF NOT EXISTS rack_loadings (
   amount         REAL,
   diesel_litres  REAL,
   diesel_amount  REAL,
+  diesel_charged INTEGER NOT NULL DEFAULT 0,
   date           TEXT NOT NULL,
   remarks        TEXT NOT NULL DEFAULT '',
   created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
@@ -585,6 +586,7 @@ CREATE TABLE IF NOT EXISTS rack_unloadings (
   amount         REAL,
   diesel_litres  REAL,
   diesel_amount  REAL,
+  diesel_charged INTEGER NOT NULL DEFAULT 0,
   date           TEXT NOT NULL,
   remarks        TEXT NOT NULL DEFAULT '',
   created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
@@ -759,6 +761,7 @@ CREATE TABLE IF NOT EXISTS diesel_issues (
   transporter_id INTEGER REFERENCES transporters(id),
   rate          REAL,
   amount        REAL,
+  charged       INTEGER NOT NULL DEFAULT 0,
   litres        REAL NOT NULL,
   date          TEXT NOT NULL,
   remarks       TEXT NOT NULL DEFAULT '',
@@ -1802,6 +1805,13 @@ CREATE INDEX idx_tplants_transporter ON transporter_plants(transporter_id)`
     // Source plant on a railway rack (default plant for its loadings).
     id: "024_rack_plant",
     sql: `ALTER TABLE racks ADD COLUMN plant_id INT`
+  },
+  {
+    // FIFO diesel: a "charged to transporter" flag on every diesel issuance.
+    id: "025_diesel_charged",
+    sql: `ALTER TABLE diesel_issues ADD COLUMN charged INT NOT NULL DEFAULT 0;
+ALTER TABLE rack_loadings ADD COLUMN diesel_charged INT NOT NULL DEFAULT 0;
+ALTER TABLE rack_unloadings ADD COLUMN diesel_charged INT NOT NULL DEFAULT 0`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -1884,6 +1894,9 @@ async function sqliteLegacyMigrate(adapter2) {
   await addColumn("diesel_issues", "amount", "REAL");
   await addColumn("dispatches", "buy_rate", "REAL");
   await addColumn("racks", "plant_id", "INTEGER");
+  await addColumn("diesel_issues", "charged", "INTEGER NOT NULL DEFAULT 0");
+  await addColumn("rack_loadings", "diesel_charged", "INTEGER NOT NULL DEFAULT 0");
+  await addColumn("rack_unloadings", "diesel_charged", "INTEGER NOT NULL DEFAULT 0");
 }
 async function importProductsFromSettings(adapter2) {
   const all = (await adapter2.exec(`SELECT id, name FROM products ORDER BY id`, void 0, null)).rows;
@@ -4331,7 +4344,261 @@ async function deleteCompany(payload) {
   return { ok: true };
 }
 
+// src/main/services/diesel.ts
+function money2(n) {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+function litres(n) {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+async function dieselStock(payload = {}) {
+  return stockOf(getDb(), payload.plant_id);
+}
+async function avgDieselRate() {
+  const r = await getDb().prepare(
+    `SELECT COALESCE(SUM(amount),0) AS amt, COALESCE(SUM(litres),0) AS lit
+       FROM diesel_purchases WHERE amount IS NOT NULL`
+  ).get();
+  return r.lit > 0 ? r.amt / r.lit : 0;
+}
+async function issuedLitres(d, plantId, exclude) {
+  const pid = plantId;
+  const ex = (src, col = "id") => exclude && exclude.src === src ? ` AND ${col} <> ${Number(exclude.id)}` : "";
+  const issuesWhere = pid ? "WHERE plant_id = @pid" : "WHERE 1=1";
+  const a = await d.prepare(`SELECT COALESCE(SUM(litres),0) AS q FROM diesel_issues ${issuesWhere}${ex("issue")}`).get({ pid });
+  const b = await d.prepare(`SELECT COALESCE(SUM(diesel_litres),0) AS q FROM rack_loadings ${issuesWhere}${ex("loading")}`).get({ pid });
+  const uWhere = pid ? "WHERE r.plant_id = @pid" : "WHERE 1=1";
+  const c = await d.prepare(`SELECT COALESCE(SUM(ru.diesel_litres),0) AS q FROM rack_unloadings ru JOIN racks r ON r.id = ru.rack_id ${uWhere}${ex("unloading", "ru.id")}`).get({ pid });
+  return litres((a.q || 0) + (b.q || 0) + (c.q || 0));
+}
+async function stockOf(d, plantId) {
+  const pAnd = plantId ? " WHERE plant_id = @pid" : "";
+  const p = (await d.prepare(`SELECT COALESCE(SUM(litres),0) AS q FROM diesel_purchases${pAnd}`).get({ pid: plantId })).q;
+  const i = await issuedLitres(d, plantId);
+  return { purchased: litres(p), issued: litres(i), balance: litres(p - i) };
+}
+async function dieselFifoCost(d, plantId, qty, exclude) {
+  const q = litres(Number(qty) || 0);
+  const purchased = (await d.prepare(`SELECT COALESCE(SUM(litres),0) AS q FROM diesel_purchases WHERE plant_id = @pid`).get({ pid: plantId })).q;
+  const prior = await issuedLitres(d, plantId, exclude);
+  const available = litres(purchased - prior);
+  if (q <= 0) return { amount: 0, rate: 0, available };
+  if (q > available + 1e-3)
+    throw new Error(`Not enough diesel in stock for this plant. Available: ${available} L, requested: ${q} L.`);
+  const layers = await d.prepare(`SELECT litres, rate FROM diesel_purchases WHERE plant_id = @pid ORDER BY date, id`).all({ pid: plantId });
+  let skip = prior;
+  let need = q;
+  let cost = 0;
+  for (const layer of layers) {
+    let avail = Number(layer.litres) || 0;
+    if (skip > 0) {
+      const s = Math.min(skip, avail);
+      skip -= s;
+      avail -= s;
+    }
+    if (avail <= 0 || need <= 0) continue;
+    const take = Math.min(avail, need);
+    cost += take * (layer.rate ?? 0);
+    need -= take;
+  }
+  const amount = money2(cost);
+  return { amount, rate: q > 0 ? money2(amount / q) : 0, available };
+}
+async function dieselFifoQuote(payload) {
+  if (!payload.plant_id) return { amount: 0, rate: 0, available: 0 };
+  try {
+    return await dieselFifoCost(getDb(), Number(payload.plant_id), Number(payload.litres) || 0, payload.exclude);
+  } catch {
+    const d = getDb();
+    const purchased = (await d.prepare(`SELECT COALESCE(SUM(litres),0) AS q FROM diesel_purchases WHERE plant_id=@pid`).get({ pid: payload.plant_id })).q;
+    const prior = await issuedLitres(d, Number(payload.plant_id), payload.exclude);
+    return { amount: 0, rate: 0, available: litres(purchased - prior) };
+  }
+}
+async function listDieselPurchases(filter = {}) {
+  const d = getDb();
+  const where = [];
+  const params = {};
+  if (filter.plant_id) {
+    where.push("dp.plant_id = @plant_id");
+    params.plant_id = filter.plant_id;
+  }
+  if (filter.supplier_id) {
+    where.push("dp.supplier_id = @supplier_id");
+    params.supplier_id = filter.supplier_id;
+  }
+  if (filter.from) {
+    where.push("dp.date >= @from");
+    params.from = filter.from;
+  }
+  if (filter.to) {
+    where.push("dp.date <= @to");
+    params.to = filter.to;
+  }
+  const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  return await d.prepare(
+    `SELECT dp.*, s.name AS supplier_name, p.name AS plant_name
+       FROM diesel_purchases dp
+       JOIN suppliers s ON s.id = dp.supplier_id
+       JOIN plants p ON p.id = dp.plant_id
+       ${clause}
+       ORDER BY dp.date DESC, dp.id DESC`
+  ).all(params);
+}
+function purchaseFields(p) {
+  if (!(Number(p.litres) > 0)) throw new Error("Litres must be greater than 0.");
+  const rate = p.rate == null || p.rate === "" ? null : Number(p.rate);
+  const amount = rate == null ? null : money2(Number(p.litres) * rate);
+  const paid = money2(Number(p.paid_amount) || 0);
+  return {
+    supplier_id: p.supplier_id,
+    plant_id: p.plant_id,
+    litres: litres(Number(p.litres)),
+    rate,
+    amount,
+    payment_status: derivePaymentStatus(amount ?? 0, paid),
+    paid_amount: paid,
+    date: p.date,
+    remarks: p.remarks ?? ""
+  };
+}
+async function createDieselPurchase(p) {
+  const d = getDb();
+  const fields = purchaseFields(p);
+  const no = await nextNumber("DSL", "diesel_purchase");
+  const info = await d.prepare(
+    `INSERT INTO diesel_purchases
+        (purchase_no, supplier_id, plant_id, litres, rate, amount, payment_status, paid_amount, date, remarks)
+       VALUES (@purchase_no,@supplier_id,@plant_id,@litres,@rate,@amount,@payment_status,@paid_amount,@date,@remarks)`
+  ).run({ purchase_no: no, ...fields });
+  return await d.prepare(`SELECT * FROM diesel_purchases WHERE id = ?`).get(info.lastInsertRowid);
+}
+async function updateDieselPurchase(p) {
+  const d = getDb();
+  if (!p.id) throw new Error("Missing purchase id.");
+  const fields = purchaseFields(p);
+  await d.transaction(async () => {
+    await d.prepare(
+      `UPDATE diesel_purchases SET supplier_id=@supplier_id, plant_id=@plant_id, litres=@litres, rate=@rate,
+         amount=@amount, payment_status=@payment_status, paid_amount=@paid_amount, date=@date, remarks=@remarks
+       WHERE id=@id`
+    ).run({ id: p.id, ...fields });
+    if ((await stockOf(d, Number(fields.plant_id))).balance < 0)
+      throw new Error("Edit would make diesel stock negative (more issued than purchased).");
+  });
+  return await d.prepare(`SELECT * FROM diesel_purchases WHERE id = ?`).get(p.id);
+}
+async function deleteDieselPurchase(payload) {
+  const d = getDb();
+  const old = await d.prepare(`SELECT * FROM diesel_purchases WHERE id = ?`).get(payload.id);
+  if (!old) return { ok: false, error: "Purchase not found." };
+  try {
+    await d.transaction(async () => {
+      await d.prepare(`DELETE FROM diesel_purchases WHERE id = ?`).run(payload.id);
+      if ((await stockOf(d, old.plant_id)).balance < 0)
+        throw new Error("Cannot delete: diesel from this purchase has already been issued.");
+    });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+async function listDieselIssues(filter = {}) {
+  const d = getDb();
+  const where = [];
+  const params = {};
+  if (filter.plant_id) {
+    where.push("di.plant_id = @plant_id");
+    params.plant_id = filter.plant_id;
+  }
+  if (filter.asset_id) {
+    where.push("di.asset_id = @asset_id");
+    params.asset_id = filter.asset_id;
+  }
+  if (filter.from) {
+    where.push("di.date >= @from");
+    params.from = filter.from;
+  }
+  if (filter.to) {
+    where.push("di.date <= @to");
+    params.to = filter.to;
+  }
+  const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  return await d.prepare(
+    `SELECT di.*, p.name AS plant_name, a.name AS asset_name, t.name AS transporter_name
+       FROM diesel_issues di
+       JOIN plants p ON p.id = di.plant_id
+       LEFT JOIN assets a ON a.id = di.asset_id
+       LEFT JOIN transporters t ON t.id = di.transporter_id
+       ${clause}
+       ORDER BY di.date DESC, di.id DESC`
+  ).all(params);
+}
+async function createDieselIssue(p) {
+  const d = getDb();
+  if (!(Number(p.litres) > 0)) throw new Error("Litres must be greater than 0.");
+  return d.transaction(async () => {
+    const fifo = await dieselFifoCost(d, Number(p.plant_id), Number(p.litres));
+    const transporter_id = p.transporter_id ? Number(p.transporter_id) : null;
+    const charged = transporter_id && p.charged ? 1 : 0;
+    const no = await nextNumber("DIS", "diesel_issue");
+    const info = await d.prepare(
+      `INSERT INTO diesel_issues (issue_no, plant_id, asset_id, transporter_id, litres, rate, amount, charged, date, remarks)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(no, p.plant_id, p.asset_id ?? null, transporter_id, litres(Number(p.litres)), fifo.rate, fifo.amount, charged, p.date, p.remarks ?? "");
+    return await d.prepare(`SELECT * FROM diesel_issues WHERE id = ?`).get(info.lastInsertRowid);
+  });
+}
+async function updateDieselIssue(p) {
+  const d = getDb();
+  if (!p.id) throw new Error("Missing issue id.");
+  if (!(Number(p.litres) > 0)) throw new Error("Litres must be greater than 0.");
+  await d.transaction(async () => {
+    const fifo = await dieselFifoCost(d, Number(p.plant_id), Number(p.litres), { src: "issue", id: p.id });
+    const transporter_id = p.transporter_id ? Number(p.transporter_id) : null;
+    const charged = transporter_id && p.charged ? 1 : 0;
+    await d.prepare(
+      `UPDATE diesel_issues SET plant_id=?, asset_id=?, transporter_id=?, litres=?, rate=?, amount=?, charged=?, date=?, remarks=? WHERE id=?`
+    ).run(
+      p.plant_id,
+      p.asset_id ?? null,
+      transporter_id,
+      litres(Number(p.litres)),
+      fifo.rate,
+      fifo.amount,
+      charged,
+      p.date,
+      p.remarks ?? "",
+      p.id
+    );
+  });
+  return await d.prepare(`SELECT * FROM diesel_issues WHERE id = ?`).get(p.id);
+}
+async function deleteDieselIssue(payload) {
+  const d = getDb();
+  await d.prepare(`DELETE FROM diesel_issues WHERE id = ?`).run(payload.id);
+  return { ok: true };
+}
+async function issuesByAsset(payload = {}) {
+  const d = getDb();
+  const clause = payload.plant_id ? "WHERE di.plant_id = @plant_id" : "";
+  return await d.prepare(
+    `SELECT di.asset_id, COALESCE(a.name, 'Unassigned') AS asset_name,
+        ROUND(COALESCE(SUM(di.litres),0),2) AS litres
+       FROM diesel_issues di LEFT JOIN assets a ON a.id = di.asset_id
+       ${clause}
+       GROUP BY di.asset_id, a.name ORDER BY litres DESC`
+  ).all(payload);
+}
+
 // src/main/services/racks.ts
+async function rackDiesel(d, plantId, dieselLitres, exclude) {
+  const dl = dieselLitres == null || dieselLitres === "" ? null : Number(dieselLitres);
+  if (!dl || !(dl > 0)) return { litres: null, amount: null };
+  if (!plantId) throw new Error("Set the source plant before issuing diesel (so it can draw from that plant\u2019s stock).");
+  const f = await dieselFifoCost(d, Number(plantId), dl, exclude);
+  return { litres: roundQty3(dl), amount: f.amount };
+}
 async function rackPlantFactors(d, rackId) {
   const row = await d.prepare(`SELECT plant_id FROM rack_loadings WHERE rack_id = ? ORDER BY id LIMIT 1`).get(rackId);
   return plantUomFactors(row?.plant_id);
@@ -4549,14 +4816,16 @@ async function addLoading(p) {
         `Not enough finished goods. Available ${p.product_name}: ${available} m\xB3, requested: ${total} m\xB3.`
       );
   }
+  const diesel = await rackDiesel(d, p.plant_id, p.diesel_litres);
+  const diesel_charged = diesel.litres && p.transporter_id && p.diesel_charged ? 1 : 0;
   const id = await d.transaction(async () => {
     const no = await nextNumber("RKL", "rack_loading");
     const info = await d.prepare(
       `INSERT INTO rack_loadings
           (loading_no, rack_id, plant_id, product_name, transporter_id, vehicle_no, trips, per_trip_cm,
-           total_cm, rate, amount, diesel_litres, diesel_amount, outsourced, date, remarks)
+           total_cm, rate, amount, diesel_litres, diesel_amount, diesel_charged, outsourced, date, remarks)
          VALUES (@loading_no,@rack_id,@plant_id,@product_name,@transporter_id,@vehicle_no,@trips,@per_trip_cm,
-           @total_cm,@rate,@amount,@diesel_litres,@diesel_amount,@outsourced,@date,@remarks)`
+           @total_cm,@rate,@amount,@diesel_litres,@diesel_amount,@diesel_charged,@outsourced,@date,@remarks)`
     ).run({
       loading_no: no,
       rack_id: p.rack_id,
@@ -4569,8 +4838,9 @@ async function addLoading(p) {
       total_cm: total,
       rate: p.rate,
       amount,
-      diesel_litres: p.diesel_litres,
-      diesel_amount: p.diesel_amount,
+      diesel_litres: diesel.litres,
+      diesel_amount: diesel.amount,
+      diesel_charged,
       outsourced: outsourced ? 1 : 0,
       date: p.date,
       remarks: p.remarks ?? ""
@@ -4601,12 +4871,14 @@ async function updateLoading(p) {
   if (!p.product_name?.trim()) throw new Error("Product is required.");
   const { total, amount } = resolveLoading(p);
   const outsourced = !!p.outsourced;
+  const diesel = await rackDiesel(d, p.plant_id, p.diesel_litres, { src: "loading", id: p.id });
+  const diesel_charged = diesel.litres && p.transporter_id && p.diesel_charged ? 1 : 0;
   await d.transaction(async () => {
     await d.prepare(
       `UPDATE rack_loadings SET plant_id=@plant_id, product_name=@product_name, transporter_id=@transporter_id,
          vehicle_no=@vehicle_no, trips=@trips, per_trip_cm=@per_trip_cm, total_cm=@total_cm,
          rate=@rate, amount=@amount, diesel_litres=@diesel_litres, diesel_amount=@diesel_amount,
-         outsourced=@outsourced, date=@date, remarks=@remarks WHERE id=@id`
+         diesel_charged=@diesel_charged, outsourced=@outsourced, date=@date, remarks=@remarks WHERE id=@id`
     ).run({
       id: p.id,
       plant_id: p.plant_id,
@@ -4618,8 +4890,9 @@ async function updateLoading(p) {
       total_cm: total,
       rate: p.rate,
       amount,
-      diesel_litres: p.diesel_litres,
-      diesel_amount: p.diesel_amount,
+      diesel_litres: diesel.litres,
+      diesel_amount: diesel.amount,
+      diesel_charged,
       outsourced: outsourced ? 1 : 0,
       date: p.date,
       remarks: p.remarks ?? ""
@@ -4672,7 +4945,7 @@ function resolveUnloading(p) {
   if (!(total > 0)) throw new Error("Unloaded quantity must be greater than 0 (trips \xD7 per-trip m\xB3).");
   return { total: roundQty3(total), amount: computeAmount3(p.rate, total) };
 }
-function unloadingFields(p, total, amount) {
+function unloadingFields(p, total, amount, diesel, dieselCharged) {
   return {
     rack_id: p.rack_id,
     product_name: p.product_name.trim(),
@@ -4686,8 +4959,9 @@ function unloadingFields(p, total, amount) {
     qty_cm: total,
     rate: p.rate,
     amount,
-    diesel_litres: p.diesel_litres,
-    diesel_amount: p.diesel_amount,
+    diesel_litres: diesel.litres,
+    diesel_amount: diesel.amount,
+    diesel_charged: dieselCharged,
     date: p.date,
     remarks: p.remarks ?? ""
   };
@@ -4704,14 +4978,16 @@ async function addUnloading(p) {
     throw new Error(
       `Cannot unload more than was loaded. On rake \u2014 ${p.product_name}: ${onRake} m\xB3, requested: ${total} m\xB3.`
     );
+  const diesel = await rackDiesel(d, rack.plant_id, p.diesel_litres);
+  const diesel_charged = diesel.litres && p.transporter_id && p.diesel_charged ? 1 : 0;
   const no = await nextNumber("RKU", "rack_unloading");
   const info = await d.prepare(
     `INSERT INTO rack_unloadings
         (unloading_no, rack_id, product_name, transporter_id, vehicle_no, trips, per_trip_cm, total_cm,
-         uom, quantity, qty_cm, rate, amount, diesel_litres, diesel_amount, date, remarks)
+         uom, quantity, qty_cm, rate, amount, diesel_litres, diesel_amount, diesel_charged, date, remarks)
        VALUES (@unloading_no,@rack_id,@product_name,@transporter_id,@vehicle_no,@trips,@per_trip_cm,@total_cm,
-         @uom,@quantity,@qty_cm,@rate,@amount,@diesel_litres,@diesel_amount,@date,@remarks)`
-  ).run({ unloading_no: no, ...unloadingFields(p, total, amount) });
+         @uom,@quantity,@qty_cm,@rate,@amount,@diesel_litres,@diesel_amount,@diesel_charged,@date,@remarks)`
+  ).run({ unloading_no: no, ...unloadingFields(p, total, amount, diesel, diesel_charged) });
   return await d.prepare(`SELECT * FROM rack_unloadings WHERE id = ?`).get(info.lastInsertRowid);
 }
 async function updateUnloading(p) {
@@ -4721,13 +4997,16 @@ async function updateUnloading(p) {
   if (!old) throw new Error("Unloading not found.");
   if (!p.product_name?.trim()) throw new Error("Product is required.");
   const { total, amount } = resolveUnloading(p);
+  const rackRow = await d.prepare(`SELECT plant_id FROM racks WHERE id = ?`).get(old.rack_id);
+  const diesel = await rackDiesel(d, rackRow?.plant_id ?? null, p.diesel_litres, { src: "unloading", id: p.id });
+  const diesel_charged = diesel.litres && p.transporter_id && p.diesel_charged ? 1 : 0;
   await d.transaction(async () => {
     await d.prepare(
       `UPDATE rack_unloadings SET product_name=@product_name, transporter_id=@transporter_id,
          vehicle_no=@vehicle_no, trips=@trips, per_trip_cm=@per_trip_cm, total_cm=@total_cm,
          uom=@uom, quantity=@quantity, qty_cm=@qty_cm, rate=@rate, amount=@amount,
-         diesel_litres=@diesel_litres, diesel_amount=@diesel_amount, date=@date, remarks=@remarks WHERE id=@id`
-    ).run({ id: p.id, ...unloadingFields(p, total, amount) });
+         diesel_litres=@diesel_litres, diesel_amount=@diesel_amount, diesel_charged=@diesel_charged, date=@date, remarks=@remarks WHERE id=@id`
+    ).run({ id: p.id, ...unloadingFields(p, total, amount, diesel, diesel_charged) });
     if (await rackUnloadable(d, old.rack_id, old.product_name) < 0 || await rackUnloadable(d, old.rack_id, p.product_name.trim()) < 0)
       throw new Error("Edit would leave more unloaded than loaded for this product.");
     if (await rackSellable(d, old.rack_id, old.product_name) < 0 || await rackSellable(d, old.rack_id, p.product_name.trim()) < 0)
@@ -5731,7 +6010,7 @@ async function buildEntries(partyType, partyId) {
   if (partyType === "transporter") {
     const loadings = await d.prepare(
       `SELECT rl.loading_no, rl.date, rl.created_at, COALESCE(rl.amount,0) AS amount,
-                COALESCE(rl.diesel_amount,0) AS diesel, rl.total_cm, rl.trips, r.rack_no
+                COALESCE(rl.diesel_amount,0) AS diesel, COALESCE(rl.diesel_charged,0) AS diesel_charged, rl.total_cm, rl.trips, r.rack_no
          FROM rack_loadings rl JOIN racks r ON r.id = rl.rack_id
          WHERE rl.transporter_id = ?`
     ).all(partyId);
@@ -5745,7 +6024,7 @@ async function buildEntries(partyType, partyId) {
           debit: 0,
           credit: x.amount
         });
-      if (x.diesel > 0)
+      if (x.diesel > 0 && x.diesel_charged)
         entries.push({
           date: x.date,
           created_at: x.created_at,
@@ -5757,7 +6036,7 @@ async function buildEntries(partyType, partyId) {
     }
     const unloadings = await d.prepare(
       `SELECT ru.unloading_no, ru.date, ru.created_at, COALESCE(ru.amount,0) AS amount,
-                COALESCE(ru.diesel_amount,0) AS diesel, ru.total_cm, ru.trips, r.rack_no
+                COALESCE(ru.diesel_amount,0) AS diesel, COALESCE(ru.diesel_charged,0) AS diesel_charged, ru.total_cm, ru.trips, r.rack_no
          FROM rack_unloadings ru JOIN racks r ON r.id = ru.rack_id
          WHERE ru.transporter_id = ?`
     ).all(partyId);
@@ -5771,7 +6050,7 @@ async function buildEntries(partyType, partyId) {
           debit: 0,
           credit: x.amount
         });
-      if (x.diesel > 0)
+      if (x.diesel > 0 && x.diesel_charged)
         entries.push({
           date: x.date,
           created_at: x.created_at,
@@ -5841,7 +6120,7 @@ async function buildEntries(partyType, partyId) {
         });
     const dsl = await d.prepare(
       `SELECT issue_no, date, created_at, COALESCE(litres,0) AS litres, COALESCE(amount,0) AS amount
-         FROM diesel_issues WHERE transporter_id = ? AND COALESCE(amount,0) > 0`
+         FROM diesel_issues WHERE transporter_id = ? AND charged = 1 AND COALESCE(amount,0) > 0`
     ).all(partyId);
     for (const x of dsl)
       entries.push({
@@ -6049,219 +6328,6 @@ async function getAllDues(payload = {}) {
     }
   }
   return rows;
-}
-
-// src/main/services/diesel.ts
-function money2(n) {
-  return Math.round((n + Number.EPSILON) * 100) / 100;
-}
-function litres(n) {
-  return Math.round((n + Number.EPSILON) * 100) / 100;
-}
-async function dieselStock(payload = {}) {
-  return stockOf(getDb(), payload.plant_id);
-}
-async function avgDieselRate() {
-  const r = await getDb().prepare(
-    `SELECT COALESCE(SUM(amount),0) AS amt, COALESCE(SUM(litres),0) AS lit
-       FROM diesel_purchases WHERE amount IS NOT NULL`
-  ).get();
-  return r.lit > 0 ? r.amt / r.lit : 0;
-}
-async function stockOf(d, plantId) {
-  const pAnd = plantId ? " WHERE plant_id = @pid" : "";
-  const p = (await d.prepare(`SELECT COALESCE(SUM(litres),0) AS q FROM diesel_purchases${pAnd}`).get({ pid: plantId })).q;
-  const i = (await d.prepare(`SELECT COALESCE(SUM(litres),0) AS q FROM diesel_issues${pAnd}`).get({ pid: plantId })).q;
-  return { purchased: litres(p), issued: litres(i), balance: litres(p - i) };
-}
-async function listDieselPurchases(filter = {}) {
-  const d = getDb();
-  const where = [];
-  const params = {};
-  if (filter.plant_id) {
-    where.push("dp.plant_id = @plant_id");
-    params.plant_id = filter.plant_id;
-  }
-  if (filter.supplier_id) {
-    where.push("dp.supplier_id = @supplier_id");
-    params.supplier_id = filter.supplier_id;
-  }
-  if (filter.from) {
-    where.push("dp.date >= @from");
-    params.from = filter.from;
-  }
-  if (filter.to) {
-    where.push("dp.date <= @to");
-    params.to = filter.to;
-  }
-  const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
-  return await d.prepare(
-    `SELECT dp.*, s.name AS supplier_name, p.name AS plant_name
-       FROM diesel_purchases dp
-       JOIN suppliers s ON s.id = dp.supplier_id
-       JOIN plants p ON p.id = dp.plant_id
-       ${clause}
-       ORDER BY dp.date DESC, dp.id DESC`
-  ).all(params);
-}
-function purchaseFields(p) {
-  if (!(Number(p.litres) > 0)) throw new Error("Litres must be greater than 0.");
-  const rate = p.rate == null || p.rate === "" ? null : Number(p.rate);
-  const amount = rate == null ? null : money2(Number(p.litres) * rate);
-  const paid = money2(Number(p.paid_amount) || 0);
-  return {
-    supplier_id: p.supplier_id,
-    plant_id: p.plant_id,
-    litres: litres(Number(p.litres)),
-    rate,
-    amount,
-    payment_status: derivePaymentStatus(amount ?? 0, paid),
-    paid_amount: paid,
-    date: p.date,
-    remarks: p.remarks ?? ""
-  };
-}
-async function createDieselPurchase(p) {
-  const d = getDb();
-  const fields = purchaseFields(p);
-  const no = await nextNumber("DSL", "diesel_purchase");
-  const info = await d.prepare(
-    `INSERT INTO diesel_purchases
-        (purchase_no, supplier_id, plant_id, litres, rate, amount, payment_status, paid_amount, date, remarks)
-       VALUES (@purchase_no,@supplier_id,@plant_id,@litres,@rate,@amount,@payment_status,@paid_amount,@date,@remarks)`
-  ).run({ purchase_no: no, ...fields });
-  return await d.prepare(`SELECT * FROM diesel_purchases WHERE id = ?`).get(info.lastInsertRowid);
-}
-async function updateDieselPurchase(p) {
-  const d = getDb();
-  if (!p.id) throw new Error("Missing purchase id.");
-  const fields = purchaseFields(p);
-  await d.transaction(async () => {
-    await d.prepare(
-      `UPDATE diesel_purchases SET supplier_id=@supplier_id, plant_id=@plant_id, litres=@litres, rate=@rate,
-         amount=@amount, payment_status=@payment_status, paid_amount=@paid_amount, date=@date, remarks=@remarks
-       WHERE id=@id`
-    ).run({ id: p.id, ...fields });
-    if ((await stockOf(d, Number(fields.plant_id))).balance < 0)
-      throw new Error("Edit would make diesel stock negative (more issued than purchased).");
-  });
-  return await d.prepare(`SELECT * FROM diesel_purchases WHERE id = ?`).get(p.id);
-}
-async function deleteDieselPurchase(payload) {
-  const d = getDb();
-  const old = await d.prepare(`SELECT * FROM diesel_purchases WHERE id = ?`).get(payload.id);
-  if (!old) return { ok: false, error: "Purchase not found." };
-  try {
-    await d.transaction(async () => {
-      await d.prepare(`DELETE FROM diesel_purchases WHERE id = ?`).run(payload.id);
-      if ((await stockOf(d, old.plant_id)).balance < 0)
-        throw new Error("Cannot delete: diesel from this purchase has already been issued.");
-    });
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-}
-async function listDieselIssues(filter = {}) {
-  const d = getDb();
-  const where = [];
-  const params = {};
-  if (filter.plant_id) {
-    where.push("di.plant_id = @plant_id");
-    params.plant_id = filter.plant_id;
-  }
-  if (filter.asset_id) {
-    where.push("di.asset_id = @asset_id");
-    params.asset_id = filter.asset_id;
-  }
-  if (filter.from) {
-    where.push("di.date >= @from");
-    params.from = filter.from;
-  }
-  if (filter.to) {
-    where.push("di.date <= @to");
-    params.to = filter.to;
-  }
-  const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
-  return await d.prepare(
-    `SELECT di.*, p.name AS plant_name, a.name AS asset_name, t.name AS transporter_name
-       FROM diesel_issues di
-       JOIN plants p ON p.id = di.plant_id
-       LEFT JOIN assets a ON a.id = di.asset_id
-       LEFT JOIN transporters t ON t.id = di.transporter_id
-       ${clause}
-       ORDER BY di.date DESC, di.id DESC`
-  ).all(params);
-}
-function issueChargeFields(p) {
-  const transporter_id = p.transporter_id ? Number(p.transporter_id) : null;
-  const rate = p.rate == null || p.rate === "" ? null : Number(p.rate);
-  const amount = transporter_id && rate != null ? money2(litres(Number(p.litres)) * rate) : null;
-  return { transporter_id, rate: transporter_id ? rate : null, amount };
-}
-async function createDieselIssue(p) {
-  const d = getDb();
-  if (!(Number(p.litres) > 0)) throw new Error("Litres must be greater than 0.");
-  const available = (await stockOf(d, p.plant_id)).balance;
-  if (Number(p.litres) > available)
-    throw new Error(`Not enough diesel in stock. Available: ${available} L, requested: ${p.litres} L.`);
-  const charge = issueChargeFields(p);
-  const no = await nextNumber("DIS", "diesel_issue");
-  const info = await d.prepare(
-    `INSERT INTO diesel_issues (issue_no, plant_id, asset_id, transporter_id, litres, rate, amount, date, remarks)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    no,
-    p.plant_id,
-    p.asset_id ?? null,
-    charge.transporter_id,
-    litres(Number(p.litres)),
-    charge.rate,
-    charge.amount,
-    p.date,
-    p.remarks ?? ""
-  );
-  return await d.prepare(`SELECT * FROM diesel_issues WHERE id = ?`).get(info.lastInsertRowid);
-}
-async function updateDieselIssue(p) {
-  const d = getDb();
-  if (!p.id) throw new Error("Missing issue id.");
-  if (!(Number(p.litres) > 0)) throw new Error("Litres must be greater than 0.");
-  const charge = issueChargeFields(p);
-  await d.transaction(async () => {
-    await d.prepare(
-      `UPDATE diesel_issues SET plant_id=?, asset_id=?, transporter_id=?, litres=?, rate=?, amount=?, date=?, remarks=? WHERE id=?`
-    ).run(
-      p.plant_id,
-      p.asset_id ?? null,
-      charge.transporter_id,
-      litres(Number(p.litres)),
-      charge.rate,
-      charge.amount,
-      p.date,
-      p.remarks ?? "",
-      p.id
-    );
-    if ((await stockOf(d, p.plant_id)).balance < 0)
-      throw new Error("Edit would issue more diesel than is in stock.");
-  });
-  return await d.prepare(`SELECT * FROM diesel_issues WHERE id = ?`).get(p.id);
-}
-async function deleteDieselIssue(payload) {
-  const d = getDb();
-  await d.prepare(`DELETE FROM diesel_issues WHERE id = ?`).run(payload.id);
-  return { ok: true };
-}
-async function issuesByAsset(payload = {}) {
-  const d = getDb();
-  const clause = payload.plant_id ? "WHERE di.plant_id = @plant_id" : "";
-  return await d.prepare(
-    `SELECT di.asset_id, COALESCE(a.name, 'Unassigned') AS asset_name,
-        ROUND(COALESCE(SUM(di.litres),0),2) AS litres
-       FROM diesel_issues di LEFT JOIN assets a ON a.id = di.asset_id
-       ${clause}
-       GROUP BY di.asset_id, a.name ORDER BY litres DESC`
-  ).all(payload);
 }
 
 // src/main/services/assets.ts
@@ -8009,6 +8075,7 @@ var handlers = {
   "diesel.updateIssue": updateDieselIssue,
   "diesel.deleteIssue": deleteDieselIssue,
   "diesel.byAsset": issuesByAsset,
+  "diesel.fifoQuote": dieselFifoQuote,
   "payments.add": addPayment,
   "payments.list": listPayments,
   "payments.delete": deletePayment,

@@ -11500,7 +11500,8 @@ const api = {
     createIssue: (p2) => call("diesel.createIssue", p2),
     updateIssue: (p2) => call("diesel.updateIssue", p2),
     deleteIssue: (id2) => call("diesel.deleteIssue", { id: id2 }),
-    byAsset: (plant_id) => call("diesel.byAsset", { plant_id })
+    byAsset: (plant_id) => call("diesel.byAsset", { plant_id }),
+    fifoQuote: (p2) => call("diesel.fifoQuote", p2)
   },
   employees: {
     list: (plant_id) => call("employees.list", { plant_id }),
@@ -65114,18 +65115,28 @@ function Diesel() {
     setPForm({ supplier_id: suppliers[0]?.id, plant_id: plantId ?? plants[0]?.id, litres: "", rate: "", payment_status: "unpaid", paid_amount: "", date: today(), remarks: "" });
   }
   function openIssue() {
-    setIForm({ recipient: "asset", plant_id: plantId ?? plants[0]?.id, asset_id: null, transporter_id: null, litres: "", rate: "", date: today(), remarks: "" });
+    setIForm({ recipient: "asset", plant_id: plantId ?? plants[0]?.id, asset_id: null, transporter_id: null, charged: false, litres: "", date: today(), remarks: "" });
   }
   const pAmount = pForm ? (Number(pForm.litres) || 0) * (Number(pForm.rate) || 0) : 0;
-  const iCharge = iForm && iForm.transporter_id ? (Number(iForm.litres) || 0) * (Number(iForm.rate) || 0) : 0;
-  const issueAvail = (stock?.balance ?? 0) + (iForm?.id ? Number(issues.find((i2) => i2.id === iForm.id)?.litres || 0) : 0);
+  const issueQuote = useQuery({
+    queryKey: ["dieselQuote", iForm?.plant_id, iForm?.litres, iForm?.id],
+    queryFn: () => api.diesel.fifoQuote({
+      plant_id: Number(iForm.plant_id),
+      litres: Number(iForm.litres) || 0,
+      exclude: iForm.id ? { src: "issue", id: Number(iForm.id) } : void 0
+    }),
+    enabled: !!iForm && !!iForm.plant_id && Number(iForm.litres) > 0
+  });
+  const iQuote = issueQuote.data;
+  const iCharge = iQuote?.amount ?? 0;
+  const issueAvail = iQuote?.available ?? (stock?.balance ?? 0) + (iForm?.id ? Number(issues.find((i2) => i2.id === iForm.id)?.litres || 0) : 0);
   function exportExcel() {
     if (tab === "issues") {
       downloadExcel(
         "diesel-issues",
         "Diesel Issues",
-        ["Issue No", "Date", "Machine/Vehicle", "Litres", "Charged To", "Rate", "Charge", "Remarks"],
-        issues.map((x2) => [x2.issue_no, fmtDate(x2.date), x2.asset_name ?? "Unassigned", x2.litres, x2.transporter_name ?? "", x2.rate ?? "", x2.amount ?? "", x2.remarks])
+        ["Issue No", "Date", "Machine/Vehicle", "Litres", "Diesel Cost (FIFO)", "Charged To", "Charged", "Remarks"],
+        issues.map((x2) => [x2.issue_no, fmtDate(x2.date), x2.asset_name ?? "Unassigned", x2.litres, x2.amount ?? "", x2.charged ? x2.transporter_name ?? "" : "", x2.charged ? "Yes" : "No", x2.remarks])
       );
     } else {
       downloadExcel(
@@ -65207,11 +65218,11 @@ function Diesel() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: fmtDate(x2.date) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: x2.asset_name ?? "Unassigned" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right font-semibold", children: fmtQty(x2.litres) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: x2.transporter_name || "-" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: x2.amount != null ? `₹${fmtMoney(x2.amount)}` : "-" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: x2.charged ? x2.transporter_name : "-" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: x2.charged && x2.amount != null ? `₹${fmtMoney(x2.amount)}` : "-" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: x2.remarks || "-" }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => setIForm({ ...x2, recipient: x2.transporter_id ? "transporter" : "asset", asset_id: x2.asset_id, transporter_id: x2.transporter_id ?? null, rate: x2.rate ?? "", litres: x2.litres }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => setIForm({ ...x2, recipient: x2.transporter_id ? "transporter" : "asset", asset_id: x2.asset_id, transporter_id: x2.transporter_id ?? null, charged: !!x2.charged, litres: x2.litres }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => removeIssue(x2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
           ] })
         ] }, x2.id)) })
@@ -65299,9 +65310,12 @@ function Diesel() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Litres", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: iForm.litres, onChange: (e3) => setIForm({ ...iForm, litres: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: iForm.date, onChange: (e3) => setIForm({ ...iForm, date: e3.target.value }) }) })
       ] }),
-      iForm.recipient === "transporter" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Rate / Litre (₹)", required: true, hint: "Charged to the transporter", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: iForm.rate, onChange: (e3) => setIForm({ ...iForm, rate: e3.target.value }), placeholder: "0.00" }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Amount Charged", hint: "= litres × rate", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: fmtMoney(iCharge), disabled: true }) })
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Diesel Cost (FIFO)", hint: "Valued at the oldest stock's rate first", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: Number(iForm.litres) > 0 ? `₹${fmtMoney(iCharge)}` : "—", disabled: true }) }),
+        iForm.recipient === "transporter" && /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Charge to transporter?", hint: "Tick to debit this cost to the transporter", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex h-9 cursor-pointer items-center gap-2 text-sm", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("input", { type: "checkbox", className: "h-4 w-4", checked: !!iForm.charged, onChange: (e3) => setIForm({ ...iForm, charged: e3.target.checked }) }),
+          iForm.charged ? `Charging ₹${fmtMoney(iCharge)}` : "Not charged (we bear it)"
+        ] }) })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: iForm.remarks || "", onChange: (e3) => setIForm({ ...iForm, remarks: e3.target.value }) }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-lg bg-muted/60 px-4 py-2.5 text-sm", children: [
@@ -65324,10 +65338,10 @@ function Diesel() {
                 litres: Number(iForm.litres),
                 asset_id: toTransporter ? null : iForm.asset_id || null,
                 transporter_id: toTransporter ? iForm.transporter_id || null : null,
-                rate: toTransporter && iForm.rate !== "" ? Number(iForm.rate) : null
+                charged: toTransporter && !!iForm.charged
               });
             },
-            disabled: !(Number(iForm.litres) > 0) || Number(iForm.litres) > issueAvail || iForm.recipient === "transporter" && (!iForm.transporter_id || !(Number(iForm.rate) > 0)),
+            disabled: !(Number(iForm.litres) > 0) || Number(iForm.litres) > issueAvail || iForm.recipient === "transporter" && !iForm.transporter_id,
             children: "Save Issue"
           }
         )
@@ -66050,6 +66064,24 @@ function RackDetail() {
     queryFn: () => api.finished.available(loadingForm.plant_id),
     enabled: !!loadingForm?.plant_id
   });
+  const { data: loadDieselQuote } = useQuery({
+    queryKey: ["dieselQuote", "loading", loadingForm?.plant_id, loadingForm?.diesel_litres, loadingForm?.id],
+    queryFn: () => api.diesel.fifoQuote({
+      plant_id: Number(loadingForm.plant_id),
+      litres: Number(loadingForm.diesel_litres) || 0,
+      exclude: loadingForm.id ? { src: "loading", id: Number(loadingForm.id) } : void 0
+    }),
+    enabled: !!loadingForm?.plant_id && Number(loadingForm?.diesel_litres) > 0
+  });
+  const { data: unloadDieselQuote } = useQuery({
+    queryKey: ["dieselQuote", "unloading", data?.rack?.plant_id, unloadForm?.diesel_litres, unloadForm?.id],
+    queryFn: () => api.diesel.fifoQuote({
+      plant_id: Number(data.rack.plant_id),
+      litres: Number(unloadForm.diesel_litres) || 0,
+      exclude: unloadForm.id ? { src: "unloading", id: Number(unloadForm.id) } : void 0
+    }),
+    enabled: !!data?.rack?.plant_id && Number(unloadForm?.diesel_litres) > 0
+  });
   function refresh() {
     qc2.invalidateQueries({ queryKey: ["rack", rackId] });
     qc2.invalidateQueries({ queryKey: ["racks"] });
@@ -66168,7 +66200,7 @@ function RackDetail() {
       per_trip_cm: "",
       rate: "",
       diesel_litres: "",
-      diesel_amount: "",
+      diesel_charged: false,
       outsourced: false,
       date: today(),
       remarks: ""
@@ -66185,7 +66217,7 @@ function RackDetail() {
       per_trip_cm: "",
       rate: "",
       diesel_litres: "",
-      diesel_amount: "",
+      diesel_charged: false,
       date: today(),
       remarks: ""
     });
@@ -66397,7 +66429,7 @@ function RackDetail() {
                 per_trip_cm: l2.per_trip_cm || "",
                 rate: l2.rate ?? "",
                 diesel_litres: l2.diesel_litres ?? "",
-                diesel_amount: l2.diesel_amount ?? ""
+                diesel_charged: !!l2.diesel_charged
               }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
               /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => removeLoading(l2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
             ] })
@@ -66497,7 +66529,7 @@ function RackDetail() {
                 per_trip_cm: u2.per_trip_cm || "",
                 rate: u2.rate ?? "",
                 diesel_litres: u2.diesel_litres ?? "",
-                diesel_amount: u2.diesel_amount ?? ""
+                diesel_charged: !!u2.diesel_charged
               }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
               /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => removeUnloading(u2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
             ] })
@@ -66635,8 +66667,14 @@ function RackDetail() {
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Per Trip (m³)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: loadingForm.per_trip_cm, onChange: (e3) => setLoadingForm({ ...loadingForm, per_trip_cm: e3.target.value }) }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Total Quantity (m³)", hint: `= trips × per trip${loadingTotal > 0 ? ` · ${fmtQty(fromCm(loadingTotal, "TON"))} ton · ${fmtQty(fromCm(loadingTotal, "CFT"))} cft` : ""}`, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: fmtQty(loadingTotal), disabled: true }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Rate per m³ (transport)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: loadingForm.rate, onChange: (e3) => setLoadingForm({ ...loadingForm, rate: e3.target.value }), placeholder: "Optional" }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Diesel (litres, optional)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: loadingForm.diesel_litres, onChange: (e3) => setLoadingForm({ ...loadingForm, diesel_litres: e3.target.value }) }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Diesel Amount (deducted from transporter)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: loadingForm.diesel_amount, onChange: (e3) => setLoadingForm({ ...loadingForm, diesel_amount: e3.target.value }) }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Diesel (litres, optional)", hint: Number(loadingForm.diesel_litres) > 0 ? `In stock: ${fmtQty(loadDieselQuote?.available ?? 0)} L` : "Drawn from the plant’s diesel stock (FIFO)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: loadingForm.diesel_litres, onChange: (e3) => setLoadingForm({ ...loadingForm, diesel_litres: e3.target.value }) }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Diesel Cost (FIFO)", hint: "Valued at the oldest stock's rate first", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: Number(loadingForm.diesel_litres) > 0 ? `₹${fmtMoney(loadDieselQuote?.amount ?? 0)}` : "—", disabled: true }) }),
+            Number(loadingForm.diesel_litres) > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex cursor-pointer items-center gap-2 text-sm", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("input", { type: "checkbox", className: "h-4 w-4", checked: !!loadingForm.diesel_charged, onChange: (e3) => setLoadingForm({ ...loadingForm, diesel_charged: e3.target.checked }) }),
+              "Charge this diesel (",
+              `₹${fmtMoney(loadDieselQuote?.amount ?? 0)}`,
+              ") to the transporter"
+            ] }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: loadingForm.date, onChange: (e3) => setLoadingForm({ ...loadingForm, date: e3.target.value }) }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: loadingForm.remarks || "", onChange: (e3) => setLoadingForm({ ...loadingForm, remarks: e3.target.value }) }) })
           ] }),
@@ -66656,7 +66694,7 @@ function RackDetail() {
                   total_cm: loadingTotal,
                   rate: loadingForm.rate === "" ? null : Number(loadingForm.rate),
                   diesel_litres: loadingForm.diesel_litres === "" ? null : Number(loadingForm.diesel_litres),
-                  diesel_amount: loadingForm.diesel_amount === "" ? null : Number(loadingForm.diesel_amount)
+                  diesel_charged: !!loadingForm.diesel_charged
                 }),
                 disabled: !loadingForm.plant_id || !loadingForm.product_name || !loadingForm.transporter_id || !(loadingTotal > 0),
                 children: "Save Loading"
@@ -66703,8 +66741,14 @@ function RackDetail() {
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Per Trip (m³)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: unloadForm.per_trip_cm, onChange: (e3) => setUnloadForm({ ...unloadForm, per_trip_cm: e3.target.value }) }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Total Unloaded (m³)", hint: "= trips × per trip", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: fmtQty(unloadTotal), disabled: true }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Rate per m³ (transport)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: unloadForm.rate, onChange: (e3) => setUnloadForm({ ...unloadForm, rate: e3.target.value }), placeholder: "Optional" }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Diesel (litres, optional)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: unloadForm.diesel_litres, onChange: (e3) => setUnloadForm({ ...unloadForm, diesel_litres: e3.target.value }) }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Diesel Amount (deducted from transporter)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: unloadForm.diesel_amount, onChange: (e3) => setUnloadForm({ ...unloadForm, diesel_amount: e3.target.value }) }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Diesel (litres, optional)", hint: Number(unloadForm.diesel_litres) > 0 ? `In stock: ${fmtQty(unloadDieselQuote?.available ?? 0)} L` : "Drawn from the rack’s source-plant diesel stock (FIFO)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: unloadForm.diesel_litres, onChange: (e3) => setUnloadForm({ ...unloadForm, diesel_litres: e3.target.value }) }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Diesel Cost (FIFO)", hint: "Valued at the oldest stock's rate first", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: Number(unloadForm.diesel_litres) > 0 ? `₹${fmtMoney(unloadDieselQuote?.amount ?? 0)}` : "—", disabled: true }) }),
+            Number(unloadForm.diesel_litres) > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex cursor-pointer items-center gap-2 text-sm", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("input", { type: "checkbox", className: "h-4 w-4", checked: !!unloadForm.diesel_charged, onChange: (e3) => setUnloadForm({ ...unloadForm, diesel_charged: e3.target.checked }) }),
+              "Charge this diesel (",
+              `₹${fmtMoney(unloadDieselQuote?.amount ?? 0)}`,
+              ") to the transporter"
+            ] }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: unloadForm.date, onChange: (e3) => setUnloadForm({ ...unloadForm, date: e3.target.value }) }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: unloadForm.remarks || "", onChange: (e3) => setUnloadForm({ ...unloadForm, remarks: e3.target.value }) }) })
           ] }),
@@ -66734,7 +66778,7 @@ function RackDetail() {
                   total_cm: unloadTotal,
                   rate: unloadForm.rate === "" ? null : Number(unloadForm.rate),
                   diesel_litres: unloadForm.diesel_litres === "" ? null : Number(unloadForm.diesel_litres),
-                  diesel_amount: unloadForm.diesel_amount === "" ? null : Number(unloadForm.diesel_amount)
+                  diesel_charged: !!unloadForm.diesel_charged
                 }),
                 disabled: !unloadForm.product_name || !(unloadTotal > 0) || unloadTotal > unloadAvailable,
                 children: "Save Unloading"
@@ -77856,7 +77900,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-BRJA2dxl.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-D6Lyq1ks.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
