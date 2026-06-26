@@ -60683,6 +60683,9 @@ function FinishedGoods() {
     queryFn: () => api.finished.list(cleanFilter$1({ ...filter, plant_id: plantId }))
   });
   const products = Array.from(new Set(data.map((d2) => d2.product_name)));
+  const [viewUom, setViewUom] = reactExports.useState("CM");
+  const uomLabel2 = viewUom === "CM" ? "m³" : viewUom === "TON" ? "Ton" : "CFT";
+  const conv = (cm, plantId2) => fromCm(Number(cm) || 0, viewUom, plants.find((p2) => p2.id === plantId2));
   const [open2, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState({ product_name: "", opening_qty: 0, uom: "CM" });
   plants.find((p2) => p2.id === form.plant_id);
@@ -60707,8 +60710,17 @@ function FinishedGoods() {
     downloadExcel(
       "finished-goods",
       "Finished Goods",
-      ["Plant", "Product", "Opening", "Produced", "Purchased", "Dispatched", "To Rack", "Balance (m³)"],
-      data.map((f2) => [f2.plant_name, f2.product_name, f2.opening_qty, f2.produced_qty, f2.purchased_qty, f2.dispatched_qty, f2.loaded_qty, f2.balance_qty])
+      ["Plant", "Product", `Opening (${uomLabel2})`, `Produced (${uomLabel2})`, `Purchased (${uomLabel2})`, `Dispatched (${uomLabel2})`, `To Rack (${uomLabel2})`, `Balance (${uomLabel2})`],
+      data.map((f2) => [
+        f2.plant_name,
+        f2.product_name,
+        conv(f2.opening_qty, f2.plant_id),
+        conv(f2.produced_qty, f2.plant_id),
+        conv(f2.purchased_qty, f2.plant_id),
+        conv(f2.dispatched_qty, f2.plant_id),
+        conv(f2.loaded_qty, f2.plant_id),
+        conv(f2.balance_qty, f2.plant_id)
+      ])
     );
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
@@ -60718,6 +60730,18 @@ function FinishedGoods() {
         title: "Finished Goods Stock",
         description: "Plant-wise and product-wise finished stock",
         actions: /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1.5", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "hidden text-xs font-medium text-muted-foreground sm:inline", children: "View in" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
+              {
+                className: "w-28",
+                value: viewUom,
+                onChange: (v2) => setViewUom(v2),
+                options: UOMS.map((u2) => ({ value: u2, label: u2 === "CM" ? "m³" : u2 === "TON" ? "Ton" : "CFT" }))
+              }
+            )
+          ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", onClick: exportExcel, disabled: !data.length, children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(FileSpreadsheet, { size: 16 }),
             " Excel"
@@ -60756,18 +60780,22 @@ function FinishedGoods() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Purchased" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Dispatched" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "To Rack" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Balance (m³)" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(TH, { className: "text-right", children: [
+            "Balance (",
+            uomLabel2,
+            ")"
+          ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Opening" })
         ] }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: data.map((f2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: f2.plant_name }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: f2.product_name }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtQty(f2.opening_qty) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right text-success", children: fmtQty(f2.produced_qty) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right text-success", children: fmtQty(f2.purchased_qty) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right text-destructive", children: fmtQty(f2.dispatched_qty) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right text-warning", children: fmtQty(f2.loaded_qty) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right font-semibold", children: fmtQty(f2.balance_qty) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtQty(conv(f2.opening_qty, f2.plant_id)) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right text-success", children: fmtQty(conv(f2.produced_qty, f2.plant_id)) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right text-success", children: fmtQty(conv(f2.purchased_qty, f2.plant_id)) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right text-destructive", children: fmtQty(conv(f2.dispatched_qty, f2.plant_id)) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right text-warning", children: fmtQty(conv(f2.loaded_qty, f2.plant_id)) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right font-semibold", children: fmtQty(conv(f2.balance_qty, f2.plant_id)) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Edit opening stock", onClick: () => openEdit({ plant_id: f2.plant_id, product_name: f2.product_name, opening_qty: f2.opening_qty }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }) })
         ] }, `${f2.plant_id}-${f2.product_name}`)) })
       ] })
@@ -65783,6 +65811,8 @@ function Racks() {
   const qc2 = useQueryClient();
   const toast = useToast();
   const nav = useNavigate();
+  const { plantId } = usePlant();
+  const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
   const [filter, setFilter] = reactExports.useState({});
   const { data = [] } = useQuery({
     queryKey: ["racks", filter],
@@ -65819,6 +65849,7 @@ function Racks() {
       [
         "Rack No",
         "Date",
+        "Plant",
         "Destination",
         "Status",
         "Loaded (m³)",
@@ -65833,6 +65864,7 @@ function Racks() {
       data.map((r2) => [
         r2.rack_no,
         fmtDate(r2.date),
+        r2.plant_name ?? "",
         r2.destination,
         statusLabel[r2.status],
         r2.loaded_cm ?? 0,
@@ -65858,7 +65890,7 @@ function Racks() {
             " Excel"
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { onClick: () => {
-            setForm({ date: today() });
+            setForm({ date: today(), plant_id: plantId ?? null });
             setOpen(true);
           }, children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 16 }),
@@ -65887,6 +65919,7 @@ function Racks() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Rack No" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Date" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plant" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Destination" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Status" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Loaded (m³)" }),
@@ -65900,6 +65933,7 @@ function Racks() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: data.map((r2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { className: "cursor-pointer", onClick: () => nav(`/racks/${r2.id}`), children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-mono text-xs font-semibold", children: r2.rack_no }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: fmtDate(r2.date) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: r2.plant_name || "-" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: r2.destination || "-" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: statusBadge[r2.status], children: statusLabel[r2.status] }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtQty(r2.loaded_cm) }),
@@ -65935,6 +65969,15 @@ function Racks() {
             }
           ) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Source Plant", hint: "The plant this rack is loaded from — pre-fills loadings", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
+              {
+                value: form.plant_id ?? "",
+                onChange: (v2) => setForm({ ...form, plant_id: v2 ? Number(v2) : null }),
+                options: [{ value: "", label: "— Select plant —" }, ...plants.map((p2) => ({ value: p2.id, label: p2.name }))],
+                placeholder: "— Select plant —"
+              }
+            ) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
               Input,
               {
@@ -65980,6 +66023,7 @@ function RackDetail() {
   const qc2 = useQueryClient();
   const toast = useToast();
   const nav = useNavigate();
+  const { plantId } = usePlant();
   const { data } = useQuery({
     queryKey: ["rack", rackId],
     queryFn: () => api.racks.detail(rackId),
@@ -66115,7 +66159,8 @@ function RackDetail() {
   function openNewLoading() {
     setLoadingForm({
       rack_id: rackId,
-      plant_id: plants[0]?.id,
+      // Default to the rack's source plant, else the active plant, else the first plant.
+      plant_id: data?.rack?.plant_id ?? plantId ?? plants[0]?.id,
       product_name: "",
       transporter_id: transporters[0]?.id,
       vehicle_no: "",
@@ -77811,7 +77856,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-CXPWggDB.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-BRJA2dxl.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;

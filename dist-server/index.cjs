@@ -526,6 +526,7 @@ CREATE TABLE IF NOT EXISTS racks (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   rack_no     TEXT NOT NULL UNIQUE,
   destination TEXT NOT NULL DEFAULT '',
+  plant_id    INTEGER REFERENCES plants(id),
   date        TEXT NOT NULL,
   status      TEXT NOT NULL DEFAULT 'loading',
   remarks     TEXT NOT NULL DEFAULT '',
@@ -1796,6 +1797,11 @@ CREATE TABLE IF NOT EXISTS transporter_plants (
 CREATE INDEX idx_cplants_customer ON customer_plants(customer_id);
 CREATE INDEX idx_splants_supplier ON supplier_plants(supplier_id);
 CREATE INDEX idx_tplants_transporter ON transporter_plants(transporter_id)`
+  },
+  {
+    // Source plant on a railway rack (default plant for its loadings).
+    id: "024_rack_plant",
+    sql: `ALTER TABLE racks ADD COLUMN plant_id INT`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -1877,6 +1883,7 @@ async function sqliteLegacyMigrate(adapter2) {
   await addColumn("diesel_issues", "rate", "REAL");
   await addColumn("diesel_issues", "amount", "REAL");
   await addColumn("dispatches", "buy_rate", "REAL");
+  await addColumn("racks", "plant_id", "INTEGER");
 }
 async function importProductsFromSettings(adapter2) {
   const all = (await adapter2.exec(`SELECT id, name FROM products ORDER BY id`, void 0, null)).rows;
@@ -4347,7 +4354,8 @@ var RACK_AGG = `
     + COALESCE((SELECT SUM(amount) FROM rack_unloadings WHERE rack_id = r.id),0) AS transport_cost,
   COALESCE((SELECT SUM(amount) FROM rack_expenses WHERE rack_id = r.id),0) AS expense_total,
   COALESCE((SELECT SUM(qty_cm) FROM rack_sales WHERE rack_id = r.id),0) AS sold_cm,
-  COALESCE((SELECT SUM(amount) FROM rack_sales WHERE rack_id = r.id),0) AS sales_amount`;
+  COALESCE((SELECT SUM(amount) FROM rack_sales WHERE rack_id = r.id),0) AS sales_amount,
+  (SELECT name FROM plants WHERE id = r.plant_id) AS plant_name`;
 function decorate(r) {
   r.loaded_cm = roundQty3(r.loaded_cm ?? 0);
   r.unloaded_cm = roundQty3(r.unloaded_cm ?? 0);
@@ -4392,7 +4400,7 @@ async function createRack(p) {
   if (!no) throw new Error("Railway rack no. is required.");
   const dup = await d.prepare(`SELECT id FROM racks WHERE rack_no = ?`).get(no);
   if (dup) throw new Error(`Rack "${no}" already exists.`);
-  const info = await d.prepare(`INSERT INTO racks (rack_no, destination, date, remarks) VALUES (?, ?, ?, ?)`).run(no, properCase(p.destination), p.date, p.remarks ?? "");
+  const info = await d.prepare(`INSERT INTO racks (rack_no, destination, plant_id, date, remarks) VALUES (?, ?, ?, ?, ?)`).run(no, properCase(p.destination), p.plant_id ?? null, p.date, p.remarks ?? "");
   return getRack(d, Number(info.lastInsertRowid));
 }
 async function updateRack(p) {
@@ -4404,9 +4412,10 @@ async function updateRack(p) {
   const old = await d.prepare(`SELECT * FROM racks WHERE id = ?`).get(p.id);
   if (!old) throw new Error("Rack not found.");
   await d.transaction(async () => {
-    await d.prepare(`UPDATE racks SET rack_no=?, destination=?, date=?, remarks=? WHERE id=?`).run(
+    await d.prepare(`UPDATE racks SET rack_no=?, destination=?, plant_id=?, date=?, remarks=? WHERE id=?`).run(
       no,
       properCase(p.destination),
+      p.plant_id ?? null,
       p.date,
       p.remarks ?? "",
       p.id
