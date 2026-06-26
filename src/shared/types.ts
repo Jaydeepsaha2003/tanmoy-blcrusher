@@ -238,6 +238,9 @@ export interface Supplier {
   company_name?: string
   plant_id: number | null
   plant_name?: string
+  /** Plants this supplier works with (empty = common to all plants). */
+  plant_ids?: number[]
+  plant_names?: string[]
   /** Set when this supplier is an internal stand-in for another plant (inter-plant trade). */
   plant_ref_id?: number | null
   created_at: string
@@ -258,6 +261,9 @@ export interface Customer {
   company_name?: string
   plant_id: number | null
   plant_name?: string
+  /** Plants this customer works with (empty = common to all plants). */
+  plant_ids?: number[]
+  plant_names?: string[]
   /** Random token for the public, no-login rate-list URL (/rates/:token). */
   share_token?: string | null
   /** Set when this customer is an internal stand-in for another plant (inter-plant trade). */
@@ -397,6 +403,9 @@ export interface Transporter {
   company_name?: string
   plant_id: number | null
   plant_name?: string
+  /** Plants this transporter works with (empty = common to all plants). */
+  plant_ids?: number[]
+  plant_names?: string[]
   created_at: string
   // computed
   total_trips?: number

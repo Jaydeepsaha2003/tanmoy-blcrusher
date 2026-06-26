@@ -19,7 +19,8 @@ import {
   TR,
   TH,
   TD,
-  EmptyState
+  EmptyState,
+  PlantCheckboxes
 } from '@/components/ui'
 import { useToast } from '@/components/toast'
 import { confirmDialog } from '@/components/confirm'
@@ -61,7 +62,7 @@ export function Customers(): React.JSX.Element {
       'customers',
       'Customers',
       ['Name', 'Company', 'Plant', 'Contact', 'Address', 'Total Sold (m³)'],
-      data.map((c) => [c.name, c.company_name ?? '', c.plant_name ?? 'Common', c.contact, c.address, c.total_dispatched ?? 0])
+      data.map((c) => [c.name, c.company_name ?? '', (c.plant_names ?? []).length ? (c.plant_names ?? []).join(', ') : 'Common', c.contact, c.address, c.total_dispatched ?? 0])
     )
   }
 
@@ -75,6 +76,11 @@ export function Customers(): React.JSX.Element {
     },
     onError: (e: Error) => toast.error(e.message)
   })
+
+  function togglePlant(id: number): void {
+    const cur = form.plant_ids ?? []
+    setForm({ ...form, plant_ids: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] })
+  }
 
   async function remove(c: Customer): Promise<void> {
     const ok = await confirmDialog({ title: 'Delete customer', message: `Delete "${c.name}"?` })
@@ -111,7 +117,7 @@ export function Customers(): React.JSX.Element {
             <Button variant="outline" onClick={exportExcel} disabled={!data.length}>
               <FileSpreadsheet size={16} /> Excel
             </Button>
-            <Button onClick={() => { setForm({ plant_id: plantId ?? null }); setOpen(true) }}>
+            <Button onClick={() => { setForm({ plant_ids: plantId ? [plantId] : [] }); setOpen(true) }}>
               <Plus size={16} /> New Customer
             </Button>
           </>
@@ -152,7 +158,7 @@ export function Customers(): React.JSX.Element {
                 <TR key={c.id}>
                   <TD className="font-medium">{c.name}</TD>
                   <TD className="text-muted-foreground">{c.company_name || '-'}</TD>
-                  <TD className="text-muted-foreground">{c.plant_name || 'Common'}</TD>
+                  <TD className="text-muted-foreground">{(c.plant_names ?? []).length ? (c.plant_names ?? []).join(', ') : 'Common'}</TD>
                   <TD className="text-muted-foreground">{c.contact || '-'}</TD>
                   <TD className="text-right">{fmtQty(c.total_dispatched)}</TD>
                   <TD className="text-right">
@@ -187,22 +193,16 @@ export function Customers(): React.JSX.Element {
           <Field label="Customer / Party Name">
             <Input value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Company / Group (optional)" hint="For a combined company ledger">
-              <SearchSelect
-                value={form.company_id ?? ''}
-                onChange={(v) => setForm({ ...form, company_id: v ? Number(v) : null })}
-                options={[{ value: '', label: '— None —' }, ...companies.map((c) => ({ value: c.id, label: c.name }))]}
-              />
-            </Field>
-            <Field label="Plant" hint="Common = available to all plants">
-              <SearchSelect
-                value={form.plant_id ?? ''}
-                onChange={(v) => setForm({ ...form, plant_id: v ? Number(v) : null })}
-                options={[{ value: '', label: 'Common (all plants)' }, ...plants.map((p) => ({ value: p.id, label: p.name }))]}
-              />
-            </Field>
-          </div>
+          <Field label="Company / Group (optional)" hint="For a combined company ledger">
+            <SearchSelect
+              value={form.company_id ?? ''}
+              onChange={(v) => setForm({ ...form, company_id: v ? Number(v) : null })}
+              options={[{ value: '', label: '— None —' }, ...companies.map((c) => ({ value: c.id, label: c.name }))]}
+            />
+          </Field>
+          <Field label="Plants" hint="Tick the plants this customer works with — leave all unticked for common (all plants)">
+            <PlantCheckboxes plants={plants} selected={form.plant_ids ?? []} onToggle={togglePlant} />
+          </Field>
           <Field label="Contact Details">
             <Input
               value={form.contact || ''}

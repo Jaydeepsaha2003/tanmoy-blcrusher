@@ -914,6 +914,28 @@ ALTER TABLE diesel_issues ADD COLUMN amount DOUBLE`
     // Outsource sale: a buy rate so the vendor's payable + the live profit can be derived.
     id: '022_dispatch_buy_rate',
     sql: `ALTER TABLE dispatches ADD COLUMN buy_rate DOUBLE`
+  },
+  {
+    // Multi-plant customers / suppliers / transporters (junction tables).
+    id: '023_party_plants',
+    sql: `CREATE TABLE IF NOT EXISTS customer_plants (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  customer_id INT NOT NULL,
+  plant_id    INT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS supplier_plants (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  supplier_id INT NOT NULL,
+  plant_id    INT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS transporter_plants (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  transporter_id INT NOT NULL,
+  plant_id       INT NOT NULL
+);
+CREATE INDEX idx_cplants_customer ON customer_plants(customer_id);
+CREATE INDEX idx_splants_supplier ON supplier_plants(supplier_id);
+CREATE INDEX idx_tplants_transporter ON transporter_plants(transporter_id)`
   }
 ]
 
@@ -1114,6 +1136,41 @@ async function backfillAssetPlants(adapter: Adapter, kind: DbKind): Promise<void
   await adapter.exec(ins, [flag], null)
 }
 
+/**
+ * Backfill customer/supplier/transporter plant junctions from each party's legacy
+ * single plant_id, so existing plant-scoped parties keep their scope under the new
+ * multi-plant model. Parties with plant_id NULL stay common. Runs once (settings flag).
+ */
+async function backfillPartyPlants(adapter: Adapter, kind: DbKind): Promise<void> {
+  const flag = 'party_plants_backfill_v1'
+  const done = (await adapter.exec('SELECT value FROM settings WHERE `key` = ?', [flag], null)).rows
+  if (done.length > 0) return
+  const maps: { junction: string; col: string; src: string }[] = [
+    { junction: 'customer_plants', col: 'customer_id', src: 'customers' },
+    { junction: 'supplier_plants', col: 'supplier_id', src: 'suppliers' },
+    { junction: 'transporter_plants', col: 'transporter_id', src: 'transporters' }
+  ]
+  for (const m of maps) {
+    try {
+      await adapter.exec(
+        `INSERT INTO ${m.junction} (${m.col}, plant_id)
+         SELECT s.id, s.plant_id FROM ${m.src} s
+         WHERE s.plant_id IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM ${m.junction} jp WHERE jp.${m.col} = s.id)`,
+        undefined,
+        null
+      )
+    } catch {
+      /* junction or plant_id column may not exist yet on a very old DB path — skip */
+    }
+  }
+  const ins =
+    kind === 'mysql'
+      ? "INSERT INTO settings (`key`, value) VALUES (?, '1') ON DUPLICATE KEY UPDATE value = '1'"
+      : "INSERT INTO settings (`key`, value) VALUES (?, '1') ON CONFLICT(`key`) DO UPDATE SET value = '1'"
+  await adapter.exec(ins, [flag], null)
+}
+
 async function seedDefaults(adapter: Adapter): Promise<void> {
   const pwRow = (
     await adapter.exec("SELECT value FROM settings WHERE `key` = 'admin_password'", undefined, null)
@@ -1175,4 +1232,5 @@ export async function runMigrations(adapter: Adapter, kind: DbKind): Promise<voi
   await importProductsFromSettings(adapter)
   await uppercaseExistingNames(adapter, kind)
   await backfillAssetPlants(adapter, kind)
+  await backfillPartyPlants(adapter, kind)
 }

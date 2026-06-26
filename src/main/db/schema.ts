@@ -491,6 +491,22 @@ CREATE TABLE IF NOT EXISTS asset_plants (
   plant_id  INTEGER NOT NULL REFERENCES plants(id)
 );
 
+CREATE TABLE IF NOT EXISTS customer_plants (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id INTEGER NOT NULL REFERENCES customers(id),
+  plant_id    INTEGER NOT NULL REFERENCES plants(id)
+);
+CREATE TABLE IF NOT EXISTS supplier_plants (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  supplier_id INTEGER NOT NULL REFERENCES suppliers(id),
+  plant_id    INTEGER NOT NULL REFERENCES plants(id)
+);
+CREATE TABLE IF NOT EXISTS transporter_plants (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  transporter_id INTEGER NOT NULL REFERENCES transporters(id),
+  plant_id       INTEGER NOT NULL REFERENCES plants(id)
+);
+
 CREATE TABLE IF NOT EXISTS asset_plant_moves (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   asset_id      INTEGER NOT NULL REFERENCES assets(id),
@@ -667,6 +683,9 @@ CREATE INDEX IF NOT EXISTS idx_adoc_asset ON asset_documents(asset_id);
 CREATE INDEX IF NOT EXISTS idx_adoc_expiry ON asset_documents(expiry_date);
 CREATE INDEX IF NOT EXISTS idx_aplants_asset ON asset_plants(asset_id);
 CREATE INDEX IF NOT EXISTS idx_aplants_plant ON asset_plants(plant_id);
+CREATE INDEX IF NOT EXISTS idx_cplants_customer ON customer_plants(customer_id);
+CREATE INDEX IF NOT EXISTS idx_splants_supplier ON supplier_plants(supplier_id);
+CREATE INDEX IF NOT EXISTS idx_tplants_transporter ON transporter_plants(transporter_id);
 CREATE INDEX IF NOT EXISTS idx_amoves_asset ON asset_plant_moves(asset_id);
 CREATE INDEX IF NOT EXISTS idx_spare_parts_plant ON spare_parts(plant_id);
 CREATE INDEX IF NOT EXISTS idx_part_moves_part ON spare_part_movements(part_id);

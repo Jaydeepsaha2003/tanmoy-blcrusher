@@ -1,6 +1,7 @@
 import { getDb } from '../db'
 import type { DashboardData } from '@shared/types'
 import { getPartyBalances } from './ledgers'
+import { plantScopeSql } from './partyPlants'
 
 function num(row: { q: number } | undefined): number {
   return Math.round(((row?.q ?? 0) + Number.EPSILON) * 1000) / 1000
@@ -173,8 +174,8 @@ export async function getDashboard(payload: { plant_id?: number } = {}): Promise
   const billsPayable = money({ q: sumBal(supBal) + sumBal(transBal) + sumBal(outBal) })
   // Opening Balance is shown as an information-only card; it is already counted
   // inside Receivable / Payable above, so the UI must NOT add it to Net again.
-  const obCust = pid ? ` AND (c.plant_id = ${pid} OR c.plant_id IS NULL)` : ''
-  const obSup = pid ? ` AND (s.plant_id = ${pid} OR s.plant_id IS NULL)` : ''
+  const obCust = pid ? ` AND ${plantScopeSql('c', 'customer', String(pid))}` : ''
+  const obSup = pid ? ` AND ${plantScopeSql('s', 'supplier', String(pid))}` : ''
   const openingBalance = money(
     (await d
       .prepare(
@@ -194,12 +195,13 @@ export async function getDashboard(payload: { plant_id?: number } = {}): Promise
   // Parties that carry a plant scope are counted for the active plant (its own +
   // common, plant-unassigned ones), matching their list pages. Plants and companies
   // are global by nature; racks are counted by those loaded from the active plant.
-  const partyWhere = pid ? ` WHERE (plant_id IS NULL OR plant_id = ${pid})` : ''
+  const scopeWhere = (table: string, type: string): string =>
+    pid ? ` WHERE ${plantScopeSql(table, type, String(pid))}` : ''
   const counts = {
     plants: ((await d.prepare(`SELECT COUNT(*) AS q FROM plants`).get()) as { q: number }).q,
-    suppliers: ((await d.prepare(`SELECT COUNT(*) AS q FROM suppliers${partyWhere}`).get()) as { q: number }).q,
-    customers: ((await d.prepare(`SELECT COUNT(*) AS q FROM customers${partyWhere}`).get()) as { q: number }).q,
-    transporters: ((await d.prepare(`SELECT COUNT(*) AS q FROM transporters${partyWhere}`).get()) as { q: number })
+    suppliers: ((await d.prepare(`SELECT COUNT(*) AS q FROM suppliers${scopeWhere('suppliers', 'supplier')}`).get()) as { q: number }).q,
+    customers: ((await d.prepare(`SELECT COUNT(*) AS q FROM customers${scopeWhere('customers', 'customer')}`).get()) as { q: number }).q,
+    transporters: ((await d.prepare(`SELECT COUNT(*) AS q FROM transporters${scopeWhere('transporters', 'transporter')}`).get()) as { q: number })
       .q,
     companies: ((await d.prepare(`SELECT COUNT(*) AS q FROM companies`).get()) as { q: number }).q,
     racks: pid

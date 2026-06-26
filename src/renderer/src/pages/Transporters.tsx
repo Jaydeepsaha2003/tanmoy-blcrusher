@@ -7,7 +7,6 @@ import { PageHeader, Page } from '@/components/layout'
 import {
   Button,
   Input,
-  Select,
   SearchSelect,
   Textarea,
   Field,
@@ -18,7 +17,8 @@ import {
   TR,
   TH,
   TD,
-  EmptyState
+  EmptyState,
+  PlantCheckboxes
 } from '@/components/ui'
 import { useToast } from '@/components/toast'
 import { confirmDialog } from '@/components/confirm'
@@ -56,7 +56,7 @@ export function Transporters(): React.JSX.Element {
       'Transporters',
       ['Name', 'Company', 'Plant', 'Contact', 'Trips', 'Carried (m³)', 'Bill Amount', 'Diesel', 'Paid', 'Balance'],
       data.map((t) => [
-        t.name, t.company_name ?? '', t.plant_name ?? 'Common', t.contact, t.total_trips ?? 0, t.total_cm ?? 0,
+        t.name, t.company_name ?? '', (t.plant_names ?? []).length ? (t.plant_names ?? []).join(', ') : 'Common', t.contact, t.total_trips ?? 0, t.total_cm ?? 0,
         t.total_amount ?? 0, t.diesel_amount ?? 0, t.paid_amount ?? 0, t.balance_amount ?? 0
       ])
     )
@@ -72,6 +72,11 @@ export function Transporters(): React.JSX.Element {
     },
     onError: (e: Error) => toast.error(e.message)
   })
+
+  function togglePlant(id: number): void {
+    const cur = form.plant_ids ?? []
+    setForm({ ...form, plant_ids: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] })
+  }
 
   async function remove(t: Transporter): Promise<void> {
     const ok = await confirmDialog({
@@ -96,7 +101,7 @@ export function Transporters(): React.JSX.Element {
             <Button variant="outline" onClick={exportExcel} disabled={!data.length}>
               <FileSpreadsheet size={16} /> Excel
             </Button>
-            <Button onClick={() => { setForm({ plant_id: plantId ?? null }); setOpen(true) }}>
+            <Button onClick={() => { setForm({ plant_ids: plantId ? [plantId] : [] }); setOpen(true) }}>
               <Plus size={16} /> New Transporter
             </Button>
           </>
@@ -147,7 +152,7 @@ export function Transporters(): React.JSX.Element {
                 <TR key={t.id}>
                   <TD className="font-medium">{t.name}</TD>
                   <TD className="text-muted-foreground">{t.company_name || '-'}</TD>
-                  <TD className="text-muted-foreground">{t.plant_name || 'Common'}</TD>
+                  <TD className="text-muted-foreground">{(t.plant_names ?? []).length ? (t.plant_names ?? []).join(', ') : 'Common'}</TD>
                   <TD className="text-right">{fmtQty(t.total_trips)}</TD>
                   <TD className="text-right">{fmtQty(t.total_cm)}</TD>
                   <TD className="text-right">{fmtMoney(t.total_amount)}</TD>
@@ -182,22 +187,16 @@ export function Transporters(): React.JSX.Element {
           <Field label="Transporter Name">
             <Input value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Company / Group (optional)" hint="For a combined company ledger">
-              <SearchSelect
-                value={form.company_id ?? ''}
-                onChange={(v) => setForm({ ...form, company_id: v ? Number(v) : null })}
-                options={[{ value: '', label: '— None —' }, ...companies.map((c) => ({ value: c.id, label: c.name }))]}
-              />
-            </Field>
-            <Field label="Plant" hint="Common = available to all plants">
-              <SearchSelect
-                value={form.plant_id ?? ''}
-                onChange={(v) => setForm({ ...form, plant_id: v ? Number(v) : null })}
-                options={[{ value: '', label: 'Common (all plants)' }, ...plants.map((p) => ({ value: p.id, label: p.name }))]}
-              />
-            </Field>
-          </div>
+          <Field label="Company / Group (optional)" hint="For a combined company ledger">
+            <SearchSelect
+              value={form.company_id ?? ''}
+              onChange={(v) => setForm({ ...form, company_id: v ? Number(v) : null })}
+              options={[{ value: '', label: '— None —' }, ...companies.map((c) => ({ value: c.id, label: c.name }))]}
+            />
+          </Field>
+          <Field label="Plants" hint="Tick the plants this transporter works with — leave all unticked for common (all plants)">
+            <PlantCheckboxes plants={plants} selected={form.plant_ids ?? []} onToggle={togglePlant} />
+          </Field>
           <Field label="Contact Details">
             <Input
               value={form.contact || ''}

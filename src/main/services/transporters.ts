@@ -2,10 +2,11 @@ import { getDb } from '../db'
 import type { Transporter } from '@shared/types'
 import { properCase } from '@shared/types'
 import { ensureUniqueName } from './names'
+import { plantIdSet, writePartyPlants, attachPartyPlants, plantScopeSql } from './partyPlants'
 
 export async function listTransporters(payload: { plant_id?: number } = {}): Promise<Transporter[]> {
   const d = getDb()
-  const clause = payload.plant_id ? `WHERE (t.plant_id IS NULL OR t.plant_id = @plant_id)` : ''
+  const clause = payload.plant_id ? `WHERE ${plantScopeSql('t', 'transporter')}` : ''
   const rows = (await d
     .prepare(
       `SELECT t.*, co.name AS company_name, pl.name AS plant_name
@@ -16,6 +17,7 @@ export async function listTransporters(payload: { plant_id?: number } = {}): Pro
        ORDER BY t.name`
     )
     .all(payload)) as Transporter[]
+  await attachPartyPlants(d, 'transporter', rows)
   for (const t of rows) {
     const agg = (await d
       .prepare(
@@ -57,22 +59,31 @@ export async function createTransporter(p: {
   remarks: string
   company_id?: number | null
   plant_id?: number | null
+  plant_ids?: number[]
 }): Promise<Transporter> {
   const d = getDb()
   await ensureUniqueName('transporters', p.name, { label: 'A transporter' })
-  const info = await d
-    .prepare(
-      `INSERT INTO transporters (name, contact, address, remarks, company_id, plant_id) VALUES (?, ?, ?, ?, ?, ?)`
-    )
-    .run(
-      properCase(p.name),
-      p.contact ?? '',
-      p.address ?? '',
-      p.remarks ?? '',
-      p.company_id ?? null,
-      p.plant_id ?? null
-    )
-  return (await d.prepare(`SELECT * FROM transporters WHERE id = ?`).get(info.lastInsertRowid)) as Transporter
+  const plants = plantIdSet(p)
+  const id = await d.transaction(async () => {
+    const info = await d
+      .prepare(
+        `INSERT INTO transporters (name, contact, address, remarks, company_id, plant_id) VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        properCase(p.name),
+        p.contact ?? '',
+        p.address ?? '',
+        p.remarks ?? '',
+        p.company_id ?? null,
+        plants[0] ?? null
+      )
+    const tid = Number(info.lastInsertRowid)
+    await writePartyPlants(d, 'transporter', tid, plants)
+    return tid
+  })
+  const row = (await d.prepare(`SELECT * FROM transporters WHERE id = ?`).get(id)) as Transporter
+  await attachPartyPlants(d, 'transporter', [row])
+  return row
 }
 
 export async function updateTransporter(p: {
@@ -83,21 +94,28 @@ export async function updateTransporter(p: {
   remarks: string
   company_id?: number | null
   plant_id?: number | null
+  plant_ids?: number[]
 }): Promise<Transporter> {
   const d = getDb()
   await ensureUniqueName('transporters', p.name, { id: p.id, label: 'A transporter' })
-  await d.prepare(
-    `UPDATE transporters SET name=?, contact=?, address=?, remarks=?, company_id=?, plant_id=? WHERE id=?`
-  ).run(
-    properCase(p.name),
-    p.contact ?? '',
-    p.address ?? '',
-    p.remarks ?? '',
-    p.company_id ?? null,
-    p.plant_id ?? null,
-    p.id
-  )
-  return (await d.prepare(`SELECT * FROM transporters WHERE id = ?`).get(p.id)) as Transporter
+  const plants = plantIdSet(p)
+  await d.transaction(async () => {
+    await d.prepare(
+      `UPDATE transporters SET name=?, contact=?, address=?, remarks=?, company_id=?, plant_id=? WHERE id=?`
+    ).run(
+      properCase(p.name),
+      p.contact ?? '',
+      p.address ?? '',
+      p.remarks ?? '',
+      p.company_id ?? null,
+      plants[0] ?? null,
+      p.id
+    )
+    await writePartyPlants(d, 'transporter', p.id, plants)
+  })
+  const row = (await d.prepare(`SELECT * FROM transporters WHERE id = ?`).get(p.id)) as Transporter
+  await attachPartyPlants(d, 'transporter', [row])
+  return row
 }
 
 export async function deleteTransporter(payload: { id: number }): Promise<{ ok: boolean; error?: string }> {
@@ -118,7 +136,10 @@ export async function deleteTransporter(payload: { id: number }): Promise<{ ok: 
   if (paid.c > 0) {
     return { ok: false, error: 'Cannot delete: this transporter has payment records.' }
   }
-  await d.prepare(`DELETE FROM transporters WHERE id = ?`).run(payload.id)
+  await d.transaction(async () => {
+    await d.prepare(`DELETE FROM transporter_plants WHERE transporter_id = ?`).run(payload.id)
+    await d.prepare(`DELETE FROM transporters WHERE id = ?`).run(payload.id)
+  })
   return { ok: true }
 }
 

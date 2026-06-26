@@ -374,3 +374,35 @@ export function EmptyState({ message }: { message: string }): React.JSX.Element 
     </div>
   )
 }
+
+/** Checkbox list of plants a record is assigned to. Empty selection = common to all plants. */
+export function PlantCheckboxes({
+  plants,
+  selected,
+  onToggle
+}: {
+  plants: { id: number; name: string }[]
+  selected: number[]
+  onToggle: (id: number) => void
+}): React.JSX.Element {
+  if (plants.length === 0) return <span className="text-xs text-muted-foreground">No plants yet.</span>
+  return (
+    <div className="flex flex-wrap gap-2">
+      {plants.map((p) => {
+        const on = selected.includes(p.id)
+        return (
+          <label
+            key={p.id}
+            className={cn(
+              'flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors',
+              on ? 'border-primary bg-primary/5 text-foreground' : 'border-input text-muted-foreground hover:bg-accent'
+            )}
+          >
+            <input type="checkbox" className="h-4 w-4" checked={on} onChange={() => onToggle(p.id)} />
+            {p.name}
+          </label>
+        )
+      })}
+    </div>
+  )
+}

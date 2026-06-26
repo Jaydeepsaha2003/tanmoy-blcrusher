@@ -7,7 +7,6 @@ import { PageHeader, Page } from '@/components/layout'
 import {
   Button,
   Input,
-  Select,
   SearchSelect,
   Textarea,
   Field,
@@ -18,7 +17,8 @@ import {
   TR,
   TH,
   TD,
-  EmptyState
+  EmptyState,
+  PlantCheckboxes
 } from '@/components/ui'
 import { useToast } from '@/components/toast'
 import { confirmDialog } from '@/components/confirm'
@@ -56,7 +56,7 @@ export function Suppliers(): React.JSX.Element {
       'Suppliers',
       ['Name', 'Company', 'Plant', 'Contact', 'Address', 'Purchased (m³)', 'Total Amount', 'Paid', 'Unpaid'],
       data.map((s) => [
-        s.name, s.company_name ?? '', s.plant_name ?? 'Common', s.contact, s.address,
+        s.name, s.company_name ?? '', (s.plant_names ?? []).length ? (s.plant_names ?? []).join(', ') : 'Common', s.contact, s.address,
         s.total_purchased ?? 0, s.total_amount ?? 0, s.paid_amount ?? 0, s.unpaid_amount ?? 0
       ])
     )
@@ -72,6 +72,11 @@ export function Suppliers(): React.JSX.Element {
     },
     onError: (e: Error) => toast.error(e.message)
   })
+
+  function togglePlant(id: number): void {
+    const cur = form.plant_ids ?? []
+    setForm({ ...form, plant_ids: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] })
+  }
 
   async function remove(s: Supplier): Promise<void> {
     const ok = await confirmDialog({
@@ -96,7 +101,7 @@ export function Suppliers(): React.JSX.Element {
             <Button variant="outline" onClick={exportExcel} disabled={!data.length}>
               <FileSpreadsheet size={16} /> Excel
             </Button>
-            <Button onClick={() => { setForm({ plant_id: plantId ?? null }); setOpen(true) }}>
+            <Button onClick={() => { setForm({ plant_ids: plantId ? [plantId] : [] }); setOpen(true) }}>
               <Plus size={16} /> New Supplier
             </Button>
           </>
@@ -144,7 +149,7 @@ export function Suppliers(): React.JSX.Element {
                 <TR key={s.id}>
                   <TD className="font-medium">{s.name}</TD>
                   <TD className="text-muted-foreground">{s.company_name || '-'}</TD>
-                  <TD className="text-muted-foreground">{s.plant_name || 'Common'}</TD>
+                  <TD className="text-muted-foreground">{(s.plant_names ?? []).length ? (s.plant_names ?? []).join(', ') : 'Common'}</TD>
                   <TD className="text-right">{fmtQty(s.total_purchased)}</TD>
                   <TD className="text-right">{fmtMoney(s.total_amount)}</TD>
                   <TD className="text-right font-semibold text-destructive">
@@ -176,22 +181,16 @@ export function Suppliers(): React.JSX.Element {
           <Field label="Supplier Name">
             <Input value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Company / Group (optional)" hint="For a combined company ledger">
-              <SearchSelect
-                value={form.company_id ?? ''}
-                onChange={(v) => setForm({ ...form, company_id: v ? Number(v) : null })}
-                options={[{ value: '', label: '— None —' }, ...companies.map((c) => ({ value: c.id, label: c.name }))]}
-              />
-            </Field>
-            <Field label="Plant" hint="Common = available to all plants">
-              <SearchSelect
-                value={form.plant_id ?? ''}
-                onChange={(v) => setForm({ ...form, plant_id: v ? Number(v) : null })}
-                options={[{ value: '', label: 'Common (all plants)' }, ...plants.map((p) => ({ value: p.id, label: p.name }))]}
-              />
-            </Field>
-          </div>
+          <Field label="Company / Group (optional)" hint="For a combined company ledger">
+            <SearchSelect
+              value={form.company_id ?? ''}
+              onChange={(v) => setForm({ ...form, company_id: v ? Number(v) : null })}
+              options={[{ value: '', label: '— None —' }, ...companies.map((c) => ({ value: c.id, label: c.name }))]}
+            />
+          </Field>
+          <Field label="Plants" hint="Tick the plants this supplier works with — leave all unticked for common (all plants)">
+            <PlantCheckboxes plants={plants} selected={form.plant_ids ?? []} onToggle={togglePlant} />
+          </Field>
           <Field label="Contact Details">
             <Input
               value={form.contact || ''}

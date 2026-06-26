@@ -10,6 +10,7 @@ import type {
   DueRow,
   OpeningBalance
 } from '@shared/types'
+import { plantScopeSql } from './partyPlants'
 
 const PARTY_TABLE: Record<PartyType, string> = {
   customer: 'customers',
@@ -1427,10 +1428,10 @@ export async function getPartyBalances(payload: {
   } else {
     const table = PARTY_TABLE[payload.party_type as PartyType]
     if (!table) throw new Error('Invalid party type.')
-    // Plant filter returns common parties plus that plant's own.
-    const clause = payload.plant_id ? `WHERE (plant_id IS NULL OR plant_id = @plant_id)` : ''
+    // Plant filter returns common parties (no plants assigned) plus those assigned to it.
+    const clause = payload.plant_id ? `WHERE ${plantScopeSql('t', payload.party_type as string)}` : ''
     parties = (await d
-      .prepare(`SELECT id, name FROM ${table} ${clause} ORDER BY name`)
+      .prepare(`SELECT t.id, t.name FROM ${table} t ${clause} ORDER BY t.name`)
       .all(payload.plant_id ? { plant_id: payload.plant_id } : {})) as {
       id: number
       name: string
