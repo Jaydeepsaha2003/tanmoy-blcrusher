@@ -936,6 +936,11 @@ CREATE TABLE IF NOT EXISTS transporter_plants (
 CREATE INDEX idx_cplants_customer ON customer_plants(customer_id);
 CREATE INDEX idx_splants_supplier ON supplier_plants(supplier_id);
 CREATE INDEX idx_tplants_transporter ON transporter_plants(transporter_id)`
+  },
+  {
+    // Source plant on a railway rack (default plant for its loadings).
+    id: '024_rack_plant',
+    sql: `ALTER TABLE racks ADD COLUMN plant_id INT`
   }
 ]
 
@@ -1034,6 +1039,8 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   await addColumn('diesel_issues', 'amount', 'REAL')
   // Outsource sale buy rate (vendor payable + live profit).
   await addColumn('dispatches', 'buy_rate', 'REAL')
+  // Source plant on a railway rack.
+  await addColumn('racks', 'plant_id', 'INTEGER')
 }
 
 /**

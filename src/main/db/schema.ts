@@ -367,6 +367,7 @@ CREATE TABLE IF NOT EXISTS racks (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   rack_no     TEXT NOT NULL UNIQUE,
   destination TEXT NOT NULL DEFAULT '',
+  plant_id    INTEGER REFERENCES plants(id),
   date        TEXT NOT NULL,
   status      TEXT NOT NULL DEFAULT 'loading',
   remarks     TEXT NOT NULL DEFAULT '',

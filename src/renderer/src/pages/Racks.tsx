@@ -23,6 +23,7 @@ import {
 } from '@/components/ui'
 import { useToast } from '@/components/toast'
 import { confirmDialog } from '@/components/confirm'
+import { usePlant } from '@/lib/plant'
 import { fmtQty, fmtMoney, fmtDate, today, downloadExcel } from '@/lib/utils'
 
 export const statusLabel: Record<RackStatus, string> = {
@@ -42,6 +43,8 @@ export function Racks(): React.JSX.Element {
   const qc = useQueryClient()
   const toast = useToast()
   const nav = useNavigate()
+  const { plantId } = usePlant()
+  const { data: plants = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
   const [filter, setFilter] = React.useState<{ status?: string }>({})
   const { data = [] } = useQuery({
     queryKey: ['racks', filter],
@@ -79,10 +82,10 @@ export function Racks(): React.JSX.Element {
     downloadExcel(
       'racks',
       'Racks',
-      ['Rack No', 'Date', 'Destination', 'Status', 'Loaded (m³)', 'Unloaded (m³)', 'Sold (m³)',
+      ['Rack No', 'Date', 'Plant', 'Destination', 'Status', 'Loaded (m³)', 'Unloaded (m³)', 'Sold (m³)',
         'Balance/Shortage (m³)', 'Transport Cost', 'Expenses', 'Sales Amount', 'Profit'],
       data.map((r) => [
-        r.rack_no, fmtDate(r.date), r.destination, statusLabel[r.status],
+        r.rack_no, fmtDate(r.date), r.plant_name ?? '', r.destination, statusLabel[r.status],
         r.loaded_cm ?? 0, r.unloaded_cm ?? 0, r.sold_cm ?? 0, r.balance_cm ?? 0,
         r.transport_cost ?? 0, r.expense_total ?? 0, r.sales_amount ?? 0, r.profit ?? 0
       ])
@@ -99,7 +102,7 @@ export function Racks(): React.JSX.Element {
             <Button variant="outline" onClick={exportExcel} disabled={!data.length}>
               <FileSpreadsheet size={16} /> Excel
             </Button>
-            <Button onClick={() => { setForm({ date: today() }); setOpen(true) }}>
+            <Button onClick={() => { setForm({ date: today(), plant_id: plantId ?? null }); setOpen(true) }}>
               <Plus size={16} /> New Rack
             </Button>
           </>
@@ -129,6 +132,7 @@ export function Racks(): React.JSX.Element {
               <TR>
                 <TH>Rack No</TH>
                 <TH>Date</TH>
+                <TH>Plant</TH>
                 <TH>Destination</TH>
                 <TH>Status</TH>
                 <TH className="text-right">Loaded (m³)</TH>
@@ -145,6 +149,7 @@ export function Racks(): React.JSX.Element {
                 <TR key={r.id} className="cursor-pointer" onClick={() => nav(`/racks/${r.id}`)}>
                   <TD className="font-mono text-xs font-semibold">{r.rack_no}</TD>
                   <TD>{fmtDate(r.date)}</TD>
+                  <TD className="text-muted-foreground">{r.plant_name || '-'}</TD>
                   <TD className="text-muted-foreground">{r.destination || '-'}</TD>
                   <TD><Badge variant={statusBadge[r.status]}>{statusLabel[r.status]}</Badge></TD>
                   <TD className="text-right">{fmtQty(r.loaded_cm)}</TD>
@@ -189,6 +194,14 @@ export function Racks(): React.JSX.Element {
             />
           </Field>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Source Plant" hint="The plant this rack is loaded from — pre-fills loadings">
+              <SearchSelect
+                value={form.plant_id ?? ''}
+                onChange={(v) => setForm({ ...form, plant_id: v ? Number(v) : null })}
+                options={[{ value: '', label: '— Select plant —' }, ...plants.map((p) => ({ value: p.id, label: p.name }))]}
+                placeholder="— Select plant —"
+              />
+            </Field>
             <Field label="Date">
               <Input
                 type="date"

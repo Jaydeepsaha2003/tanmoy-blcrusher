@@ -38,6 +38,7 @@ import {
 } from '@/components/ui'
 import { useToast } from '@/components/toast'
 import { confirmDialog } from '@/components/confirm'
+import { usePlant } from '@/lib/plant'
 import { fmtQty, fmtMoney, fmtDate, today } from '@/lib/utils'
 import { statusLabel, statusBadge } from './Racks'
 
@@ -54,6 +55,7 @@ export function RackDetail(): React.JSX.Element {
   const qc = useQueryClient()
   const toast = useToast()
   const nav = useNavigate()
+  const { plantId } = usePlant()
 
   const { data } = useQuery({
     queryKey: ['rack', rackId],
@@ -205,7 +207,8 @@ export function RackDetail(): React.JSX.Element {
   function openNewLoading(): void {
     setLoadingForm({
       rack_id: rackId,
-      plant_id: plants[0]?.id,
+      // Default to the rack's source plant, else the active plant, else the first plant.
+      plant_id: data?.rack?.plant_id ?? plantId ?? plants[0]?.id,
       product_name: '',
       transporter_id: transporters[0]?.id,
       vehicle_no: '',

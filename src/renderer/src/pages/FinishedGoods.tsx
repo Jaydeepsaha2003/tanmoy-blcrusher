@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { FileSpreadsheet, PencilLine, Pencil } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { Uom } from '@shared/types'
-import { toCm, UOMS } from '@shared/types'
+import { toCm, fromCm, UOMS } from '@shared/types'
 import { PageHeader, Page } from '@/components/layout'
 import {
   Button,
@@ -36,6 +36,12 @@ export function FinishedGoods(): React.JSX.Element {
   })
 
   const products = Array.from(new Set(data.map((d) => d.product_name)))
+  // The stock is stored in m³; this lets the user view every figure in Ton/CFT too,
+  // converted with each row's own plant density factors.
+  const [viewUom, setViewUom] = React.useState<Uom>('CM')
+  const uomLabel = viewUom === 'CM' ? 'm³' : viewUom === 'TON' ? 'Ton' : 'CFT'
+  const conv = (cm: number | null | undefined, plantId: number): number =>
+    fromCm(Number(cm) || 0, viewUom, plants.find((p) => p.id === plantId))
   const [open, setOpen] = React.useState(false)
   const [form, setForm] = React.useState<{ plant_id?: number; product_name: string; opening_qty: number | string; uom: Uom; editing?: boolean }>({ product_name: '', opening_qty: 0, uom: 'CM' })
 
@@ -64,8 +70,12 @@ export function FinishedGoods(): React.JSX.Element {
     downloadExcel(
       'finished-goods',
       'Finished Goods',
-      ['Plant', 'Product', 'Opening', 'Produced', 'Purchased', 'Dispatched', 'To Rack', 'Balance (m³)'],
-      data.map((f) => [f.plant_name, f.product_name, f.opening_qty, f.produced_qty, f.purchased_qty, f.dispatched_qty, f.loaded_qty, f.balance_qty])
+      ['Plant', 'Product', `Opening (${uomLabel})`, `Produced (${uomLabel})`, `Purchased (${uomLabel})`, `Dispatched (${uomLabel})`, `To Rack (${uomLabel})`, `Balance (${uomLabel})`],
+      data.map((f) => [
+        f.plant_name, f.product_name,
+        conv(f.opening_qty, f.plant_id), conv(f.produced_qty, f.plant_id), conv(f.purchased_qty, f.plant_id),
+        conv(f.dispatched_qty, f.plant_id), conv(f.loaded_qty, f.plant_id), conv(f.balance_qty, f.plant_id)
+      ])
     )
   }
 
@@ -76,6 +86,15 @@ export function FinishedGoods(): React.JSX.Element {
         description="Plant-wise and product-wise finished stock"
         actions={
           <>
+            <div className="flex items-center gap-1.5">
+              <span className="hidden text-xs font-medium text-muted-foreground sm:inline">View in</span>
+              <SearchSelect
+                className="w-28"
+                value={viewUom}
+                onChange={(v) => setViewUom(v as Uom)}
+                options={UOMS.map((u) => ({ value: u, label: u === 'CM' ? 'm³' : u === 'TON' ? 'Ton' : 'CFT' }))}
+              />
+            </div>
             <Button variant="outline" onClick={exportExcel} disabled={!data.length}>
               <FileSpreadsheet size={16} /> Excel
             </Button>
@@ -111,7 +130,7 @@ export function FinishedGoods(): React.JSX.Element {
                 <TH className="text-right">Purchased</TH>
                 <TH className="text-right">Dispatched</TH>
                 <TH className="text-right">To Rack</TH>
-                <TH className="text-right">Balance (m³)</TH>
+                <TH className="text-right">Balance ({uomLabel})</TH>
                 <TH className="text-right">Opening</TH>
               </TR>
             </THead>
@@ -120,12 +139,12 @@ export function FinishedGoods(): React.JSX.Element {
                 <TR key={`${f.plant_id}-${f.product_name}`}>
                   <TD className="font-medium">{f.plant_name}</TD>
                   <TD>{f.product_name}</TD>
-                  <TD className="text-right">{fmtQty(f.opening_qty)}</TD>
-                  <TD className="text-right text-success">{fmtQty(f.produced_qty)}</TD>
-                  <TD className="text-right text-success">{fmtQty(f.purchased_qty)}</TD>
-                  <TD className="text-right text-destructive">{fmtQty(f.dispatched_qty)}</TD>
-                  <TD className="text-right text-warning">{fmtQty(f.loaded_qty)}</TD>
-                  <TD className="text-right font-semibold">{fmtQty(f.balance_qty)}</TD>
+                  <TD className="text-right">{fmtQty(conv(f.opening_qty, f.plant_id))}</TD>
+                  <TD className="text-right text-success">{fmtQty(conv(f.produced_qty, f.plant_id))}</TD>
+                  <TD className="text-right text-success">{fmtQty(conv(f.purchased_qty, f.plant_id))}</TD>
+                  <TD className="text-right text-destructive">{fmtQty(conv(f.dispatched_qty, f.plant_id))}</TD>
+                  <TD className="text-right text-warning">{fmtQty(conv(f.loaded_qty, f.plant_id))}</TD>
+                  <TD className="text-right font-semibold">{fmtQty(conv(f.balance_qty, f.plant_id))}</TD>
                   <TD className="text-right">
                     <Button variant="ghost" size="icon" title="Edit opening stock" onClick={() => openEdit({ plant_id: f.plant_id, product_name: f.product_name, opening_qty: f.opening_qty })}>
                       <Pencil size={15} />

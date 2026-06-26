@@ -420,6 +420,9 @@ export interface Rack {
   id: number
   rack_no: string
   destination: string
+  /** Source plant the rack is loaded from (default for its loadings). */
+  plant_id: number | null
+  plant_name?: string
   date: string
   status: RackStatus
   remarks: string

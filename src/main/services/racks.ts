@@ -50,7 +50,8 @@ const RACK_AGG = `
     + COALESCE((SELECT SUM(amount) FROM rack_unloadings WHERE rack_id = r.id),0) AS transport_cost,
   COALESCE((SELECT SUM(amount) FROM rack_expenses WHERE rack_id = r.id),0) AS expense_total,
   COALESCE((SELECT SUM(qty_cm) FROM rack_sales WHERE rack_id = r.id),0) AS sold_cm,
-  COALESCE((SELECT SUM(amount) FROM rack_sales WHERE rack_id = r.id),0) AS sales_amount`
+  COALESCE((SELECT SUM(amount) FROM rack_sales WHERE rack_id = r.id),0) AS sales_amount,
+  (SELECT name FROM plants WHERE id = r.plant_id) AS plant_name`
 
 function decorate(r: Rack): Rack {
   r.loaded_cm = roundQty(r.loaded_cm ?? 0)
@@ -111,6 +112,7 @@ export async function createRack(p: {
   destination: string
   date: string
   remarks: string
+  plant_id?: number | null
 }): Promise<Rack> {
   const d = getDb()
   const no = (p.rack_no || '').trim()
@@ -118,8 +120,8 @@ export async function createRack(p: {
   const dup = await d.prepare(`SELECT id FROM racks WHERE rack_no = ?`).get(no)
   if (dup) throw new Error(`Rack "${no}" already exists.`)
   const info = await d
-    .prepare(`INSERT INTO racks (rack_no, destination, date, remarks) VALUES (?, ?, ?, ?)`)
-    .run(no, properCase(p.destination), p.date, p.remarks ?? '')
+    .prepare(`INSERT INTO racks (rack_no, destination, plant_id, date, remarks) VALUES (?, ?, ?, ?, ?)`)
+    .run(no, properCase(p.destination), p.plant_id ?? null, p.date, p.remarks ?? '')
   return getRack(d, Number(info.lastInsertRowid))
 }
 
@@ -129,6 +131,7 @@ export async function updateRack(p: {
   destination: string
   date: string
   remarks: string
+  plant_id?: number | null
 }): Promise<Rack> {
   const d = getDb()
   const no = (p.rack_no || '').trim()
@@ -138,9 +141,10 @@ export async function updateRack(p: {
   const old = (await d.prepare(`SELECT * FROM racks WHERE id = ?`).get(p.id)) as Rack | undefined
   if (!old) throw new Error('Rack not found.')
   await d.transaction(async () => {
-    await d.prepare(`UPDATE racks SET rack_no=?, destination=?, date=?, remarks=? WHERE id=?`).run(
+    await d.prepare(`UPDATE racks SET rack_no=?, destination=?, plant_id=?, date=?, remarks=? WHERE id=?`).run(
       no,
       properCase(p.destination),
+      p.plant_id ?? null,
       p.date,
       p.remarks ?? '',
       p.id
