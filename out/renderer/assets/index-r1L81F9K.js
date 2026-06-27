@@ -11427,7 +11427,9 @@ const api = {
     balances: (party_type, plant_id) => call("ledgers.balances", { party_type, plant_id }),
     allDues: (plant_id) => call("ledgers.allDues", { plant_id }),
     getOpening: (party_type, party_id) => call("ledgers.getOpening", { party_type, party_id }),
+    openings: (party_type, party_id) => call("ledgers.openings", { party_type, party_id }),
     setOpening: (p2) => call("ledgers.setOpening", p2),
+    setOpenings: (p2) => call("ledgers.setOpenings", p2),
     deleteOpening: (party_type, party_id) => call("ledgers.deleteOpening", { party_type, party_id })
   },
   payments: {
@@ -11485,6 +11487,7 @@ const api = {
   },
   plantExpenses: {
     list: (filter) => call("plantExpenses.list", filter),
+    book: (filter) => call("plantExpenses.book", filter),
     totals: (filter) => call("plantExpenses.totals", filter),
     create: (p2) => call("plantExpenses.create", p2),
     update: (p2) => call("plantExpenses.update", p2),
@@ -64739,8 +64742,16 @@ function PlantExpenses() {
   const [catFilter, setCatFilter] = reactExports.useState("");
   const [from, setFrom] = reactExports.useState("");
   const [to, setTo] = reactExports.useState("");
+  const [view, setView] = reactExports.useState("expenses");
   const filter = clean$3({ plant_id: plantId, category: catFilter || void 0, from: from || void 0, to: to || void 0 });
   const { data = [] } = useQuery({ queryKey: ["plantExpenses", filter], queryFn: () => api.plantExpenses.list(filter) });
+  const bookFilter = clean$3({ plant_id: plantId, from: from || void 0, to: to || void 0 });
+  const { data: book = [] } = useQuery({
+    queryKey: ["plantExpenseBook", bookFilter],
+    queryFn: () => api.plantExpenses.book(bookFilter),
+    enabled: view === "book"
+  });
+  const bookTotal = book.reduce((s2, r2) => s2 + r2.amount, 0);
   const { data: totals = [] } = useQuery({
     queryKey: ["plantExpenseTotals", plantId, from, to],
     queryFn: () => api.plantExpenses.totals(clean$3({ plant_id: plantId, from: from || void 0, to: to || void 0 }))
@@ -64809,6 +64820,15 @@ function PlantExpenses() {
     toast.success("Expense deleted.");
   }
   function exportExcel() {
+    if (view === "book") {
+      downloadExcel(
+        "plant-expense-book",
+        "Plant Expense Book",
+        ["Source", "No", "Date", "Plant", "Category", "Details", "Amount", "Paid", "Status"],
+        book.map((r2) => [r2.source_label, r2.ref_no, fmtDate(r2.date), r2.plant_name ?? "", r2.category, r2.details, r2.amount, r2.paid_amount, r2.payment_status])
+      );
+      return;
+    }
     downloadExcel(
       "plant-expenses",
       "Plant Expenses",
@@ -64851,7 +64871,7 @@ function PlantExpenses() {
         title: "Plant Expenses",
         description: "Electricity, maintenance, rentals and other running costs of the plant",
         actions: /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", onClick: exportExcel, disabled: !data.length, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", onClick: exportExcel, disabled: view === "book" ? !book.length : !data.length, children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(FileSpreadsheet, { size: 16 }),
             " Excel"
           ] }),
@@ -64881,7 +64901,9 @@ function PlantExpenses() {
         })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap items-center gap-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
+        ["expenses", "book"].map((v2) => /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: view === v2 ? "default" : "outline", size: "sm", onClick: () => setView(v2), children: v2 === "expenses" ? "Expenses" : "Full Book (all outgoings)" }, v2)),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mx-1 h-5 w-px bg-border" }),
+        view === "expenses" && /* @__PURE__ */ jsxRuntimeExports.jsx(
           SearchSelect,
           {
             className: "w-full sm:w-52",
@@ -64894,7 +64916,36 @@ function PlantExpenses() {
         /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-muted-foreground", children: "to" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", className: "w-full sm:w-36", value: to, onChange: (e3) => setTo(e3.target.value) })
       ] }),
-      data.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No expenses recorded yet." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
+      view === "book" ? book.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No outgoings in this period." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-2 text-sm text-muted-foreground", children: [
+          book.length,
+          " entries · Total outgoings: ",
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-semibold text-destructive", children: fmtMoney(bookTotal) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ml-1", children: "— expenses, purchases, diesel and wages combined." })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Source" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "No" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Date" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Category" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Details" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Amount" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Paid" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Payment" })
+          ] }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: book.map((r2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "muted", children: r2.source_label }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-mono text-xs", children: r2.ref_no }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: fmtDate(r2.date) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: r2.category }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: r2.details }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right font-semibold", children: fmtMoney(r2.amount) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right text-muted-foreground", children: fmtMoney(r2.paid_amount) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: payBadge$3[r2.payment_status], children: r2.payment_status }) })
+          ] }, `${r2.source}-${r2.ref_no}`)) })
+        ] })
+      ] }) : data.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No expenses recorded yet." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "No" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Date" }),
@@ -77909,7 +77960,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-BKVBQcJO.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-Ct_0IQdn.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
@@ -80621,6 +80672,7 @@ function Ledgers() {
     queryFn: () => api.ledgers.balances(partyType, plantId)
   });
   const { data: branding } = useQuery({ queryKey: ["branding"], queryFn: () => api.rates.getBranding() });
+  const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
   const { data: ledger } = useQuery({
     queryKey: ["ledger", partyType, partyId, from, to],
     queryFn: () => api.ledgers.get(partyType, partyId, from || void 0, to || void 0),
@@ -80656,7 +80708,7 @@ function Ledgers() {
     setPartyId(void 0);
   }
   const saveOpening = useMutation({
-    mutationFn: (p2) => api.ledgers.setOpening(p2),
+    mutationFn: (p2) => api.ledgers.setOpenings(p2),
     onSuccess: (res) => {
       if (res.ok) {
         refresh();
@@ -80666,17 +80718,36 @@ function Ledgers() {
     },
     onError: (e3) => toast.error(e3.message)
   });
+  const gridOpening = ["customer", "supplier", "transporter", "outsource"].includes(partyType);
   async function openOpening() {
     if (!partyId) return;
-    const existing = await api.ledgers.getOpening(partyType, partyId).catch(() => null);
+    const existing = await api.ledgers.openings(partyType, partyId).catch(() => []);
+    const byPlant = {};
+    for (const r2 of existing) byPlant[r2.plant_id == null ? "common" : String(r2.plant_id)] = { amount: String(r2.amount), direction: r2.direction };
     setOpeningForm({
       party_type: partyType,
       party_id: partyId,
-      amount: existing?.amount ?? "",
-      direction: existing?.direction ?? (partyType === "customer" ? "debit" : "credit"),
-      as_of_date: existing?.as_of_date || (fy ? `${fy}-04-01` : today()),
-      remarks: existing?.remarks ?? ""
+      defaultDir: partyType === "customer" ? "debit" : "credit",
+      as_of_date: existing[0]?.as_of_date || (fy ? `${fy}-04-01` : today()),
+      remarks: existing[0]?.remarks ?? "",
+      byPlant
     });
+  }
+  function setOpeningRow(key, patch) {
+    setOpeningForm((f2) => {
+      const cur = f2.byPlant[key] ?? { amount: "", direction: f2.defaultDir };
+      return { ...f2, byPlant: { ...f2.byPlant, [key]: { ...cur, ...patch } } };
+    });
+  }
+  function submitOpening() {
+    const rows = Object.entries(openingForm.byPlant).filter(([, v2]) => Number(v2.amount) > 0).map(([key, v2]) => ({
+      plant_id: key === "common" ? null : Number(key),
+      amount: Number(v2.amount),
+      direction: v2.direction || openingForm.defaultDir,
+      as_of_date: openingForm.as_of_date,
+      remarks: openingForm.remarks
+    }));
+    saveOpening.mutate({ party_type: openingForm.party_type, party_id: openingForm.party_id, rows });
   }
   function openPayment() {
     setPayForm({
@@ -81045,34 +81116,54 @@ function Ledgers() {
         )
       ] })
     ] }) }),
-    openingForm && /* @__PURE__ */ jsxRuntimeExports.jsx(Modal, { open: true, onClose: () => setOpeningForm(null), title: `Opening Balance — ${selected?.name ?? ""}`, children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-lg border border-primary/30 bg-accent/40 px-3.5 py-2.5 text-xs text-accent-foreground", children: "The opening balance is the account's starting figure. Each financial year's opening is the previous year's closing automatically — you only set this once." }),
+    openingForm && /* @__PURE__ */ jsxRuntimeExports.jsx(Modal, { open: true, onClose: () => setOpeningForm(null), title: `Opening Balance — ${selected?.name ?? ""}`, width: gridOpening ? "max-w-2xl" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-lg border border-primary/30 bg-accent/40 px-3.5 py-2.5 text-xs text-accent-foreground", children: [
+        "The opening balance is the account's starting figure.",
+        gridOpening ? " Enter it per plant so plant-wise profit/loss, receivable and payable are correct. “Common (all plants)” applies across every plant and is not tied to one plant." : " Each financial year’s opening is the previous year’s closing automatically — you only set this once."
+      ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "As-of date", hint: "Usually the start of your first financial year", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: openingForm.as_of_date, onChange: (e3) => setOpeningForm({ ...openingForm, as_of_date: e3.target.value }) }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Amount", hint: "Set 0 to clear the opening balance", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: openingForm.amount, onChange: (e3) => setOpeningForm({ ...openingForm, amount: e3.target.value }) }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          Field,
-          {
-            label: "Type",
-            hint: partyType === "customer" ? "Dr = they owe you · Cr = advance from them" : "Cr = you owe them · Dr = advance you paid",
-            children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: openingForm.remarks, onChange: (e3) => setOpeningForm({ ...openingForm, remarks: e3.target.value }) }) })
+      ] }),
+      gridOpening ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-[1fr_120px_120px] gap-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Plant" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Amount" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Type" })
+        ] }),
+        [{ key: "common", label: "Common (all plants)" }, ...plants.map((p2) => ({ key: String(p2.id), label: p2.name }))].map((row) => {
+          const v2 = openingForm.byPlant[row.key] ?? { amount: "", direction: openingForm.defaultDir };
+          return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-[1fr_120px_120px] items-center gap-2", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm font-medium", children: row.label }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", placeholder: "0", value: v2.amount, onChange: (e3) => setOpeningRow(row.key, { amount: e3.target.value }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
               SearchSelect,
               {
-                value: openingForm.direction,
-                onChange: (v2) => setOpeningForm({ ...openingForm, direction: v2 }),
-                options: [
-                  { value: "debit", label: "Debit (Dr)" },
-                  { value: "credit", label: "Credit (Cr)" }
-                ]
+                value: v2.direction,
+                onChange: (dir) => setOpeningRow(row.key, { direction: dir }),
+                options: [{ value: "debit", label: "Dr" }, { value: "credit", label: "Cr" }]
               }
             )
+          ] }, row.key);
+        }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "px-1 text-[11px] text-muted-foreground", children: [
+          partyType === "customer" ? "Dr = they owe you · Cr = advance from them" : "Cr = you owe them · Dr = advance you paid",
+          " · leave a plant blank to skip it."
+        ] })
+      ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Amount", hint: "Set 0 to clear the opening balance", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: openingForm.byPlant.common?.amount ?? "", onChange: (e3) => setOpeningRow("common", { amount: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Type", hint: "Dr = profit carried forward · Cr = loss carried forward", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SearchSelect,
+          {
+            value: openingForm.byPlant.common?.direction ?? openingForm.defaultDir,
+            onChange: (dir) => setOpeningRow("common", { direction: dir }),
+            options: [{ value: "debit", label: "Debit (Dr)" }, { value: "credit", label: "Credit (Cr)" }]
           }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: openingForm.remarks, onChange: (e3) => setOpeningForm({ ...openingForm, remarks: e3.target.value }) }) })
+        ) })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-end gap-2 pt-1", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setOpeningForm(null), children: "Cancel" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: () => saveOpening.mutate({ ...openingForm, amount: Number(openingForm.amount) || 0 }), children: "Save Opening Balance" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: submitOpening, children: "Save Opening Balance" })
       ] })
     ] }) })
   ] });

@@ -777,6 +777,7 @@ CREATE TABLE IF NOT EXISTS opening_balances (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   party_type  TEXT NOT NULL,
   party_id    INTEGER NOT NULL,
+  plant_id    INTEGER REFERENCES plants(id),
   amount      REAL NOT NULL DEFAULT 0,
   direction   TEXT NOT NULL DEFAULT 'debit',
   as_of_date  TEXT NOT NULL,
@@ -1828,6 +1829,11 @@ ALTER TABLE rack_unloadings ADD COLUMN diesel_charged INT NOT NULL DEFAULT 0`
   plant_id   INT NOT NULL
 );
 CREATE INDEX idx_coplants_company ON company_plants(company_id)`
+  },
+  {
+    // Per-plant opening balances (a plant tag on each opening row).
+    id: "027_opening_plant",
+    sql: `ALTER TABLE opening_balances ADD COLUMN plant_id INT`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -1910,6 +1916,7 @@ async function sqliteLegacyMigrate(adapter2) {
   await addColumn("diesel_issues", "amount", "REAL");
   await addColumn("dispatches", "buy_rate", "REAL");
   await addColumn("racks", "plant_id", "INTEGER");
+  await addColumn("opening_balances", "plant_id", "INTEGER");
   await addColumn("diesel_issues", "charged", "INTEGER NOT NULL DEFAULT 0");
   await addColumn("rack_loadings", "diesel_charged", "INTEGER NOT NULL DEFAULT 0");
   await addColumn("rack_unloadings", "diesel_charged", "INTEGER NOT NULL DEFAULT 0");
@@ -5415,24 +5422,26 @@ async function deletePayment(payload) {
   return { ok: true };
 }
 var OPENING_TYPES = ["customer", "supplier", "transporter", "outsource", "plant"];
-async function openingEntry(partyType, partyId) {
-  if (!OPENING_TYPES.includes(partyType)) return null;
-  const row = await getDb().prepare(`SELECT amount, direction, as_of_date FROM opening_balances WHERE party_type = ? AND party_id = ?`).get(partyType, partyId);
-  if (!row || !(row.amount > 0)) return null;
-  return {
-    date: row.as_of_date || "1900-04-01",
+async function openingEntries(partyType, partyId) {
+  if (!OPENING_TYPES.includes(partyType)) return [];
+  const rows = await getDb().prepare(
+    `SELECT ob.amount, ob.direction, ob.as_of_date, p.name AS plant_name
+       FROM opening_balances ob LEFT JOIN plants p ON p.id = ob.plant_id
+       WHERE ob.party_type = ? AND ob.party_id = ?`
+  ).all(partyType, partyId);
+  return rows.filter((r) => r.amount > 0).map((r) => ({
+    date: r.as_of_date || "1900-04-01",
     created_at: "",
-    particulars: "Opening Balance",
+    particulars: r.plant_name ? `Opening Balance \u2014 ${r.plant_name}` : "Opening Balance",
     ref: "OPENING",
-    debit: row.direction === "debit" ? roundMoney2(row.amount) : 0,
-    credit: row.direction === "credit" ? roundMoney2(row.amount) : 0
-  };
+    debit: r.direction === "debit" ? roundMoney2(r.amount) : 0,
+    credit: r.direction === "credit" ? roundMoney2(r.amount) : 0
+  }));
 }
 async function buildEntries(partyType, partyId) {
   const d = getDb();
   const entries = [];
-  const op = await openingEntry(partyType, partyId);
-  if (op) entries.push(op);
+  entries.push(...await openingEntries(partyType, partyId));
   if (partyType === "rack") {
     const loadings = await d.prepare(
       `SELECT rl.loading_no, rl.date, rl.created_at, COALESCE(rl.amount,0) AS amount,
@@ -6247,7 +6256,9 @@ async function plantReceivablePayable(plantId) {
           (COALESCE(amount,0)
            + CASE WHEN transport_billed=1 THEN transport_charge ELSE 0 END
            + CASE WHEN other_billed=1 THEN other_charge ELSE 0 END)
-          - COALESCE(paid_amount,0)),0) AS q
+          - COALESCE(paid_amount,0)),0)
+        + (SELECT COALESCE(SUM(CASE WHEN direction='debit' THEN amount ELSE -amount END),0)
+             FROM opening_balances WHERE party_type='customer' AND plant_id=@pid) AS q
        FROM dispatches WHERE plant_id = @pid AND to_plant_id IS NULL`
   ).get({ pid: plantId });
   const p = await d.prepare(
@@ -6259,16 +6270,18 @@ async function plantReceivablePayable(plantId) {
         (SELECT COALESCE(SUM(COALESCE(amount,0)-COALESCE(paid_amount,0)),0)
            FROM plant_expenses WHERE plant_id=@pid AND outsource_id IS NOT NULL) +
         (SELECT COALESCE(SUM(ROUND(COALESCE(buy_rate,0)*COALESCE(sale_quantity,quantity),2)),0)
-           FROM dispatches WHERE plant_id=@pid AND outsourced=1 AND outsource_id IS NOT NULL AND to_plant_id IS NULL) AS q`
+           FROM dispatches WHERE plant_id=@pid AND outsourced=1 AND outsource_id IS NOT NULL AND to_plant_id IS NULL) +
+        (SELECT COALESCE(SUM(CASE WHEN direction='credit' THEN amount ELSE -amount END),0)
+           FROM opening_balances WHERE party_type IN ('supplier','transporter','outsource') AND plant_id=@pid) AS q`
   ).get({ pid: plantId });
   return { receivable: roundMoney2(r.q), payable: roundMoney2(p.q) };
 }
 async function plantOpeningNet(plantId, sign) {
-  const row = await getDb().prepare(`SELECT amount, direction FROM opening_balances WHERE party_type='plant' AND party_id=?`).get(plantId);
-  if (!row || !(row.amount > 0)) return 0;
-  const debit = row.direction === "debit" ? row.amount : 0;
-  const credit = row.direction === "credit" ? row.amount : 0;
-  return roundMoney2(sign * (debit - credit));
+  const row = await getDb().prepare(
+    `SELECT COALESCE(SUM(CASE WHEN direction='debit' THEN amount ELSE -amount END),0) AS net
+       FROM opening_balances WHERE party_type='plant' AND party_id=?`
+  ).get(plantId);
+  return roundMoney2(sign * (Number(row.net) || 0));
 }
 async function getPartyBalances(payload) {
   const d = getDb();
@@ -6309,31 +6322,51 @@ async function getPartyBalances(payload) {
   }
   return result;
 }
-async function getOpeningBalance(payload) {
-  const row = await getDb().prepare(
-    `SELECT id, party_type, party_id, amount, direction, as_of_date, remarks
-       FROM opening_balances WHERE party_type = ? AND party_id = ?`
-  ).get(payload.party_type, payload.party_id);
-  return row ?? null;
+async function listOpeningBalances(payload) {
+  return await getDb().prepare(
+    `SELECT id, party_type, party_id, plant_id, amount, direction, as_of_date, remarks
+       FROM opening_balances WHERE party_type = ? AND party_id = ? ORDER BY plant_id`
+  ).all(payload.party_type, payload.party_id);
 }
-async function setOpeningBalance(payload) {
+async function getOpeningBalance(payload) {
+  const rows = await listOpeningBalances(payload);
+  return rows.find((r) => r.plant_id == null) ?? rows[0] ?? null;
+}
+async function setOpeningBalances(payload) {
   if (!OPENING_TYPES.includes(payload.party_type))
     return { ok: false, error: "Opening balance is only available for customer, supplier, transporter, outsource and plant ledgers." };
   if (!payload.party_id) return { ok: false, error: "Select a party." };
-  const amount = roundMoney2(Number(payload.amount) || 0);
-  const direction = payload.direction === "credit" ? "credit" : "debit";
-  const asOf = payload.as_of_date || (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const d = getDb();
   await d.transaction(async () => {
     await d.prepare(`DELETE FROM opening_balances WHERE party_type = ? AND party_id = ?`).run(payload.party_type, payload.party_id);
-    if (amount > 0) {
-      await d.prepare(
-        `INSERT INTO opening_balances (party_type, party_id, amount, direction, as_of_date, remarks)
-           VALUES (?, ?, ?, ?, ?, ?)`
-      ).run(payload.party_type, payload.party_id, amount, direction, asOf, payload.remarks ?? "");
+    const stmt = d.prepare(
+      `INSERT INTO opening_balances (party_type, party_id, plant_id, amount, direction, as_of_date, remarks)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    );
+    for (const r of payload.rows ?? []) {
+      const amount = roundMoney2(Number(r.amount) || 0);
+      if (!(amount > 0)) continue;
+      const direction = r.direction === "credit" ? "credit" : "debit";
+      const asOf = r.as_of_date || (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+      await stmt.run(
+        payload.party_type,
+        payload.party_id,
+        r.plant_id ? Number(r.plant_id) : null,
+        amount,
+        direction,
+        asOf,
+        r.remarks ?? ""
+      );
     }
   });
   return { ok: true };
+}
+async function setOpeningBalance(payload) {
+  return setOpeningBalances({
+    party_type: payload.party_type,
+    party_id: payload.party_id,
+    rows: [{ plant_id: payload.plant_id ?? null, amount: payload.amount, direction: payload.direction, as_of_date: payload.as_of_date, remarks: payload.remarks }]
+  });
 }
 async function deleteOpeningBalance(payload) {
   await getDb().prepare(`DELETE FROM opening_balances WHERE party_type = ? AND party_id = ?`).run(payload.party_type, payload.party_id);
@@ -7133,6 +7166,123 @@ async function expenseTotals(filter = {}) {
        FROM plant_expenses ${clause} GROUP BY category ORDER BY amount DESC`
   ).all(params);
 }
+var CAT_LABEL = {
+  electricity: "Electricity",
+  maintenance: "Maintenance",
+  fixed: "Fixed Cost",
+  tipper_rent: "Tipper Rent",
+  equipment_rent: "Equipment Rent",
+  other: "Other"
+};
+async function expenseBook(filter = {}) {
+  const d = getDb();
+  const pid = filter.plant_id;
+  const cond = (alias) => {
+    const parts = [];
+    const params = {};
+    if (pid) {
+      parts.push(`${alias}.plant_id = @plant_id`);
+      params.plant_id = pid;
+    }
+    if (filter.from) {
+      parts.push(`${alias}.date >= @from`);
+      params.from = filter.from;
+    }
+    if (filter.to) {
+      parts.push(`${alias}.date <= @to`);
+      params.to = filter.to;
+    }
+    return { sql: parts.length ? `WHERE ${parts.join(" AND ")}` : "", params };
+  };
+  const rows = [];
+  const e = cond("e");
+  const exp = await d.prepare(
+    `SELECT e.id, e.expense_no, e.date, e.plant_id, p.name AS plant_name, e.category, e.title,
+              e.units, e.rate, a.name AS asset_name, e.amount, e.paid_amount, e.payment_status
+       FROM plant_expenses e JOIN plants p ON p.id = e.plant_id LEFT JOIN assets a ON a.id = e.asset_id ${e.sql}`
+  ).all(e.params);
+  for (const x of exp)
+    rows.push({
+      source: "expense",
+      source_label: "Expense",
+      id: Number(x.id),
+      ref_no: String(x.expense_no),
+      date: String(x.date),
+      plant_id: Number(x.plant_id),
+      plant_name: x.plant_name,
+      category: CAT_LABEL[String(x.category)] ?? String(x.category),
+      details: x.title || x.asset_name || "-",
+      amount: money4(Number(x.amount) || 0),
+      paid_amount: money4(Number(x.paid_amount) || 0),
+      payment_status: x.payment_status
+    });
+  const pu = cond("pu");
+  const purWhere = pu.sql ? `${pu.sql} AND pu.linked_dispatch_id IS NULL` : "WHERE pu.linked_dispatch_id IS NULL";
+  const purchases = await d.prepare(
+    `SELECT pu.id, pu.purchase_no, pu.date, pu.plant_id, pl.name AS plant_name, pu.product_name, pu.quantity,
+              s.name AS supplier_name, pu.amount, pu.paid_amount, pu.payment_status
+       FROM purchases pu JOIN plants pl ON pl.id = pu.plant_id LEFT JOIN suppliers s ON s.id = pu.supplier_id ${purWhere}`
+  ).all(pu.params);
+  for (const x of purchases)
+    rows.push({
+      source: "purchase",
+      source_label: "Purchase",
+      id: 0,
+      ref_no: String(x.purchase_no),
+      date: String(x.date),
+      plant_id: Number(x.plant_id),
+      plant_name: x.plant_name,
+      category: "Material Purchase",
+      details: [x.supplier_name, x.product_name, x.quantity ? `${num(Number(x.quantity))} m\xB3` : ""].filter(Boolean).join(" \xB7 ") || "-",
+      amount: money4(Number(x.amount) || 0),
+      paid_amount: money4(Number(x.paid_amount) || 0),
+      payment_status: x.payment_status
+    });
+  const dp = cond("dp");
+  const diesel = await d.prepare(
+    `SELECT dp.id, dp.purchase_no, dp.date, dp.plant_id, pl.name AS plant_name, dp.litres,
+              s.name AS supplier_name, dp.amount, dp.paid_amount, dp.payment_status
+       FROM diesel_purchases dp JOIN plants pl ON pl.id = dp.plant_id LEFT JOIN suppliers s ON s.id = dp.supplier_id ${dp.sql}`
+  ).all(dp.params);
+  for (const x of diesel)
+    rows.push({
+      source: "diesel",
+      source_label: "Diesel",
+      id: 0,
+      ref_no: String(x.purchase_no),
+      date: String(x.date),
+      plant_id: Number(x.plant_id),
+      plant_name: x.plant_name,
+      category: "Diesel Purchase",
+      details: [x.supplier_name, x.litres ? `${num(Number(x.litres))} L` : ""].filter(Boolean).join(" \xB7 ") || "-",
+      amount: money4(Number(x.amount) || 0),
+      paid_amount: money4(Number(x.paid_amount) || 0),
+      payment_status: x.payment_status
+    });
+  const w = cond("w");
+  const wages = await d.prepare(
+    `SELECT w.id, w.entry_no, w.date, w.plant_id, pl.name AS plant_name, w.period,
+              em.name AS emp_name, w.amount, w.paid_amount, w.payment_status
+       FROM wage_entries w JOIN plants pl ON pl.id = w.plant_id LEFT JOIN employees em ON em.id = w.employee_id ${w.sql}`
+  ).all(w.params);
+  for (const x of wages)
+    rows.push({
+      source: "wages",
+      source_label: "Wages",
+      id: 0,
+      ref_no: String(x.entry_no),
+      date: String(x.date),
+      plant_id: Number(x.plant_id),
+      plant_name: x.plant_name,
+      category: "Wages",
+      details: [x.emp_name, x.period].filter(Boolean).join(" \xB7 ") || "-",
+      amount: money4(Number(x.amount) || 0),
+      paid_amount: money4(Number(x.paid_amount) || 0),
+      payment_status: x.payment_status
+    });
+  rows.sort((a, b) => a.date === b.date ? b.ref_no.localeCompare(a.ref_no) : b.date.localeCompare(a.date));
+  return rows;
+}
 function resolve(p) {
   const cat = p.category;
   let meter_open = p.meter_open == null || p.meter_open === "" ? null : Number(p.meter_open);
@@ -7886,19 +8036,16 @@ async function getDashboard(payload = {}) {
   const sumBal = (arr) => arr.reduce((s, b) => s + b.balance, 0);
   const billReceivable = money7({ q: sumBal(custBal) });
   const billsPayable = money7({ q: sumBal(supBal) + sumBal(transBal) + sumBal(outBal) });
-  const obCust = pid ? ` AND ${plantScopeSql("c", "customer", String(pid))}` : "";
-  const obSup = pid ? ` AND ${plantScopeSql("s", "supplier", String(pid))}` : "";
+  const obAnd = pid ? ` AND ob.plant_id = ${pid}` : "";
   const openingBalance = money7(
     await d.prepare(
       `SELECT
           (SELECT COALESCE(SUM(CASE WHEN ob.direction='debit' THEN ob.amount ELSE -ob.amount END),0)
-             FROM opening_balances ob JOIN customers c ON c.id = ob.party_id
-             WHERE ob.party_type='customer'${obCust})
+             FROM opening_balances ob WHERE ob.party_type='customer'${obAnd})
           - (SELECT COALESCE(SUM(CASE WHEN ob.direction='credit' THEN ob.amount ELSE -ob.amount END),0)
-             FROM opening_balances ob JOIN suppliers s ON s.id = ob.party_id
-             WHERE ob.party_type='supplier'${obSup})
+             FROM opening_balances ob WHERE ob.party_type='supplier'${obAnd})
           - (SELECT COALESCE(SUM(CASE WHEN ob.direction='credit' THEN ob.amount ELSE -ob.amount END),0)
-             FROM opening_balances ob WHERE ob.party_type='outsource') AS q`
+             FROM opening_balances ob WHERE ob.party_type='outsource'${obAnd}) AS q`
     ).get()
   );
   const scopeWhere = (table, type) => pid ? ` WHERE ${plantScopeSql(table, type, String(pid))}` : "";
@@ -8047,7 +8194,9 @@ var handlers = {
   "ledgers.balances": getPartyBalances,
   "ledgers.allDues": getAllDues,
   "ledgers.getOpening": getOpeningBalance,
+  "ledgers.openings": listOpeningBalances,
   "ledgers.setOpening": setOpeningBalance,
+  "ledgers.setOpenings": setOpeningBalances,
   "ledgers.deleteOpening": deleteOpeningBalance,
   "assets.list": listAssets,
   "assets.create": createAsset,
@@ -8088,6 +8237,7 @@ var handlers = {
   "outsource.update": updateOutsource,
   "outsource.delete": deleteOutsource,
   "plantExpenses.list": listPlantExpenses,
+  "plantExpenses.book": expenseBook,
   "plantExpenses.totals": expenseTotals,
   "plantExpenses.create": createPlantExpense,
   "plantExpenses.update": updatePlantExpense,

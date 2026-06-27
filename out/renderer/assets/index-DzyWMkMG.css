@@ -857,6 +857,9 @@ video {
 .grid-cols-3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
+.grid-cols-\[1fr_120px_120px\] {
+  grid-template-columns: 1fr 120px 120px;
+}
 .grid-cols-\[1fr_140px_40px\] {
   grid-template-columns: 1fr 140px 40px;
 }
