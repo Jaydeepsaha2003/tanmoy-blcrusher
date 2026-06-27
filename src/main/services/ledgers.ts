@@ -199,29 +199,34 @@ interface RawEntry {
 /** Party ledgers that support a manual opening balance. */
 const OPENING_TYPES: LedgerType[] = ['customer', 'supplier', 'transporter', 'outsource', 'plant']
 
-/** A synthetic 'Opening Balance' entry from the stored opening, or null. */
-async function openingEntry(partyType: LedgerType, partyId: number): Promise<RawEntry | null> {
-  if (!OPENING_TYPES.includes(partyType)) return null
-  const row = (await getDb()
-    .prepare(`SELECT amount, direction, as_of_date FROM opening_balances WHERE party_type = ? AND party_id = ?`)
-    .get(partyType, partyId)) as { amount: number; direction: string; as_of_date: string } | undefined
-  if (!row || !(row.amount > 0)) return null
-  return {
-    date: row.as_of_date || '1900-04-01',
-    created_at: '',
-    particulars: 'Opening Balance',
-    ref: 'OPENING',
-    debit: row.direction === 'debit' ? roundMoney(row.amount) : 0,
-    credit: row.direction === 'credit' ? roundMoney(row.amount) : 0
-  }
+/** Synthetic 'Opening Balance' entries (one per plant row) for a party — the full ledger
+ *  shows every plant's opening; the combined balance is their sum. */
+async function openingEntries(partyType: LedgerType, partyId: number): Promise<RawEntry[]> {
+  if (!OPENING_TYPES.includes(partyType)) return []
+  const rows = (await getDb()
+    .prepare(
+      `SELECT ob.amount, ob.direction, ob.as_of_date, p.name AS plant_name
+       FROM opening_balances ob LEFT JOIN plants p ON p.id = ob.plant_id
+       WHERE ob.party_type = ? AND ob.party_id = ?`
+    )
+    .all(partyType, partyId)) as { amount: number; direction: string; as_of_date: string; plant_name: string | null }[]
+  return rows
+    .filter((r) => r.amount > 0)
+    .map((r) => ({
+      date: r.as_of_date || '1900-04-01',
+      created_at: '',
+      particulars: r.plant_name ? `Opening Balance — ${r.plant_name}` : 'Opening Balance',
+      ref: 'OPENING',
+      debit: r.direction === 'debit' ? roundMoney(r.amount) : 0,
+      credit: r.direction === 'credit' ? roundMoney(r.amount) : 0
+    }))
 }
 
 async function buildEntries(partyType: LedgerType, partyId: number): Promise<RawEntry[]> {
   const d = getDb()
   const entries: RawEntry[] = []
-  // Seed the manual opening balance (carry-forward into later FYs is computed by getLedger).
-  const op = await openingEntry(partyType, partyId)
-  if (op) entries.push(op)
+  // Seed the manual opening balances, one per plant (carry-forward computed by getLedger).
+  entries.push(...(await openingEntries(partyType, partyId)))
 
   if (partyType === 'rack') {
     const loadings = (await d
@@ -1348,7 +1353,8 @@ export async function getLedger(payload: {
   }
 }
 
-/** A plant's outstanding receivable (unpaid sales) and payable (unpaid supplier/diesel/outsource bills). */
+/** A plant's outstanding receivable (unpaid sales + customer openings tagged to it) and
+ *  payable (unpaid supplier/diesel/outsource bills + their openings tagged to it). */
 async function plantReceivablePayable(plantId: number): Promise<{ receivable: number; payable: number }> {
   const d = getDb()
   const r = (await d
@@ -1357,7 +1363,9 @@ async function plantReceivablePayable(plantId: number): Promise<{ receivable: nu
           (COALESCE(amount,0)
            + CASE WHEN transport_billed=1 THEN transport_charge ELSE 0 END
            + CASE WHEN other_billed=1 THEN other_charge ELSE 0 END)
-          - COALESCE(paid_amount,0)),0) AS q
+          - COALESCE(paid_amount,0)),0)
+        + (SELECT COALESCE(SUM(CASE WHEN direction='debit' THEN amount ELSE -amount END),0)
+             FROM opening_balances WHERE party_type='customer' AND plant_id=@pid) AS q
        FROM dispatches WHERE plant_id = @pid AND to_plant_id IS NULL`
     )
     .get({ pid: plantId })) as { q: number }
@@ -1371,7 +1379,9 @@ async function plantReceivablePayable(plantId: number): Promise<{ receivable: nu
         (SELECT COALESCE(SUM(COALESCE(amount,0)-COALESCE(paid_amount,0)),0)
            FROM plant_expenses WHERE plant_id=@pid AND outsource_id IS NOT NULL) +
         (SELECT COALESCE(SUM(ROUND(COALESCE(buy_rate,0)*COALESCE(sale_quantity,quantity),2)),0)
-           FROM dispatches WHERE plant_id=@pid AND outsourced=1 AND outsource_id IS NOT NULL AND to_plant_id IS NULL) AS q`
+           FROM dispatches WHERE plant_id=@pid AND outsourced=1 AND outsource_id IS NOT NULL AND to_plant_id IS NULL) +
+        (SELECT COALESCE(SUM(CASE WHEN direction='credit' THEN amount ELSE -amount END),0)
+           FROM opening_balances WHERE party_type IN ('supplier','transporter','outsource') AND plant_id=@pid) AS q`
     )
     .get({ pid: plantId })) as { q: number }
   return { receivable: roundMoney(r.q), payable: roundMoney(p.q) }
@@ -1380,12 +1390,12 @@ async function plantReceivablePayable(plantId: number): Promise<{ receivable: nu
 /** The plant's manual opening balance, sign-adjusted (profit positive). */
 async function plantOpeningNet(plantId: number, sign: 1 | -1): Promise<number> {
   const row = (await getDb()
-    .prepare(`SELECT amount, direction FROM opening_balances WHERE party_type='plant' AND party_id=?`)
-    .get(plantId)) as { amount: number; direction: string } | undefined
-  if (!row || !(row.amount > 0)) return 0
-  const debit = row.direction === 'debit' ? row.amount : 0
-  const credit = row.direction === 'credit' ? row.amount : 0
-  return roundMoney(sign * (debit - credit))
+    .prepare(
+      `SELECT COALESCE(SUM(CASE WHEN direction='debit' THEN amount ELSE -amount END),0) AS net
+       FROM opening_balances WHERE party_type='plant' AND party_id=?`
+    )
+    .get(plantId)) as { net: number }
+  return roundMoney(sign * (Number(row.net) || 0))
 }
 
 export async function getPartyBalances(payload: {
@@ -1458,49 +1468,88 @@ export async function getPartyBalances(payload: {
 
 /* ---------------- Opening balances (per account; FY carry-forward is computed) ---------------- */
 
+/** All opening rows for a party (one per plant; plant_id null = common/all plants). */
+export async function listOpeningBalances(payload: {
+  party_type: LedgerType
+  party_id: number
+}): Promise<OpeningBalance[]> {
+  return (await getDb()
+    .prepare(
+      `SELECT id, party_type, party_id, plant_id, amount, direction, as_of_date, remarks
+       FROM opening_balances WHERE party_type = ? AND party_id = ? ORDER BY plant_id`
+    )
+    .all(payload.party_type, payload.party_id)) as OpeningBalance[]
+}
+
+/** Back-compat single getter — returns the common (all-plants) opening if any, else the first row. */
 export async function getOpeningBalance(payload: {
   party_type: LedgerType
   party_id: number
 }): Promise<OpeningBalance | null> {
-  const row = (await getDb()
-    .prepare(
-      `SELECT id, party_type, party_id, amount, direction, as_of_date, remarks
-       FROM opening_balances WHERE party_type = ? AND party_id = ?`
-    )
-    .get(payload.party_type, payload.party_id)) as OpeningBalance | undefined
-  return row ?? null
+  const rows = await listOpeningBalances(payload)
+  return rows.find((r) => r.plant_id == null) ?? rows[0] ?? null
 }
 
+interface OpeningRowInput {
+  plant_id?: number | null
+  amount: number
+  direction: 'debit' | 'credit'
+  as_of_date?: string
+  remarks?: string
+}
+
+/** Replace all opening rows for a party with the given per-plant rows (non-zero amounts only). */
+export async function setOpeningBalances(payload: {
+  party_type: LedgerType
+  party_id: number
+  rows: OpeningRowInput[]
+}): Promise<{ ok: boolean; error?: string }> {
+  if (!OPENING_TYPES.includes(payload.party_type))
+    return { ok: false, error: 'Opening balance is only available for customer, supplier, transporter, outsource and plant ledgers.' }
+  if (!payload.party_id) return { ok: false, error: 'Select a party.' }
+  const d = getDb()
+  await d.transaction(async () => {
+    await d
+      .prepare(`DELETE FROM opening_balances WHERE party_type = ? AND party_id = ?`)
+      .run(payload.party_type, payload.party_id)
+    const stmt = d.prepare(
+      `INSERT INTO opening_balances (party_type, party_id, plant_id, amount, direction, as_of_date, remarks)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    )
+    for (const r of payload.rows ?? []) {
+      const amount = roundMoney(Number(r.amount) || 0)
+      if (!(amount > 0)) continue
+      const direction = r.direction === 'credit' ? 'credit' : 'debit'
+      const asOf = r.as_of_date || new Date().toISOString().slice(0, 10)
+      await stmt.run(
+        payload.party_type,
+        payload.party_id,
+        r.plant_id ? Number(r.plant_id) : null,
+        amount,
+        direction,
+        asOf,
+        r.remarks ?? ''
+      )
+    }
+  })
+  return { ok: true }
+}
+
+/** Back-compat single setter (one common opening). */
 export async function setOpeningBalance(payload: {
   party_type: LedgerType
   party_id: number
+  plant_id?: number | null
   amount: number
   direction: 'debit' | 'credit'
   as_of_date: string
   remarks?: string
 }): Promise<{ ok: boolean; error?: string }> {
-  if (!OPENING_TYPES.includes(payload.party_type))
-    return { ok: false, error: 'Opening balance is only available for customer, supplier, transporter, outsource and plant ledgers.' }
-  if (!payload.party_id) return { ok: false, error: 'Select a party.' }
-  const amount = roundMoney(Number(payload.amount) || 0)
-  const direction = payload.direction === 'credit' ? 'credit' : 'debit'
-  const asOf = payload.as_of_date || new Date().toISOString().slice(0, 10)
-  const d = getDb()
-  await d.transaction(async () => {
-    // One opening per account — replace any existing.
-    await d
-      .prepare(`DELETE FROM opening_balances WHERE party_type = ? AND party_id = ?`)
-      .run(payload.party_type, payload.party_id)
-    if (amount > 0) {
-      await d
-        .prepare(
-          `INSERT INTO opening_balances (party_type, party_id, amount, direction, as_of_date, remarks)
-           VALUES (?, ?, ?, ?, ?, ?)`
-        )
-        .run(payload.party_type, payload.party_id, amount, direction, asOf, payload.remarks ?? '')
-    }
+  return setOpeningBalances({
+    party_type: payload.party_type,
+    party_id: payload.party_id,
+    rows: [{ plant_id: payload.plant_id ?? null, amount: payload.amount, direction: payload.direction, as_of_date: payload.as_of_date, remarks: payload.remarks }]
   })
-  return { ok: true }
 }
 
 export async function deleteOpeningBalance(payload: {

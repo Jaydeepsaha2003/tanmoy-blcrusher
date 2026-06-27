@@ -268,7 +268,14 @@ export const api = {
     allDues: (plant_id?: number) => call<DueRow[]>('ledgers.allDues', { plant_id }),
     getOpening: (party_type: LedgerType, party_id: number) =>
       call<OpeningBalance | null>('ledgers.getOpening', { party_type, party_id }),
+    openings: (party_type: LedgerType, party_id: number) =>
+      call<OpeningBalance[]>('ledgers.openings', { party_type, party_id }),
     setOpening: (p: OpeningBalance) => call<{ ok: boolean; error?: string }>('ledgers.setOpening', p),
+    setOpenings: (p: {
+      party_type: LedgerType
+      party_id: number
+      rows: { plant_id?: number | null; amount: number; direction: 'debit' | 'credit'; as_of_date?: string; remarks?: string }[]
+    }) => call<{ ok: boolean; error?: string }>('ledgers.setOpenings', p),
     deleteOpening: (party_type: LedgerType, party_id: number) =>
       call<{ ok: boolean }>('ledgers.deleteOpening', { party_type, party_id })
   },

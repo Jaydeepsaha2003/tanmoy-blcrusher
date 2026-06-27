@@ -134,6 +134,7 @@ export function Ledgers(): React.JSX.Element {
     queryFn: () => api.ledgers.balances(partyType, plantId)
   })
   const { data: branding } = useQuery({ queryKey: ['branding'], queryFn: () => api.rates.getBranding() })
+  const { data: plants = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
   const { data: ledger } = useQuery({
     queryKey: ['ledger', partyType, partyId, from, to],
     queryFn: () => api.ledgers.get(partyType, partyId!, from || undefined, to || undefined),
@@ -174,7 +175,7 @@ export function Ledgers(): React.JSX.Element {
   }
 
   const saveOpening = useMutation({
-    mutationFn: (p: any) => api.ledgers.setOpening(p),
+    mutationFn: (p: { party_type: LedgerType; party_id: number; rows: any[] }) => api.ledgers.setOpenings(p),
     onSuccess: (res) => {
       if (res.ok) {
         refresh()
@@ -185,17 +186,42 @@ export function Ledgers(): React.JSX.Element {
     onError: (e: Error) => toast.error(e.message)
   })
 
+  /** customer/supplier/transporter/outsource get a per-plant grid; a plant keeps a single opening. */
+  const gridOpening = ['customer', 'supplier', 'transporter', 'outsource'].includes(partyType)
+
   async function openOpening(): Promise<void> {
     if (!partyId) return
-    const existing = await api.ledgers.getOpening(partyType, partyId).catch(() => null)
+    const existing = await api.ledgers.openings(partyType, partyId).catch(() => [])
+    const byPlant: Record<string, { amount: string; direction: string }> = {}
+    for (const r of existing) byPlant[r.plant_id == null ? 'common' : String(r.plant_id)] = { amount: String(r.amount), direction: r.direction }
     setOpeningForm({
       party_type: partyType,
       party_id: partyId,
-      amount: existing?.amount ?? '',
-      direction: existing?.direction ?? (partyType === 'customer' ? 'debit' : 'credit'),
-      as_of_date: existing?.as_of_date || (fy ? `${fy}-04-01` : today()),
-      remarks: existing?.remarks ?? ''
+      defaultDir: partyType === 'customer' ? 'debit' : 'credit',
+      as_of_date: existing[0]?.as_of_date || (fy ? `${fy}-04-01` : today()),
+      remarks: existing[0]?.remarks ?? '',
+      byPlant
     })
+  }
+
+  function setOpeningRow(key: string, patch: { amount?: string; direction?: string }): void {
+    setOpeningForm((f: any) => {
+      const cur = f.byPlant[key] ?? { amount: '', direction: f.defaultDir }
+      return { ...f, byPlant: { ...f.byPlant, [key]: { ...cur, ...patch } } }
+    })
+  }
+
+  function submitOpening(): void {
+    const rows = Object.entries(openingForm.byPlant as Record<string, { amount: string; direction: string }>)
+      .filter(([, v]) => Number(v.amount) > 0)
+      .map(([key, v]) => ({
+        plant_id: key === 'common' ? null : Number(key),
+        amount: Number(v.amount),
+        direction: (v.direction as 'debit' | 'credit') || openingForm.defaultDir,
+        as_of_date: openingForm.as_of_date,
+        remarks: openingForm.remarks
+      }))
+    saveOpening.mutate({ party_type: openingForm.party_type, party_id: openingForm.party_id, rows })
   }
 
   function openPayment(): void {
@@ -607,41 +633,62 @@ export function Ledgers(): React.JSX.Element {
       )}
 
       {openingForm && (
-        <Modal open onClose={() => setOpeningForm(null)} title={`Opening Balance — ${selected?.name ?? ''}`}>
+        <Modal open onClose={() => setOpeningForm(null)} title={`Opening Balance — ${selected?.name ?? ''}`} width={gridOpening ? 'max-w-2xl' : undefined}>
           <div className="space-y-4">
             <div className="rounded-lg border border-primary/30 bg-accent/40 px-3.5 py-2.5 text-xs text-accent-foreground">
-              The opening balance is the account's starting figure. Each financial year's opening is the
-              previous year's closing automatically — you only set this once.
+              The opening balance is the account's starting figure.
+              {gridOpening
+                ? ' Enter it per plant so plant-wise profit/loss, receivable and payable are correct. “Common (all plants)” applies across every plant and is not tied to one plant.'
+                : ' Each financial year’s opening is the previous year’s closing automatically — you only set this once.'}
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="As-of date" hint="Usually the start of your first financial year">
                 <Input type="date" value={openingForm.as_of_date} onChange={(e) => setOpeningForm({ ...openingForm, as_of_date: e.target.value })} />
               </Field>
-              <Field label="Amount" hint="Set 0 to clear the opening balance">
-                <Input type="number" step="0.01" value={openingForm.amount} onChange={(e) => setOpeningForm({ ...openingForm, amount: e.target.value })} />
-              </Field>
-              <Field
-                label="Type"
-                hint={partyType === 'customer' ? 'Dr = they owe you · Cr = advance from them' : 'Cr = you owe them · Dr = advance you paid'}
-              >
-                <SearchSelect
-                  value={openingForm.direction}
-                  onChange={(v) => setOpeningForm({ ...openingForm, direction: v })}
-                  options={[
-                    { value: 'debit', label: 'Debit (Dr)' },
-                    { value: 'credit', label: 'Credit (Cr)' }
-                  ]}
-                />
-              </Field>
               <Field label="Remarks">
                 <Input value={openingForm.remarks} onChange={(e) => setOpeningForm({ ...openingForm, remarks: e.target.value })} />
               </Field>
             </div>
+            {gridOpening ? (
+              <div className="space-y-2">
+                <div className="grid grid-cols-[1fr_120px_120px] gap-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <div>Plant</div><div>Amount</div><div>Type</div>
+                </div>
+                {[{ key: 'common', label: 'Common (all plants)' }, ...plants.map((p) => ({ key: String(p.id), label: p.name }))].map((row) => {
+                  const v = openingForm.byPlant[row.key] ?? { amount: '', direction: openingForm.defaultDir }
+                  return (
+                    <div key={row.key} className="grid grid-cols-[1fr_120px_120px] items-center gap-2">
+                      <span className="text-sm font-medium">{row.label}</span>
+                      <Input type="number" step="0.01" placeholder="0" value={v.amount} onChange={(e) => setOpeningRow(row.key, { amount: e.target.value })} />
+                      <SearchSelect
+                        value={v.direction}
+                        onChange={(dir) => setOpeningRow(row.key, { direction: dir })}
+                        options={[{ value: 'debit', label: 'Dr' }, { value: 'credit', label: 'Cr' }]}
+                      />
+                    </div>
+                  )
+                })}
+                <p className="px-1 text-[11px] text-muted-foreground">
+                  {partyType === 'customer' ? 'Dr = they owe you · Cr = advance from them' : 'Cr = you owe them · Dr = advance you paid'} · leave a plant blank to skip it.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="Amount" hint="Set 0 to clear the opening balance">
+                  <Input type="number" step="0.01" value={openingForm.byPlant.common?.amount ?? ''} onChange={(e) => setOpeningRow('common', { amount: e.target.value })} />
+                </Field>
+                <Field label="Type" hint="Dr = profit carried forward · Cr = loss carried forward">
+                  <SearchSelect
+                    value={openingForm.byPlant.common?.direction ?? openingForm.defaultDir}
+                    onChange={(dir) => setOpeningRow('common', { direction: dir })}
+                    options={[{ value: 'debit', label: 'Debit (Dr)' }, { value: 'credit', label: 'Credit (Cr)' }]}
+                  />
+                </Field>
+              </div>
+            )}
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="outline" onClick={() => setOpeningForm(null)}>Cancel</Button>
-              <Button onClick={() => saveOpening.mutate({ ...openingForm, amount: Number(openingForm.amount) || 0 })}>
-                Save Opening Balance
-              </Button>
+              <Button onClick={submitOpening}>Save Opening Balance</Button>
             </div>
           </div>
         </Modal>

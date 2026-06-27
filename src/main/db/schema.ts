@@ -618,6 +618,7 @@ CREATE TABLE IF NOT EXISTS opening_balances (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   party_type  TEXT NOT NULL,
   party_id    INTEGER NOT NULL,
+  plant_id    INTEGER REFERENCES plants(id),
   amount      REAL NOT NULL DEFAULT 0,
   direction   TEXT NOT NULL DEFAULT 'debit',
   as_of_date  TEXT NOT NULL,

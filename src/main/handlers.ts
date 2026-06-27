@@ -160,7 +160,9 @@ export const handlers: Record<string, (payload: any) => unknown> = {
   'ledgers.balances': ledgers.getPartyBalances,
   'ledgers.allDues': ledgers.getAllDues,
   'ledgers.getOpening': ledgers.getOpeningBalance,
+  'ledgers.openings': ledgers.listOpeningBalances,
   'ledgers.setOpening': ledgers.setOpeningBalance,
+  'ledgers.setOpenings': ledgers.setOpeningBalances,
   'ledgers.deleteOpening': ledgers.deleteOpeningBalance,
 
   'assets.list': assets.listAssets,

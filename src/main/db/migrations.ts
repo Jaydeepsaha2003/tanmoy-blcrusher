@@ -958,6 +958,11 @@ ALTER TABLE rack_unloadings ADD COLUMN diesel_charged INT NOT NULL DEFAULT 0`
   plant_id   INT NOT NULL
 );
 CREATE INDEX idx_coplants_company ON company_plants(company_id)`
+  },
+  {
+    // Per-plant opening balances (a plant tag on each opening row).
+    id: '027_opening_plant',
+    sql: `ALTER TABLE opening_balances ADD COLUMN plant_id INT`
   }
 ]
 
@@ -1058,6 +1063,8 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   await addColumn('dispatches', 'buy_rate', 'REAL')
   // Source plant on a railway rack.
   await addColumn('racks', 'plant_id', 'INTEGER')
+  // Per-plant opening balances.
+  await addColumn('opening_balances', 'plant_id', 'INTEGER')
   // FIFO diesel: "charged to transporter" flag on every diesel issuance.
   await addColumn('diesel_issues', 'charged', 'INTEGER NOT NULL DEFAULT 0')
   await addColumn('rack_loadings', 'diesel_charged', 'INTEGER NOT NULL DEFAULT 0')

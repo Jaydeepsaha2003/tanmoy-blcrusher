@@ -174,20 +174,19 @@ export async function getDashboard(payload: { plant_id?: number } = {}): Promise
   const billsPayable = money({ q: sumBal(supBal) + sumBal(transBal) + sumBal(outBal) })
   // Opening Balance is shown as an information-only card; it is already counted
   // inside Receivable / Payable above, so the UI must NOT add it to Net again.
-  const obCust = pid ? ` AND ${plantScopeSql('c', 'customer', String(pid))}` : ''
-  const obSup = pid ? ` AND ${plantScopeSql('s', 'supplier', String(pid))}` : ''
+  // Each opening row is attributed to its own plant_id; for a single plant we count
+  // only that plant's rows, for All Plants we count every row.
+  const obAnd = pid ? ` AND ob.plant_id = ${pid}` : ''
   const openingBalance = money(
     (await d
       .prepare(
         `SELECT
           (SELECT COALESCE(SUM(CASE WHEN ob.direction='debit' THEN ob.amount ELSE -ob.amount END),0)
-             FROM opening_balances ob JOIN customers c ON c.id = ob.party_id
-             WHERE ob.party_type='customer'${obCust})
+             FROM opening_balances ob WHERE ob.party_type='customer'${obAnd})
           - (SELECT COALESCE(SUM(CASE WHEN ob.direction='credit' THEN ob.amount ELSE -ob.amount END),0)
-             FROM opening_balances ob JOIN suppliers s ON s.id = ob.party_id
-             WHERE ob.party_type='supplier'${obSup})
+             FROM opening_balances ob WHERE ob.party_type='supplier'${obAnd})
           - (SELECT COALESCE(SUM(CASE WHEN ob.direction='credit' THEN ob.amount ELSE -ob.amount END),0)
-             FROM opening_balances ob WHERE ob.party_type='outsource') AS q`
+             FROM opening_balances ob WHERE ob.party_type='outsource'${obAnd}) AS q`
       )
       .get()) as { q: number }
   )

@@ -595,6 +595,8 @@ export interface OpeningBalance {
   id?: number
   party_type: LedgerType
   party_id: number
+  /** Plant this opening is attributed to; null = common/all plants. */
+  plant_id?: number | null
   amount: number
   direction: 'debit' | 'credit'
   as_of_date: string
