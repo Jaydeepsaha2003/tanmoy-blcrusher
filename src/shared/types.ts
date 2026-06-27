@@ -220,6 +220,9 @@ export interface Company {
   contact: string
   address: string
   remarks: string
+  /** Plants this company works with (empty = all plants). */
+  plant_ids?: number[]
+  plant_names?: string[]
   created_at: string
   // computed
   roles?: string[]

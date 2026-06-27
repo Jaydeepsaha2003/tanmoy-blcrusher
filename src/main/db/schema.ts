@@ -509,6 +509,11 @@ CREATE TABLE IF NOT EXISTS transporter_plants (
   transporter_id INTEGER NOT NULL REFERENCES transporters(id),
   plant_id       INTEGER NOT NULL REFERENCES plants(id)
 );
+CREATE TABLE IF NOT EXISTS company_plants (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id INTEGER NOT NULL REFERENCES companies(id),
+  plant_id   INTEGER NOT NULL REFERENCES plants(id)
+);
 
 CREATE TABLE IF NOT EXISTS asset_plant_moves (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -690,6 +695,7 @@ CREATE INDEX IF NOT EXISTS idx_aplants_plant ON asset_plants(plant_id);
 CREATE INDEX IF NOT EXISTS idx_cplants_customer ON customer_plants(customer_id);
 CREATE INDEX IF NOT EXISTS idx_splants_supplier ON supplier_plants(supplier_id);
 CREATE INDEX IF NOT EXISTS idx_tplants_transporter ON transporter_plants(transporter_id);
+CREATE INDEX IF NOT EXISTS idx_coplants_company ON company_plants(company_id);
 CREATE INDEX IF NOT EXISTS idx_amoves_asset ON asset_plant_moves(asset_id);
 CREATE INDEX IF NOT EXISTS idx_spare_parts_plant ON spare_parts(plant_id);
 CREATE INDEX IF NOT EXISTS idx_part_moves_part ON spare_part_movements(part_id);

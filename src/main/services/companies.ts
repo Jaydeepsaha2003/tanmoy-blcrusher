@@ -5,6 +5,7 @@ import { ensureUniqueName } from './names'
 import { deleteSupplier } from './suppliers'
 import { deleteCustomer } from './customers'
 import { deleteTransporter } from './transporters'
+import { plantIdSet, writePartyPlants, attachPartyPlants } from './partyPlants'
 
 type RoleTable = 'suppliers' | 'customers' | 'transporters'
 const ROLE_DELETE: Record<RoleTable, (p: { id: number }) => Promise<{ ok: boolean; error?: string }>> = {
@@ -46,6 +47,7 @@ async function syncRole(
 export async function listCompanies(): Promise<Company[]> {
   const d = getDb()
   const rows = (await d.prepare(`SELECT * FROM companies ORDER BY name`).all()) as Company[]
+  await attachPartyPlants(d, 'company', rows)
   for (const c of rows) {
     const roles: string[] = []
     const asCustomer = (await d
@@ -70,6 +72,7 @@ export async function createCompany(p: {
   contact: string
   address: string
   remarks: string
+  plant_ids?: number[]
   /** Auto-create a linked party of each type (default true for all). */
   as_supplier?: boolean
   as_customer?: boolean
@@ -81,22 +84,32 @@ export async function createCompany(p: {
   const name = properCase(p.name)
   const contact = p.contact ?? ''
   const address = p.address ?? ''
-  return (await d.transaction(async () => {
+  const plants = plantIdSet(p)
+  const id = await d.transaction(async () => {
     const info = await d
       .prepare(`INSERT INTO companies (name, contact, address, remarks) VALUES (?, ?, ?, ?)`)
       .run(name, contact, address, p.remarks ?? '')
     const companyId = Number(info.lastInsertRowid)
-    // Back-fill linked parties so the company is instantly usable in each role.
-    const mk = async (table: 'suppliers' | 'customers' | 'transporters'): Promise<void> => {
-      await d
-        .prepare(`INSERT INTO ${table} (name, contact, address, remarks, company_id) VALUES (?, ?, ?, '', ?)`)
-        .run(name, contact, address, companyId)
+    await writePartyPlants(d, 'company', companyId, plants)
+    // Back-fill linked parties so the company is instantly usable in each role,
+    // inheriting the company's plant assignments.
+    const mk = async (
+      table: 'suppliers' | 'customers' | 'transporters',
+      ptype: 'supplier' | 'customer' | 'transporter'
+    ): Promise<void> => {
+      const r = await d
+        .prepare(`INSERT INTO ${table} (name, contact, address, remarks, company_id, plant_id) VALUES (?, ?, ?, '', ?, ?)`)
+        .run(name, contact, address, companyId, plants[0] ?? null)
+      await writePartyPlants(d, ptype, Number(r.lastInsertRowid), plants)
     }
-    if (p.as_supplier !== false) await mk('suppliers')
-    if (p.as_customer !== false) await mk('customers')
-    if (p.as_transporter !== false) await mk('transporters')
-    return (await d.prepare(`SELECT * FROM companies WHERE id = ?`).get(companyId)) as Company
-  }))
+    if (p.as_supplier !== false) await mk('suppliers', 'supplier')
+    if (p.as_customer !== false) await mk('customers', 'customer')
+    if (p.as_transporter !== false) await mk('transporters', 'transporter')
+    return companyId
+  })
+  const row = (await d.prepare(`SELECT * FROM companies WHERE id = ?`).get(id)) as Company
+  await attachPartyPlants(d, 'company', [row])
+  return row
 }
 
 export async function updateCompany(p: {
@@ -105,6 +118,7 @@ export async function updateCompany(p: {
   contact: string
   address: string
   remarks: string
+  plant_ids?: number[]
   as_supplier?: boolean
   as_customer?: boolean
   as_transporter?: boolean
@@ -115,6 +129,7 @@ export async function updateCompany(p: {
   const name = properCase(p.name)
   const contact = p.contact ?? ''
   const address = p.address ?? ''
+  const plants = plantIdSet(p)
   await d.prepare(`UPDATE companies SET name=?, contact=?, address=?, remarks=? WHERE id=?`).run(
     name,
     contact,
@@ -122,11 +137,14 @@ export async function updateCompany(p: {
     p.remarks ?? '',
     p.id
   )
+  await writePartyPlants(d, 'company', p.id, plants)
   // Add/remove linked parties to match the role checkboxes.
   await syncRole(d, p.id, 'suppliers', p.as_supplier, name, contact, address)
   await syncRole(d, p.id, 'customers', p.as_customer, name, contact, address)
   await syncRole(d, p.id, 'transporters', p.as_transporter, name, contact, address)
-  return (await d.prepare(`SELECT * FROM companies WHERE id = ?`).get(p.id)) as Company
+  const row = (await d.prepare(`SELECT * FROM companies WHERE id = ?`).get(p.id)) as Company
+  await attachPartyPlants(d, 'company', [row])
+  return row
 }
 
 /** Deleting a company unlinks it from any parties (their records are kept). */
@@ -136,6 +154,7 @@ export async function deleteCompany(payload: { id: number }): Promise<{ ok: bool
     await d.prepare(`UPDATE customers SET company_id = NULL WHERE company_id = ?`).run(payload.id)
     await d.prepare(`UPDATE suppliers SET company_id = NULL WHERE company_id = ?`).run(payload.id)
     await d.prepare(`UPDATE transporters SET company_id = NULL WHERE company_id = ?`).run(payload.id)
+    await d.prepare(`DELETE FROM company_plants WHERE company_id = ?`).run(payload.id)
     await d.prepare(`DELETE FROM companies WHERE id = ?`).run(payload.id)
   })
   return { ok: true }

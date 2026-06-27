@@ -19,20 +19,29 @@ import {
   TR,
   TH,
   TD,
-  EmptyState
+  EmptyState,
+  PlantCheckboxes
 } from '@/components/ui'
 import { useToast } from '@/components/toast'
 import { confirmDialog } from '@/components/confirm'
+import { usePlant } from '@/lib/plant'
 import { downloadExcel } from '@/lib/utils'
 
 export function Companies(): React.JSX.Element {
   const qc = useQueryClient()
   const toast = useToast()
   const nav = useNavigate()
+  const { plantId } = usePlant()
   const { data = [] } = useQuery({ queryKey: ['companies'], queryFn: api.companies.list })
+  const { data: plants = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
   const [open, setOpen] = React.useState(false)
   type CompanyForm = Partial<Company> & { as_supplier?: boolean; as_customer?: boolean; as_transporter?: boolean }
   const [form, setForm] = React.useState<CompanyForm>({})
+
+  function togglePlant(id: number): void {
+    const cur = form.plant_ids ?? []
+    setForm({ ...form, plant_ids: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] })
+  }
   const [q, setQ] = React.useState('')
   const [role, setRole] = React.useState('')
 
@@ -79,8 +88,8 @@ export function Companies(): React.JSX.Element {
     downloadExcel(
       'companies',
       'Companies',
-      ['Name', 'Roles', 'Contact', 'Address', 'Remarks'],
-      data.map((c) => [c.name, (c.roles ?? []).join(', '), c.contact, c.address, c.remarks])
+      ['Name', 'Roles', 'Plants', 'Contact', 'Address', 'Remarks'],
+      data.map((c) => [c.name, (c.roles ?? []).join(', '), (c.plant_names ?? []).length ? (c.plant_names ?? []).join(', ') : 'All plants', c.contact, c.address, c.remarks])
     )
   }
 
@@ -94,7 +103,7 @@ export function Companies(): React.JSX.Element {
             <Button variant="outline" onClick={exportExcel} disabled={!data.length}>
               <FileSpreadsheet size={16} /> Excel
             </Button>
-            <Button onClick={() => { setForm({ as_supplier: true, as_customer: true, as_transporter: true }); setOpen(true) }}>
+            <Button onClick={() => { setForm({ as_supplier: true, as_customer: true, as_transporter: true, plant_ids: plantId ? [plantId] : [] }); setOpen(true) }}>
               <Plus size={16} /> New Company
             </Button>
           </>
@@ -135,6 +144,7 @@ export function Companies(): React.JSX.Element {
               <TR>
                 <TH>Name</TH>
                 <TH>Roles</TH>
+                <TH>Plants</TH>
                 <TH>Contact</TH>
                 <TH>Address</TH>
                 <TH className="text-right">Actions</TH>
@@ -155,6 +165,7 @@ export function Companies(): React.JSX.Element {
                       )}
                     </div>
                   </TD>
+                  <TD className="text-muted-foreground">{(c.plant_names ?? []).length ? (c.plant_names ?? []).join(', ') : 'All plants'}</TD>
                   <TD className="text-muted-foreground">{c.contact || '-'}</TD>
                   <TD className="text-muted-foreground">{c.address || '-'}</TD>
                   <TD className="text-right">
@@ -166,7 +177,7 @@ export function Companies(): React.JSX.Element {
                     >
                       <BookOpen size={15} />
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={() => { setForm({ ...c, as_supplier: (c.roles ?? []).includes('Supplier'), as_customer: (c.roles ?? []).includes('Customer'), as_transporter: (c.roles ?? []).includes('Transporter') }); setOpen(true) }}>
+                    <Button variant="ghost" size="icon" onClick={() => { setForm({ ...c, plant_ids: c.plant_ids ?? [], as_supplier: (c.roles ?? []).includes('Supplier'), as_customer: (c.roles ?? []).includes('Customer'), as_transporter: (c.roles ?? []).includes('Transporter') }); setOpen(true) }}>
                       <Pencil size={15} />
                     </Button>
                     <Button variant="ghost" size="icon" onClick={() => remove(c)}>
@@ -217,6 +228,9 @@ export function Companies(): React.JSX.Element {
               </div>
             </Field>
           )}
+          <Field label="Plants" hint={form.id ? 'Tick the plants this company works with — leave all unticked for all plants' : 'Tick the plants — new linked supplier/customer/transporter inherit these'}>
+            <PlantCheckboxes plants={plants} selected={form.plant_ids ?? []} onToggle={togglePlant} />
+          </Field>
           <Field label="Contact Details">
             <Input value={form.contact || ''} onChange={(e) => setForm({ ...form, contact: e.target.value })} placeholder="Phone / email" />
           </Field>

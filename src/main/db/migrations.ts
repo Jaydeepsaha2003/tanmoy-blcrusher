@@ -948,6 +948,16 @@ CREATE INDEX idx_tplants_transporter ON transporter_plants(transporter_id)`
     sql: `ALTER TABLE diesel_issues ADD COLUMN charged INT NOT NULL DEFAULT 0;
 ALTER TABLE rack_loadings ADD COLUMN diesel_charged INT NOT NULL DEFAULT 0;
 ALTER TABLE rack_unloadings ADD COLUMN diesel_charged INT NOT NULL DEFAULT 0`
+  },
+  {
+    // Multi-plant companies (junction table).
+    id: '026_company_plants',
+    sql: `CREATE TABLE IF NOT EXISTS company_plants (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  company_id INT NOT NULL,
+  plant_id   INT NOT NULL
+);
+CREATE INDEX idx_coplants_company ON company_plants(company_id)`
   }
 ]
 
