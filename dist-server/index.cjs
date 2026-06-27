@@ -5575,6 +5575,19 @@ async function updateRackVehicle(p) {
   await attachPartyPlants(d, "rack_vehicle", [row]);
   return row;
 }
+async function bulkCreateRackVehicles(payload) {
+  const result = { created: 0, errors: [] };
+  const rows = payload.rows ?? [];
+  for (let i = 0; i < rows.length; i++) {
+    try {
+      await createRackVehicle(rows[i]);
+      result.created++;
+    } catch (e) {
+      result.errors.push({ row: i + 2, message: e.message });
+    }
+  }
+  return result;
+}
 async function deleteRackVehicle(payload) {
   const d = getDb();
   await d.transaction(async () => {
@@ -5646,6 +5659,19 @@ async function updateRackJcb(p) {
   const row = await d.prepare(`SELECT * FROM rack_jcbs WHERE id = ?`).get(p.id);
   await attachPartyPlants(d, "rack_jcb", [row]);
   return row;
+}
+async function bulkCreateRackJcbs(payload) {
+  const result = { created: 0, errors: [] };
+  const rows = payload.rows ?? [];
+  for (let i = 0; i < rows.length; i++) {
+    try {
+      await createRackJcb(rows[i]);
+      result.created++;
+    } catch (e) {
+      result.errors.push({ row: i + 2, message: e.message });
+    }
+  }
+  return result;
 }
 async function deleteRackJcb(payload) {
   const d = getDb();
@@ -7398,11 +7424,109 @@ async function partBalance(d, partId) {
   const row = await d.prepare(`SELECT COALESCE(SUM(quantity),0) AS qty FROM spare_part_movements WHERE part_id = ?`).get(partId);
   return round33(Number(row.qty) || 0);
 }
+async function partFifoCost(d, partId, qty, excludeMovementId, excludeRef) {
+  const q = round33(Math.abs(Number(qty) || 0));
+  const exId = excludeMovementId ? Number(excludeMovementId) : 0;
+  const layers = await d.prepare(
+    `SELECT quantity, rate FROM spare_part_movements
+       WHERE part_id = ? AND quantity > 0 ${exId ? "AND id <> ?" : ""}
+       ORDER BY date, id`
+  ).all(...exId ? [partId, exId] : [partId]);
+  const totalIn = layers.reduce((a, l) => a + (Number(l.quantity) || 0), 0);
+  const outClauses = ["part_id = @pid", "quantity < 0"];
+  const outParams = { pid: partId };
+  if (exId) {
+    outClauses.push("id <> @exid");
+    outParams.exid = exId;
+  }
+  if (excludeRef) {
+    outClauses.push("ref_no <> @ref");
+    outParams.ref = excludeRef;
+  }
+  const outRow = await d.prepare(`SELECT COALESCE(SUM(-quantity),0) AS q FROM spare_part_movements WHERE ${outClauses.join(" AND ")}`).get(outParams);
+  const prior = round33(Number(outRow.q) || 0);
+  const available = round33(totalIn - prior);
+  if (!(q > 0)) return { amount: 0, rate: 0, available, pricedQty: 0, unpricedQty: 0 };
+  let skip = prior;
+  let need = q;
+  let cost = 0;
+  let priced = 0;
+  let unpriced = 0;
+  for (const layer of layers) {
+    let avail = Number(layer.quantity) || 0;
+    if (skip > 0) {
+      const s = Math.min(skip, avail);
+      skip -= s;
+      avail -= s;
+    }
+    if (avail <= 0 || need <= 0) continue;
+    const take = Math.min(avail, need);
+    if (layer.rate != null && Number(layer.rate) > 0) {
+      cost += take * Number(layer.rate);
+      priced += take;
+    } else unpriced += take;
+    need -= take;
+  }
+  const amount = round24(cost);
+  return {
+    amount,
+    rate: priced > 0 ? round24(amount / priced) : 0,
+    available,
+    pricedQty: round33(priced),
+    unpricedQty: round33(unpriced + Math.max(0, need))
+  };
+}
+async function partFifoQuote(payload) {
+  if (!payload.part_id) return { amount: 0, rate: 0, available: 0, hasCost: false, unpricedQty: 0 };
+  const f = await partFifoCost(getDb(), Number(payload.part_id), Number(payload.quantity) || 0, payload.exclude);
+  return { amount: f.amount, rate: f.rate, available: f.available, hasCost: f.amount > 0, unpricedQty: f.unpricedQty };
+}
+async function partFifoQuoteMany(payload) {
+  const d = getDb();
+  const items = [];
+  let total = 0;
+  for (const it of payload.items ?? []) {
+    const pid = Number(it.part_id);
+    const qty = Number(it.quantity) || 0;
+    if (!pid || !(qty > 0)) continue;
+    const f = await partFifoCost(d, pid, qty, void 0, payload.exclude_ref);
+    items.push({ part_id: pid, quantity: qty, amount: f.amount, rate: f.rate, available: f.available, hasCost: f.amount > 0, unpricedQty: f.unpricedQty });
+    total += f.amount;
+  }
+  return { items, total: round24(total) };
+}
+async function issuePartsForRef(d, opts) {
+  let total = 0;
+  for (const it of opts.parts ?? []) {
+    const pid = Number(it.part_id);
+    const qty = round33(Math.abs(Number(it.quantity) || 0));
+    if (!pid || !(qty > 0)) continue;
+    const fifo = await partFifoCost(d, pid, qty);
+    await addPartMovement(d, {
+      part_id: pid,
+      asset_id: opts.asset_id ?? null,
+      movement_type: "stock_out",
+      ref_no: opts.ref_no,
+      quantity: -qty,
+      rate: fifo.rate > 0 ? fifo.rate : null,
+      amount: fifo.amount > 0 ? fifo.amount : null,
+      date: opts.date,
+      note: opts.note || "Used in maintenance"
+    });
+    if (await partBalance(d, pid) < 0) throw new Error("Not enough stock for a part used in this maintenance.");
+    total += fifo.amount;
+  }
+  return round24(total);
+}
+async function clearPartsForRef(d, refNo) {
+  if (!refNo) return;
+  await d.prepare(`DELETE FROM spare_part_movements WHERE ref_no = ? AND movement_type='stock_out'`).run(refNo);
+}
 async function addPartMovement(d, input) {
   const qty = round33(input.quantity);
   if (!qty) return;
   const rate = rateOrNull(input.rate);
-  const amount = rate != null ? round24(Math.abs(qty) * rate) : null;
+  const amount = input.amount != null && input.amount !== "" ? round24(Number(input.amount)) : rate != null ? round24(Math.abs(qty) * rate) : null;
   await d.prepare(
     `INSERT INTO spare_part_movements
        (part_id, asset_id, movement_type, ref_no, quantity, rate, amount, date, note)
@@ -7530,19 +7654,22 @@ async function stockOut(payload) {
   const qty = round33(Math.abs(Number(payload.quantity)));
   if (!payload.asset_id) throw new Error("Select the machine or vehicle using this part.");
   if (!(qty > 0)) throw new Error("Stock-out quantity must be greater than 0.");
+  let fifo = { amount: 0, rate: 0, unpricedQty: 0 };
   await d.transaction(async () => {
+    fifo = await partFifoCost(d, payload.part_id, qty);
     await addPartMovement(d, {
       part_id: payload.part_id,
       asset_id: payload.asset_id,
       movement_type: "stock_out",
       quantity: -qty,
-      rate: payload.rate,
+      rate: fifo.rate > 0 ? fifo.rate : null,
+      amount: fifo.amount > 0 ? fifo.amount : null,
       date: payload.date,
       note: payload.note || "Issued to machine / vehicle"
     });
     if (await partBalance(d, payload.part_id) < 0) throw new Error("Not enough stock for this part.");
   });
-  return { ok: true };
+  return { ok: true, cost: fifo.amount, hasCost: fifo.amount > 0, unpricedQty: fifo.unpricedQty };
 }
 async function listPartMovements(payload = {}) {
   const where = [];
@@ -7554,6 +7681,10 @@ async function listPartMovements(payload = {}) {
   if (payload.asset_id) {
     where.push("m.asset_id=@asset_id");
     params.asset_id = payload.asset_id;
+  }
+  if (payload.ref_no) {
+    where.push("m.ref_no=@ref_no");
+    params.ref_no = payload.ref_no;
   }
   if (payload.from) {
     where.push("m.date>=@from");
@@ -7810,33 +7941,47 @@ function resolve(p) {
 }
 async function createPlantExpense(p) {
   const d = getDb();
-  const fields = resolve(p);
-  const no = await nextNumber("PEX", "plant_expense");
-  const info = await d.prepare(
-    `INSERT INTO plant_expenses
-        (expense_no, plant_id, category, title, asset_id, outsource_id, meter_open, meter_close, units, rate, hours,
-         parts, amount, payment_status, paid_amount, date, remarks)
-       VALUES (@expense_no,@plant_id,@category,@title,@asset_id,@outsource_id,@meter_open,@meter_close,@units,@rate,@hours,
-         @parts,@amount,@payment_status,@paid_amount,@date,@remarks)`
-  ).run({ expense_no: no, ...fields });
-  return await d.prepare(`SELECT * FROM plant_expenses WHERE id = ?`).get(info.lastInsertRowid);
+  const id = await d.transaction(async () => {
+    const no = await nextNumber("PEX", "plant_expense");
+    const partsCost = p.parts_used?.length ? await issuePartsForRef(d, { asset_id: p.asset_id ?? null, ref_no: no, date: p.date, note: properCase(p.title), parts: p.parts_used }) : 0;
+    const fields = resolve({ ...p, amount: (Number(p.amount) || 0) + partsCost });
+    const info = await d.prepare(
+      `INSERT INTO plant_expenses
+          (expense_no, plant_id, category, title, asset_id, outsource_id, meter_open, meter_close, units, rate, hours,
+           parts, amount, payment_status, paid_amount, date, remarks)
+         VALUES (@expense_no,@plant_id,@category,@title,@asset_id,@outsource_id,@meter_open,@meter_close,@units,@rate,@hours,
+           @parts,@amount,@payment_status,@paid_amount,@date,@remarks)`
+    ).run({ expense_no: no, ...fields });
+    return Number(info.lastInsertRowid);
+  });
+  return await d.prepare(`SELECT * FROM plant_expenses WHERE id = ?`).get(id);
 }
 async function updatePlantExpense(p) {
   const d = getDb();
   if (!p.id) throw new Error("Missing expense id.");
-  const fields = resolve(p);
-  await d.prepare(
-    `UPDATE plant_expenses SET plant_id=@plant_id, category=@category, title=@title, asset_id=@asset_id,
-       outsource_id=@outsource_id,
-       meter_open=@meter_open, meter_close=@meter_close, units=@units, rate=@rate, hours=@hours,
-       parts=@parts, amount=@amount, payment_status=@payment_status, paid_amount=@paid_amount,
-       date=@date, remarks=@remarks WHERE id=@id`
-  ).run({ id: p.id, ...fields });
+  const old = await d.prepare(`SELECT expense_no FROM plant_expenses WHERE id = ?`).get(p.id);
+  if (!old) throw new Error("Expense not found.");
+  await d.transaction(async () => {
+    await clearPartsForRef(d, old.expense_no);
+    const partsCost = p.parts_used?.length ? await issuePartsForRef(d, { asset_id: p.asset_id ?? null, ref_no: old.expense_no, date: p.date, note: properCase(p.title), parts: p.parts_used }) : 0;
+    const fields = resolve({ ...p, amount: (Number(p.amount) || 0) + partsCost });
+    await d.prepare(
+      `UPDATE plant_expenses SET plant_id=@plant_id, category=@category, title=@title, asset_id=@asset_id,
+         outsource_id=@outsource_id,
+         meter_open=@meter_open, meter_close=@meter_close, units=@units, rate=@rate, hours=@hours,
+         parts=@parts, amount=@amount, payment_status=@payment_status, paid_amount=@paid_amount,
+         date=@date, remarks=@remarks WHERE id=@id`
+    ).run({ id: p.id, ...fields });
+  });
   return await d.prepare(`SELECT * FROM plant_expenses WHERE id = ?`).get(p.id);
 }
 async function deletePlantExpense(payload) {
   const d = getDb();
-  await d.prepare(`DELETE FROM plant_expenses WHERE id = ?`).run(payload.id);
+  const old = await d.prepare(`SELECT expense_no FROM plant_expenses WHERE id = ?`).get(payload.id);
+  await d.transaction(async () => {
+    if (old?.expense_no) await clearPartsForRef(d, old.expense_no);
+    await d.prepare(`DELETE FROM plant_expenses WHERE id = ?`).run(payload.id);
+  });
   return { ok: true };
 }
 
@@ -8675,10 +8820,12 @@ var handlers = {
   "rackVehicles.list": listRackVehicles,
   "rackVehicles.create": createRackVehicle,
   "rackVehicles.update": updateRackVehicle,
+  "rackVehicles.bulkCreate": bulkCreateRackVehicles,
   "rackVehicles.delete": deleteRackVehicle,
   "rackJcbs.list": listRackJcbs,
   "rackJcbs.create": createRackJcb,
   "rackJcbs.update": updateRackJcb,
+  "rackJcbs.bulkCreate": bulkCreateRackJcbs,
   "rackJcbs.delete": deleteRackJcb,
   "ledgers.get": getLedger,
   "ledgers.balances": getPartyBalances,
@@ -8716,6 +8863,8 @@ var handlers = {
   "parts.update": updatePart,
   "parts.stockIn": stockIn,
   "parts.stockOut": stockOut,
+  "parts.fifoQuote": partFifoQuote,
+  "parts.fifoQuoteMany": partFifoQuoteMany,
   "parts.movements": listPartMovements,
   "parts.delete": deletePart,
   "businesses.list": listBusinesses,

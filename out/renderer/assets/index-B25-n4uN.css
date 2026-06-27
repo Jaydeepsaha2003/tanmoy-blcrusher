@@ -866,6 +866,9 @@ video {
 .grid-cols-\[1fr_140px_40px\] {
   grid-template-columns: 1fr 140px 40px;
 }
+.grid-cols-\[1fr_88px_110px_32px\] {
+  grid-template-columns: 1fr 88px 110px 32px;
+}
 .grid-cols-\[1fr_90px_80px_90px_1fr_32px\] {
   grid-template-columns: 1fr 90px 80px 90px 1fr 32px;
 }
