@@ -668,6 +668,11 @@ CREATE TABLE IF NOT EXISTS transporter_plants (
   transporter_id INTEGER NOT NULL REFERENCES transporters(id),
   plant_id       INTEGER NOT NULL REFERENCES plants(id)
 );
+CREATE TABLE IF NOT EXISTS company_plants (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id INTEGER NOT NULL REFERENCES companies(id),
+  plant_id   INTEGER NOT NULL REFERENCES plants(id)
+);
 
 CREATE TABLE IF NOT EXISTS asset_plant_moves (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -849,6 +854,7 @@ CREATE INDEX IF NOT EXISTS idx_aplants_plant ON asset_plants(plant_id);
 CREATE INDEX IF NOT EXISTS idx_cplants_customer ON customer_plants(customer_id);
 CREATE INDEX IF NOT EXISTS idx_splants_supplier ON supplier_plants(supplier_id);
 CREATE INDEX IF NOT EXISTS idx_tplants_transporter ON transporter_plants(transporter_id);
+CREATE INDEX IF NOT EXISTS idx_coplants_company ON company_plants(company_id);
 CREATE INDEX IF NOT EXISTS idx_amoves_asset ON asset_plant_moves(asset_id);
 CREATE INDEX IF NOT EXISTS idx_spare_parts_plant ON spare_parts(plant_id);
 CREATE INDEX IF NOT EXISTS idx_part_moves_part ON spare_part_movements(part_id);
@@ -1812,6 +1818,16 @@ CREATE INDEX idx_tplants_transporter ON transporter_plants(transporter_id)`
     sql: `ALTER TABLE diesel_issues ADD COLUMN charged INT NOT NULL DEFAULT 0;
 ALTER TABLE rack_loadings ADD COLUMN diesel_charged INT NOT NULL DEFAULT 0;
 ALTER TABLE rack_unloadings ADD COLUMN diesel_charged INT NOT NULL DEFAULT 0`
+  },
+  {
+    // Multi-plant companies (junction table).
+    id: "026_company_plants",
+    sql: `CREATE TABLE IF NOT EXISTS company_plants (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  company_id INT NOT NULL,
+  plant_id   INT NOT NULL
+);
+CREATE INDEX idx_coplants_company ON company_plants(company_id)`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -2808,7 +2824,8 @@ async function deletePlant(payload) {
 var PARTY_PLANT_TABLE = {
   customer: { junction: "customer_plants", col: "customer_id" },
   supplier: { junction: "supplier_plants", col: "supplier_id" },
-  transporter: { junction: "transporter_plants", col: "transporter_id" }
+  transporter: { junction: "transporter_plants", col: "transporter_id" },
+  company: { junction: "company_plants", col: "company_id" }
 };
 function plantIdSet(p) {
   if (Array.isArray(p.plant_ids)) return [...new Set(p.plant_ids.map(Number).filter((n) => n > 0))];
@@ -4283,6 +4300,7 @@ async function syncRole(d, companyId, table, flag, name, contact, address) {
 async function listCompanies() {
   const d = getDb();
   const rows = await d.prepare(`SELECT * FROM companies ORDER BY name`).all();
+  await attachPartyPlants(d, "company", rows);
   for (const c of rows) {
     const roles = [];
     const asCustomer = await d.prepare(`SELECT COUNT(*) AS n FROM customers WHERE company_id = ?`).get(c.id);
@@ -4302,17 +4320,23 @@ async function createCompany(p) {
   const name = properCase(p.name);
   const contact = p.contact ?? "";
   const address = p.address ?? "";
-  return await d.transaction(async () => {
+  const plants = plantIdSet(p);
+  const id = await d.transaction(async () => {
     const info = await d.prepare(`INSERT INTO companies (name, contact, address, remarks) VALUES (?, ?, ?, ?)`).run(name, contact, address, p.remarks ?? "");
     const companyId = Number(info.lastInsertRowid);
-    const mk = async (table) => {
-      await d.prepare(`INSERT INTO ${table} (name, contact, address, remarks, company_id) VALUES (?, ?, ?, '', ?)`).run(name, contact, address, companyId);
+    await writePartyPlants(d, "company", companyId, plants);
+    const mk = async (table, ptype) => {
+      const r = await d.prepare(`INSERT INTO ${table} (name, contact, address, remarks, company_id, plant_id) VALUES (?, ?, ?, '', ?, ?)`).run(name, contact, address, companyId, plants[0] ?? null);
+      await writePartyPlants(d, ptype, Number(r.lastInsertRowid), plants);
     };
-    if (p.as_supplier !== false) await mk("suppliers");
-    if (p.as_customer !== false) await mk("customers");
-    if (p.as_transporter !== false) await mk("transporters");
-    return await d.prepare(`SELECT * FROM companies WHERE id = ?`).get(companyId);
+    if (p.as_supplier !== false) await mk("suppliers", "supplier");
+    if (p.as_customer !== false) await mk("customers", "customer");
+    if (p.as_transporter !== false) await mk("transporters", "transporter");
+    return companyId;
   });
+  const row = await d.prepare(`SELECT * FROM companies WHERE id = ?`).get(id);
+  await attachPartyPlants(d, "company", [row]);
+  return row;
 }
 async function updateCompany(p) {
   const d = getDb();
@@ -4321,6 +4345,7 @@ async function updateCompany(p) {
   const name = properCase(p.name);
   const contact = p.contact ?? "";
   const address = p.address ?? "";
+  const plants = plantIdSet(p);
   await d.prepare(`UPDATE companies SET name=?, contact=?, address=?, remarks=? WHERE id=?`).run(
     name,
     contact,
@@ -4328,10 +4353,13 @@ async function updateCompany(p) {
     p.remarks ?? "",
     p.id
   );
+  await writePartyPlants(d, "company", p.id, plants);
   await syncRole(d, p.id, "suppliers", p.as_supplier, name, contact, address);
   await syncRole(d, p.id, "customers", p.as_customer, name, contact, address);
   await syncRole(d, p.id, "transporters", p.as_transporter, name, contact, address);
-  return await d.prepare(`SELECT * FROM companies WHERE id = ?`).get(p.id);
+  const row = await d.prepare(`SELECT * FROM companies WHERE id = ?`).get(p.id);
+  await attachPartyPlants(d, "company", [row]);
+  return row;
 }
 async function deleteCompany(payload) {
   const d = getDb();
@@ -4339,6 +4367,7 @@ async function deleteCompany(payload) {
     await d.prepare(`UPDATE customers SET company_id = NULL WHERE company_id = ?`).run(payload.id);
     await d.prepare(`UPDATE suppliers SET company_id = NULL WHERE company_id = ?`).run(payload.id);
     await d.prepare(`UPDATE transporters SET company_id = NULL WHERE company_id = ?`).run(payload.id);
+    await d.prepare(`DELETE FROM company_plants WHERE company_id = ?`).run(payload.id);
     await d.prepare(`DELETE FROM companies WHERE id = ?`).run(payload.id);
   });
   return { ok: true };

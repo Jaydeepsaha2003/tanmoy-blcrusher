@@ -62655,9 +62655,15 @@ function Companies() {
   const qc2 = useQueryClient();
   const toast = useToast();
   const nav = useNavigate();
+  const { plantId } = usePlant();
   const { data = [] } = useQuery({ queryKey: ["companies"], queryFn: api.companies.list });
+  const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
   const [open2, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState({});
+  function togglePlant(id2) {
+    const cur = form.plant_ids ?? [];
+    setForm({ ...form, plant_ids: cur.includes(id2) ? cur.filter((x2) => x2 !== id2) : [...cur, id2] });
+  }
   const [q2, setQ] = reactExports.useState("");
   const [role, setRole] = reactExports.useState("");
   const filtered = reactExports.useMemo(() => {
@@ -62700,8 +62706,8 @@ function Companies() {
     downloadExcel(
       "companies",
       "Companies",
-      ["Name", "Roles", "Contact", "Address", "Remarks"],
-      data.map((c2) => [c2.name, (c2.roles ?? []).join(", "), c2.contact, c2.address, c2.remarks])
+      ["Name", "Roles", "Plants", "Contact", "Address", "Remarks"],
+      data.map((c2) => [c2.name, (c2.roles ?? []).join(", "), (c2.plant_names ?? []).length ? (c2.plant_names ?? []).join(", ") : "All plants", c2.contact, c2.address, c2.remarks])
     );
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
@@ -62716,7 +62722,7 @@ function Companies() {
             " Excel"
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { onClick: () => {
-            setForm({ as_supplier: true, as_customer: true, as_transporter: true });
+            setForm({ as_supplier: true, as_customer: true, as_transporter: true, plant_ids: plantId ? [plantId] : [] });
             setOpen(true);
           }, children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 16 }),
@@ -62767,6 +62773,7 @@ function Companies() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Name" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Roles" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plants" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Contact" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Address" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
@@ -62774,6 +62781,7 @@ function Companies() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: filtered.map((c2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: c2.name }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-wrap gap-1", children: (c2.roles ?? []).length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-muted-foreground", children: "Not linked" }) : (c2.roles ?? []).map((r2) => /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "muted", children: r2 }, r2)) }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: (c2.plant_names ?? []).length ? (c2.plant_names ?? []).join(", ") : "All plants" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: c2.contact || "-" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: c2.address || "-" }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
@@ -62788,7 +62796,7 @@ function Companies() {
                 }
               ),
               /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => {
-                setForm({ ...c2, as_supplier: (c2.roles ?? []).includes("Supplier"), as_customer: (c2.roles ?? []).includes("Customer"), as_transporter: (c2.roles ?? []).includes("Transporter") });
+                setForm({ ...c2, plant_ids: c2.plant_ids ?? [], as_supplier: (c2.roles ?? []).includes("Supplier"), as_customer: (c2.roles ?? []).includes("Customer"), as_transporter: (c2.roles ?? []).includes("Transporter") });
                 setOpen(true);
               }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
               /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => remove(c2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
@@ -62825,6 +62833,7 @@ function Companies() {
           key
         );
       }) }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plants", hint: form.id ? "Tick the plants this company works with — leave all unticked for all plants" : "Tick the plants — new linked supplier/customer/transporter inherit these", children: /* @__PURE__ */ jsxRuntimeExports.jsx(PlantCheckboxes, { plants, selected: form.plant_ids ?? [], onToggle: togglePlant }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Contact Details", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.contact || "", onChange: (e3) => setForm({ ...form, contact: e3.target.value }), placeholder: "Phone / email" }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Address", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Textarea, { value: form.address || "", onChange: (e3) => setForm({ ...form, address: e3.target.value }) }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.remarks || "", onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) }),
@@ -77900,7 +77909,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-D6Lyq1ks.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-BKVBQcJO.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
