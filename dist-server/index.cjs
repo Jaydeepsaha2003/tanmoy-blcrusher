@@ -357,12 +357,16 @@ CREATE TABLE IF NOT EXISTS dispatch_machines (
 CREATE TABLE IF NOT EXISTS rack_sale_transporters (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   rack_sale_id   INTEGER NOT NULL REFERENCES rack_sales(id),
-  transporter_id INTEGER NOT NULL REFERENCES transporters(id),
+  transporter_id INTEGER REFERENCES transporters(id),
+  rack_vehicle_id INTEGER REFERENCES rack_vehicles(id),
   vehicle_no     TEXT NOT NULL DEFAULT '',
   basis          TEXT NOT NULL DEFAULT 'flat',
   qty            REAL NOT NULL DEFAULT 0,
   rate           REAL NOT NULL DEFAULT 0,
   charge         REAL NOT NULL DEFAULT 0,
+  diesel_litres  REAL,
+  diesel_amount  REAL,
+  diesel_charged INTEGER NOT NULL DEFAULT 0,
   created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
@@ -588,6 +592,9 @@ CREATE TABLE IF NOT EXISTS rack_unloadings (
   diesel_litres  REAL,
   diesel_amount  REAL,
   diesel_charged INTEGER NOT NULL DEFAULT 0,
+  rack_vehicle_id INTEGER REFERENCES rack_vehicles(id),
+  rack_jcb_id    INTEGER REFERENCES rack_jcbs(id),
+  work_type      TEXT,
   date           TEXT NOT NULL,
   remarks        TEXT NOT NULL DEFAULT '',
   created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
@@ -1140,12 +1147,16 @@ CREATE TABLE IF NOT EXISTS dispatch_machines (
 CREATE TABLE IF NOT EXISTS rack_sale_transporters (
   id             INT AUTO_INCREMENT PRIMARY KEY,
   rack_sale_id   INT NOT NULL,
-  transporter_id INT NOT NULL,
+  transporter_id INT,
+  rack_vehicle_id INT,
   vehicle_no     VARCHAR(64) NOT NULL DEFAULT '',
   basis          VARCHAR(8) NOT NULL DEFAULT 'flat',
   qty            DOUBLE NOT NULL DEFAULT 0,
   rate           DOUBLE NOT NULL DEFAULT 0,
   charge         DOUBLE NOT NULL DEFAULT 0,
+  diesel_litres  DOUBLE,
+  diesel_amount  DOUBLE,
+  diesel_charged INT NOT NULL DEFAULT 0,
   created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS rack_sale_machines (
@@ -1295,6 +1306,10 @@ CREATE TABLE IF NOT EXISTS rack_unloadings (
   amount         DOUBLE,
   diesel_litres  DOUBLE,
   diesel_amount  DOUBLE,
+  diesel_charged INT NOT NULL DEFAULT 0,
+  rack_vehicle_id INT,
+  rack_jcb_id    INT,
+  work_type      VARCHAR(16),
   date           VARCHAR(32) NOT NULL,
   remarks        TEXT,
   created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -1926,6 +1941,22 @@ CREATE TABLE IF NOT EXISTS rack_jcb_plants (
 );
 CREATE INDEX idx_rvplants_vehicle ON rack_vehicle_plants(rack_vehicle_id);
 CREATE INDEX idx_rjplants_jcb ON rack_jcb_plants(rack_jcb_id)`
+  },
+  {
+    // Unloadings bind to a fleet vehicle/JCB (their own ledger heads); sale transport
+    // can use a fleet vehicle and carry diesel charged to the carrier.
+    id: "030_rack_unload_carrier",
+    sql: `ALTER TABLE rack_unloadings ADD COLUMN rack_vehicle_id INT;
+ALTER TABLE rack_unloadings ADD COLUMN rack_jcb_id INT;
+ALTER TABLE rack_unloadings ADD COLUMN work_type VARCHAR(16);
+ALTER TABLE rack_sale_transporters ADD COLUMN rack_vehicle_id INT;
+ALTER TABLE rack_sale_transporters ADD COLUMN diesel_litres DOUBLE;
+ALTER TABLE rack_sale_transporters ADD COLUMN diesel_amount DOUBLE;
+ALTER TABLE rack_sale_transporters ADD COLUMN diesel_charged INT NOT NULL DEFAULT 0;
+ALTER TABLE rack_sale_transporters MODIFY transporter_id INT NULL;
+CREATE INDEX idx_runload_vehicle ON rack_unloadings(rack_vehicle_id);
+CREATE INDEX idx_runload_jcb ON rack_unloadings(rack_jcb_id);
+CREATE INDEX idx_rstrans_vehicle ON rack_sale_transporters(rack_vehicle_id)`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -2014,6 +2045,13 @@ async function sqliteLegacyMigrate(adapter2) {
   await addColumn("rack_unloadings", "diesel_charged", "INTEGER NOT NULL DEFAULT 0");
   await addColumn("purchases", "challan_no", `TEXT NOT NULL DEFAULT ''`);
   await addColumn("rack_sales", "challan_no", `TEXT NOT NULL DEFAULT ''`);
+  await addColumn("rack_unloadings", "rack_vehicle_id", "INTEGER");
+  await addColumn("rack_unloadings", "rack_jcb_id", "INTEGER");
+  await addColumn("rack_unloadings", "work_type", "TEXT");
+  await addColumn("rack_sale_transporters", "rack_vehicle_id", "INTEGER");
+  await addColumn("rack_sale_transporters", "diesel_litres", "REAL");
+  await addColumn("rack_sale_transporters", "diesel_amount", "REAL");
+  await addColumn("rack_sale_transporters", "diesel_charged", "INTEGER NOT NULL DEFAULT 0");
 }
 async function importProductsFromSettings(adapter2) {
   const all = (await adapter2.exec(`SELECT id, name FROM products ORDER BY id`, void 0, null)).rows;
@@ -4505,7 +4543,11 @@ async function issuedLitres(d, plantId, exclude) {
   const b = await d.prepare(`SELECT COALESCE(SUM(diesel_litres),0) AS q FROM rack_loadings ${issuesWhere}${ex("loading")}`).get({ pid });
   const uWhere = pid ? "WHERE r.plant_id = @pid" : "WHERE 1=1";
   const c = await d.prepare(`SELECT COALESCE(SUM(ru.diesel_litres),0) AS q FROM rack_unloadings ru JOIN racks r ON r.id = ru.rack_id ${uWhere}${ex("unloading", "ru.id")}`).get({ pid });
-  return litres((a.q || 0) + (b.q || 0) + (c.q || 0));
+  const e = await d.prepare(
+    `SELECT COALESCE(SUM(rst.diesel_litres),0) AS q FROM rack_sale_transporters rst
+         JOIN rack_sales rs ON rs.id = rst.rack_sale_id JOIN racks r ON r.id = rs.rack_id ${uWhere}${ex("sale_transport", "rst.id")}`
+  ).get({ pid });
+  return litres((a.q || 0) + (b.q || 0) + (c.q || 0) + (e.q || 0));
 }
 async function stockOf(d, plantId) {
   const pAnd = plantId ? " WHERE plant_id = @pid" : "";
@@ -4754,8 +4796,12 @@ var RACK_AGG = `
   COALESCE((SELECT SUM(total_cm) FROM rack_loadings WHERE rack_id = r.id),0) AS loaded_cm,
   COALESCE((SELECT SUM(qty_cm) FROM rack_unloadings WHERE rack_id = r.id),0) AS unloaded_cm,
   COALESCE((SELECT SUM(amount) FROM rack_loadings WHERE rack_id = r.id),0)
-    + COALESCE((SELECT SUM(amount) FROM rack_unloadings WHERE rack_id = r.id),0) AS transport_cost,
-  COALESCE((SELECT SUM(amount) FROM rack_expenses WHERE rack_id = r.id),0) AS expense_total,
+    + COALESCE((SELECT SUM(amount) FROM rack_unloadings WHERE rack_id = r.id),0)
+    + COALESCE((SELECT SUM(rst.charge) FROM rack_sale_transporters rst
+         JOIN rack_sales rs ON rs.id = rst.rack_sale_id WHERE rs.rack_id = r.id),0) AS transport_cost,
+  COALESCE((SELECT SUM(amount) FROM rack_expenses WHERE rack_id = r.id),0)
+    + COALESCE((SELECT SUM(rsm.amount) FROM rack_sale_machines rsm
+         JOIN rack_sales rs ON rs.id = rsm.rack_sale_id WHERE rs.rack_id = r.id),0) AS expense_total,
   COALESCE((SELECT SUM(qty_cm) FROM rack_sales WHERE rack_id = r.id),0) AS sold_cm,
   COALESCE((SELECT SUM(amount) FROM rack_sales WHERE rack_id = r.id),0) AS sales_amount,
   (SELECT name FROM plants WHERE id = r.plant_id) AS plant_name`;
@@ -4868,10 +4914,16 @@ async function getRackDetail(payload) {
        ORDER BY rl.date DESC, rl.id DESC`
   ).all(payload.id);
   const unloadings = await d.prepare(
-    `SELECT ru.*, r.rack_no, t.name AS transporter_name
+    `SELECT ru.*, r.rack_no, t.name AS transporter_name,
+              rv.vehicle_no AS vehicle_name, rj.name AS jcb_name,
+              COALESCE(rv.vehicle_no, rj.name, t.name) AS resource_name,
+              CASE WHEN ru.rack_vehicle_id IS NOT NULL THEN 'vehicle'
+                   WHEN ru.rack_jcb_id IS NOT NULL THEN 'jcb' ELSE NULL END AS resource_type
        FROM rack_unloadings ru
        JOIN racks r ON r.id = ru.rack_id
        LEFT JOIN transporters t ON t.id = ru.transporter_id
+       LEFT JOIN rack_vehicles rv ON rv.id = ru.rack_vehicle_id
+       LEFT JOIN rack_jcbs rj ON rj.id = ru.rack_jcb_id
        WHERE ru.rack_id = ?
        ORDER BY ru.date DESC, ru.id DESC`
   ).all(payload.id);
@@ -5078,14 +5130,21 @@ async function deleteLoading(payload) {
 function resolveUnloading(p) {
   let total = Number(p.total_cm) || 0;
   if (!(total > 0)) total = roundQty3((Number(p.trips) || 0) * (Number(p.per_trip_cm) || 0));
-  if (!(total > 0)) throw new Error("Unloaded quantity must be greater than 0 (trips \xD7 per-trip m\xB3).");
-  return { total: roundQty3(total), amount: computeAmount3(p.rate, total) };
+  const count = Number(p.trips) || 0;
+  if (!(count > 0) && !(total > 0))
+    throw new Error("Enter the work count (trips / wagons / hours) and/or the m\xB3 unloaded.");
+  return { total: roundQty3(total), amount: computeAmount3(p.rate, count) };
 }
 function unloadingFields(p, total, amount, diesel, dieselCharged) {
+  const vehId = p.rack_vehicle_id ? Number(p.rack_vehicle_id) : null;
+  const jcbId = p.rack_jcb_id ? Number(p.rack_jcb_id) : null;
   return {
     rack_id: p.rack_id,
     product_name: p.product_name.trim(),
     transporter_id: p.transporter_id ?? null,
+    rack_vehicle_id: vehId,
+    rack_jcb_id: jcbId,
+    work_type: jcbId ? p.work_type || "unloading" : null,
     vehicle_no: p.vehicle_no ?? "",
     trips: Number(p.trips) || 0,
     per_trip_cm: Number(p.per_trip_cm) || 0,
@@ -5102,6 +5161,9 @@ function unloadingFields(p, total, amount, diesel, dieselCharged) {
     remarks: p.remarks ?? ""
   };
 }
+function unloadingHasCarrier(p) {
+  return !!(p.rack_vehicle_id || p.rack_jcb_id || p.transporter_id);
+}
 async function addUnloading(p) {
   const d = getDb();
   const rack = await d.prepare(`SELECT * FROM racks WHERE id = ?`).get(p.rack_id);
@@ -5115,13 +5177,15 @@ async function addUnloading(p) {
       `Cannot unload more than was loaded. On rake \u2014 ${p.product_name}: ${onRake} m\xB3, requested: ${total} m\xB3.`
     );
   const diesel = await rackDiesel(d, rack.plant_id, p.diesel_litres);
-  const diesel_charged = diesel.litres && p.transporter_id && p.diesel_charged ? 1 : 0;
+  const diesel_charged = diesel.litres && unloadingHasCarrier(p) && p.diesel_charged ? 1 : 0;
   const no = await nextNumber("RKU", "rack_unloading");
   const info = await d.prepare(
     `INSERT INTO rack_unloadings
-        (unloading_no, rack_id, product_name, transporter_id, vehicle_no, trips, per_trip_cm, total_cm,
+        (unloading_no, rack_id, product_name, transporter_id, rack_vehicle_id, rack_jcb_id, work_type,
+         vehicle_no, trips, per_trip_cm, total_cm,
          uom, quantity, qty_cm, rate, amount, diesel_litres, diesel_amount, diesel_charged, date, remarks)
-       VALUES (@unloading_no,@rack_id,@product_name,@transporter_id,@vehicle_no,@trips,@per_trip_cm,@total_cm,
+       VALUES (@unloading_no,@rack_id,@product_name,@transporter_id,@rack_vehicle_id,@rack_jcb_id,@work_type,
+         @vehicle_no,@trips,@per_trip_cm,@total_cm,
          @uom,@quantity,@qty_cm,@rate,@amount,@diesel_litres,@diesel_amount,@diesel_charged,@date,@remarks)`
   ).run({ unloading_no: no, ...unloadingFields(p, total, amount, diesel, diesel_charged) });
   return await d.prepare(`SELECT * FROM rack_unloadings WHERE id = ?`).get(info.lastInsertRowid);
@@ -5135,10 +5199,11 @@ async function updateUnloading(p) {
   const { total, amount } = resolveUnloading(p);
   const rackRow = await d.prepare(`SELECT plant_id FROM racks WHERE id = ?`).get(old.rack_id);
   const diesel = await rackDiesel(d, rackRow?.plant_id ?? null, p.diesel_litres, { src: "unloading", id: p.id });
-  const diesel_charged = diesel.litres && p.transporter_id && p.diesel_charged ? 1 : 0;
+  const diesel_charged = diesel.litres && unloadingHasCarrier(p) && p.diesel_charged ? 1 : 0;
   await d.transaction(async () => {
     await d.prepare(
       `UPDATE rack_unloadings SET product_name=@product_name, transporter_id=@transporter_id,
+         rack_vehicle_id=@rack_vehicle_id, rack_jcb_id=@rack_jcb_id, work_type=@work_type,
          vehicle_no=@vehicle_no, trips=@trips, per_trip_cm=@per_trip_cm, total_cm=@total_cm,
          uom=@uom, quantity=@quantity, qty_cm=@qty_cm, rate=@rate, amount=@amount,
          diesel_litres=@diesel_litres, diesel_amount=@diesel_amount, diesel_charged=@diesel_charged, date=@date, remarks=@remarks WHERE id=@id`
@@ -5250,19 +5315,37 @@ async function listExpenses(filter = {}) {
        ORDER BY e.date DESC, e.id DESC`
   ).all(params);
 }
-async function writeRackSaleChildLines(d, saleId, transporters, machines) {
+async function writeRackSaleChildLines(d, saleId, plantId, transporters, machines) {
   await d.prepare(`DELETE FROM rack_sale_transporters WHERE rack_sale_id = ?`).run(saleId);
   await d.prepare(`DELETE FROM rack_sale_machines WHERE rack_sale_id = ?`).run(saleId);
   const tStmt = d.prepare(
-    `INSERT INTO rack_sale_transporters (rack_sale_id, transporter_id, vehicle_no, basis, qty, rate, charge) VALUES (?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO rack_sale_transporters
+       (rack_sale_id, transporter_id, rack_vehicle_id, vehicle_no, basis, qty, rate, charge, diesel_litres, diesel_amount, diesel_charged)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   for (const t of transporters ?? []) {
-    if (!t.transporter_id) continue;
+    const transporterId = t.transporter_id ? Number(t.transporter_id) : 0;
+    const vehicleId = t.rack_vehicle_id ? Number(t.rack_vehicle_id) : null;
+    if (!transporterId && !vehicleId) continue;
     const basis = t.basis === "trip" || t.basis === "uom" ? t.basis : "flat";
     const qty = basis === "flat" ? 0 : Number(t.qty) || 0;
     const rate = basis === "flat" ? 0 : Number(t.rate) || 0;
     const charge = basis === "flat" ? roundMoney(Number(t.charge) || 0) : roundMoney(qty * rate);
-    await tStmt.run(saleId, t.transporter_id, properCase(t.vehicle_no || ""), basis, qty, rate, charge);
+    const diesel = await rackDiesel(d, plantId, t.diesel_litres);
+    const dieselCharged = diesel.litres && (t.diesel_charged ?? true) ? 1 : 0;
+    await tStmt.run(
+      saleId,
+      transporterId,
+      vehicleId,
+      properCase(t.vehicle_no || ""),
+      basis,
+      qty,
+      rate,
+      charge,
+      diesel.litres,
+      diesel.amount,
+      dieselCharged
+    );
   }
   const mStmt = d.prepare(
     `INSERT INTO rack_sale_machines (rack_sale_id, asset_id, basis, qty, rate, amount, outsource_id) VALUES (?, ?, ?, ?, ?, ?, ?)`
@@ -5280,8 +5363,12 @@ async function getSaleDetail(payload) {
   const sale = await d.prepare(`SELECT * FROM rack_sales WHERE id = ?`).get(payload.id);
   if (!sale) return null;
   sale.transporters = await d.prepare(
-    `SELECT rst.*, t.name AS transporter_name FROM rack_sale_transporters rst
-       JOIN transporters t ON t.id = rst.transporter_id WHERE rst.rack_sale_id = ? ORDER BY rst.id`
+    `SELECT rst.*, t.name AS transporter_name, rv.vehicle_no AS rack_vehicle_no,
+              COALESCE(t.name, rv.vehicle_no) AS carrier_name
+       FROM rack_sale_transporters rst
+       LEFT JOIN transporters t ON t.id = rst.transporter_id
+       LEFT JOIN rack_vehicles rv ON rv.id = rst.rack_vehicle_id
+       WHERE rst.rack_sale_id = ? ORDER BY rst.id`
   ).all(payload.id);
   sale.machines = await d.prepare(
     `SELECT rsm.*, a.name AS asset_name, o.name AS outsource_name FROM rack_sale_machines rsm
@@ -5332,7 +5419,7 @@ async function addSale(p) {
       remarks: p.remarks ?? ""
     });
     const saleId = Number(info.lastInsertRowid);
-    await writeRackSaleChildLines(d, saleId, p.transporters, p.machines);
+    await writeRackSaleChildLines(d, saleId, rack.plant_id, p.transporters, p.machines);
     return saleId;
   });
   return await d.prepare(`SELECT * FROM rack_sales WHERE id = ?`).get(id);
@@ -5342,6 +5429,7 @@ async function updateSale(p) {
   if (!p.id) throw new Error("Missing sale id.");
   const old = await d.prepare(`SELECT * FROM rack_sales WHERE id = ?`).get(p.id);
   if (!old) throw new Error("Sale not found.");
+  const rackRow = await d.prepare(`SELECT plant_id FROM racks WHERE id = ?`).get(old.rack_id);
   const { qtyCm, amount } = resolveSale(p, await rackPlantFactors(d, old.rack_id));
   const available = await rackSellable(d, old.rack_id, p.product_name, p.id);
   if (qtyCm > available)
@@ -5368,7 +5456,7 @@ async function updateSale(p) {
       date: p.date,
       remarks: p.remarks ?? ""
     });
-    await writeRackSaleChildLines(d, p.id, p.transporters, p.machines);
+    await writeRackSaleChildLines(d, p.id, rackRow?.plant_id ?? null, p.transporters, p.machines);
   });
   return await d.prepare(`SELECT * FROM rack_sales WHERE id = ?`).get(p.id);
 }
@@ -5575,6 +5663,14 @@ var PARTY_TABLE = {
   transporter: "transporters",
   outsource: "outsource"
 };
+var PAYMENT_TABLES = {
+  customer: "customers",
+  supplier: "suppliers",
+  transporter: "transporters",
+  outsource: "outsource",
+  rack_vehicle: "rack_vehicles",
+  rack_jcb: "rack_jcbs"
+};
 function roundMoney2(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
@@ -5605,6 +5701,16 @@ async function partyName(partyType, partyId) {
     if (!row2) throw new Error("Machine not found.");
     return row2.name;
   }
+  if (partyType === "rack_vehicle") {
+    const row2 = await d.prepare(`SELECT vehicle_no AS name FROM rack_vehicles WHERE id = ?`).get(partyId);
+    if (!row2) throw new Error("Vehicle not found.");
+    return row2.name;
+  }
+  if (partyType === "rack_jcb") {
+    const row2 = await d.prepare(`SELECT name FROM rack_jcbs WHERE id = ?`).get(partyId);
+    if (!row2) throw new Error("JCB not found.");
+    return row2.name;
+  }
   const table = PARTY_TABLE[partyType];
   if (!table) throw new Error("Invalid party type.");
   const row = await d.prepare(`SELECT name FROM ${table} WHERE id = ?`).get(partyId);
@@ -5622,7 +5728,7 @@ async function companyLinks(companyId) {
 }
 async function addPayment(p) {
   const d = getDb();
-  if (!PARTY_TABLE[p.party_type]) throw new Error("Invalid party type.");
+  if (!PAYMENT_TABLES[p.party_type]) throw new Error("Invalid party type.");
   if (p.direction !== "in" && p.direction !== "out") throw new Error("Invalid payment direction.");
   if (!(Number(p.amount) > 0)) throw new Error("Amount must be greater than 0.");
   await partyName(p.party_type, p.party_id);
@@ -5663,11 +5769,14 @@ async function listPayments(filter = {}) {
   }
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
   return await d.prepare(
-    `SELECT pay.*, COALESCE(c.name, s.name, t.name) AS party_name
+    `SELECT pay.*, COALESCE(c.name, s.name, t.name, o.name, rv.vehicle_no, rj.name) AS party_name
        FROM payments pay
        LEFT JOIN customers c ON pay.party_type='customer' AND c.id = pay.party_id
        LEFT JOIN suppliers s ON pay.party_type='supplier' AND s.id = pay.party_id
        LEFT JOIN transporters t ON pay.party_type='transporter' AND t.id = pay.party_id
+       LEFT JOIN outsource o ON pay.party_type='outsource' AND o.id = pay.party_id
+       LEFT JOIN rack_vehicles rv ON pay.party_type='rack_vehicle' AND rv.id = pay.party_id
+       LEFT JOIN rack_jcbs rj ON pay.party_type='rack_jcb' AND rj.id = pay.party_id
        ${clause}
        ORDER BY pay.date DESC, pay.id DESC`
   ).all(params);
@@ -5715,6 +5824,25 @@ async function buildEntries(partyType, partyId) {
           debit: x.amount,
           credit: 0
         });
+    const runl = await d.prepare(
+      `SELECT ru.unloading_no, ru.date, ru.created_at, COALESCE(ru.amount,0) AS amount, ru.qty_cm,
+                COALESCE(rv.vehicle_no, rj.name, t.name, 'Carrier') AS who
+         FROM rack_unloadings ru
+         LEFT JOIN rack_vehicles rv ON rv.id = ru.rack_vehicle_id
+         LEFT JOIN rack_jcbs rj ON rj.id = ru.rack_jcb_id
+         LEFT JOIN transporters t ON t.id = ru.transporter_id
+         WHERE ru.rack_id = ?`
+    ).all(partyId);
+    for (const x of runl)
+      if (x.amount > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Unloading \u2014 ${x.qty_cm} m\xB3 (${x.who})`,
+          ref: x.unloading_no,
+          debit: x.amount,
+          credit: 0
+        });
     const expenses = await d.prepare(
       `SELECT expense_type, amount, date, created_at, remarks FROM rack_expenses WHERE rack_id = ?`
     ).all(partyId);
@@ -5744,9 +5872,12 @@ async function buildEntries(partyType, partyId) {
           credit: x.amount
         });
     const saleTrans = await d.prepare(
-      `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rst.charge,0) AS charge, t.name AS tname
+      `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rst.charge,0) AS charge,
+                COALESCE(t.name, rv.vehicle_no, 'Carrier') AS tname
          FROM rack_sale_transporters rst JOIN rack_sales rs ON rs.id = rst.rack_sale_id
-         JOIN transporters t ON t.id = rst.transporter_id WHERE rs.rack_id = ?`
+         LEFT JOIN transporters t ON t.id = rst.transporter_id
+         LEFT JOIN rack_vehicles rv ON rv.id = rst.rack_vehicle_id
+         WHERE rs.rack_id = ?`
     ).all(partyId);
     for (const x of saleTrans)
       if (x.charge > 0)
@@ -5817,7 +5948,11 @@ async function buildEntries(partyType, partyId) {
           (SELECT COALESCE(SUM(amount),0) FROM rack_sales WHERE rack_id=r.id)
             - (SELECT COALESCE(SUM(amount),0) FROM rack_loadings WHERE rack_id=r.id)
             - (SELECT COALESCE(SUM(amount),0) FROM rack_unloadings WHERE rack_id=r.id)
-            - (SELECT COALESCE(SUM(amount),0) FROM rack_expenses WHERE rack_id=r.id) AS profit,
+            - (SELECT COALESCE(SUM(amount),0) FROM rack_expenses WHERE rack_id=r.id)
+            - (SELECT COALESCE(SUM(rst.charge),0) FROM rack_sale_transporters rst
+                 JOIN rack_sales rs ON rs.id=rst.rack_sale_id WHERE rs.rack_id=r.id)
+            - (SELECT COALESCE(SUM(rsm.amount),0) FROM rack_sale_machines rsm
+                 JOIN rack_sales rs ON rs.id=rsm.rack_sale_id WHERE rs.rack_id=r.id) AS profit,
           (SELECT COALESCE(SUM(total_cm),0) FROM rack_loadings WHERE rack_id=r.id AND plant_id=@pid) AS plant_cm,
           (SELECT COALESCE(SUM(total_cm),0) FROM rack_loadings WHERE rack_id=r.id) AS total_cm
          FROM racks r
@@ -6410,11 +6545,12 @@ async function buildEntries(partyType, partyId) {
           credit: x.charge
         });
     const rstin = await d.prepare(
-      `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rst.charge,0) AS charge, COALESCE(rst.vehicle_no,'') AS vno
+      `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rst.charge,0) AS charge, COALESCE(rst.vehicle_no,'') AS vno,
+                COALESCE(rst.diesel_amount,0) AS diesel, COALESCE(rst.diesel_charged,0) AS diesel_charged
          FROM rack_sale_transporters rst JOIN rack_sales rs ON rs.id = rst.rack_sale_id
          WHERE rst.transporter_id = ?`
     ).all(partyId);
-    for (const x of rstin)
+    for (const x of rstin) {
       if (x.charge > 0)
         entries.push({
           date: x.date,
@@ -6424,6 +6560,16 @@ async function buildEntries(partyType, partyId) {
           debit: 0,
           credit: x.charge
         });
+      if (x.diesel > 0 && x.diesel_charged)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Diesel issued (deduction)`,
+          ref: x.sale_no,
+          debit: x.diesel,
+          credit: 0
+        });
+    }
     const dsl = await d.prepare(
       `SELECT issue_no, date, created_at, COALESCE(litres,0) AS litres, COALESCE(amount,0) AS amount
          FROM diesel_issues WHERE transporter_id = ? AND charged = 1 AND COALESCE(amount,0) > 0`
@@ -6437,6 +6583,68 @@ async function buildEntries(partyType, partyId) {
         debit: x.amount,
         credit: 0
       });
+  }
+  if (partyType === "rack_vehicle") {
+    const unl = await d.prepare(
+      `SELECT ru.unloading_no, ru.date, ru.created_at, COALESCE(ru.amount,0) AS amount,
+                COALESCE(ru.diesel_amount,0) AS diesel, COALESCE(ru.diesel_charged,0) AS diesel_charged,
+                ru.qty_cm, ru.trips, r.rack_no
+         FROM rack_unloadings ru JOIN racks r ON r.id = ru.rack_id WHERE ru.rack_vehicle_id = ?`
+    ).all(partyId);
+    for (const x of unl) {
+      if (x.amount > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Unloading \u2014 ${x.trips} trips, ${x.qty_cm} m\xB3 \xB7 Rack ${x.rack_no}`,
+          ref: x.unloading_no,
+          debit: 0,
+          credit: x.amount
+        });
+      if (x.diesel > 0 && x.diesel_charged)
+        entries.push({ date: x.date, created_at: x.created_at, particulars: `Diesel issued (deduction)`, ref: x.unloading_no, debit: x.diesel, credit: 0 });
+    }
+    const st = await d.prepare(
+      `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rst.charge,0) AS charge,
+                COALESCE(rst.diesel_amount,0) AS diesel, COALESCE(rst.diesel_charged,0) AS diesel_charged, r.rack_no
+         FROM rack_sale_transporters rst JOIN rack_sales rs ON rs.id = rst.rack_sale_id
+         JOIN racks r ON r.id = rs.rack_id WHERE rst.rack_vehicle_id = ?`
+    ).all(partyId);
+    for (const x of st) {
+      if (x.charge > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Sale transport \xB7 Rack ${x.rack_no}`,
+          ref: x.sale_no,
+          debit: 0,
+          credit: x.charge
+        });
+      if (x.diesel > 0 && x.diesel_charged)
+        entries.push({ date: x.date, created_at: x.created_at, particulars: `Diesel issued (deduction)`, ref: x.sale_no, debit: x.diesel, credit: 0 });
+    }
+  }
+  if (partyType === "rack_jcb") {
+    const wLabel = { unloading: "unloading (per wagon)", loading: "loading (per tipper)", other: "other work (per hour)" };
+    const unl = await d.prepare(
+      `SELECT ru.unloading_no, ru.date, ru.created_at, COALESCE(ru.amount,0) AS amount,
+                COALESCE(ru.diesel_amount,0) AS diesel, COALESCE(ru.diesel_charged,0) AS diesel_charged,
+                ru.qty_cm, ru.trips, ru.work_type, r.rack_no
+         FROM rack_unloadings ru JOIN racks r ON r.id = ru.rack_id WHERE ru.rack_jcb_id = ?`
+    ).all(partyId);
+    for (const x of unl) {
+      if (x.amount > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `JCB ${wLabel[x.work_type ?? "unloading"] ?? "work"} \u2014 ${x.trips} \xB7 Rack ${x.rack_no}`,
+          ref: x.unloading_no,
+          debit: 0,
+          credit: x.amount
+        });
+      if (x.diesel > 0 && x.diesel_charged)
+        entries.push({ date: x.date, created_at: x.created_at, particulars: `Diesel issued (deduction)`, ref: x.unloading_no, debit: x.diesel, credit: 0 });
+    }
   }
   const payments = await getDb().prepare(`SELECT * FROM payments WHERE party_type = ? AND party_id = ?`).all(partyType, partyId);
   for (const p of payments) {
@@ -6564,6 +6772,12 @@ async function getPartyBalances(payload) {
     parties = await d.prepare(`SELECT id, name FROM businesses ORDER BY name`).all();
   } else if (payload.party_type === "outsource") {
     parties = await d.prepare(`SELECT id, name FROM outsource ORDER BY name`).all();
+  } else if (payload.party_type === "rack_vehicle") {
+    const clause = payload.plant_id ? `WHERE ${plantScopeSql("t", "rack_vehicle")}` : "";
+    parties = await d.prepare(`SELECT t.id, t.vehicle_no AS name FROM rack_vehicles t ${clause} ORDER BY t.vehicle_no`).all(payload.plant_id ? { plant_id: payload.plant_id } : {});
+  } else if (payload.party_type === "rack_jcb") {
+    const clause = payload.plant_id ? `WHERE ${plantScopeSql("t", "rack_jcb")}` : "";
+    parties = await d.prepare(`SELECT t.id, t.name FROM rack_jcbs t ${clause} ORDER BY t.name`).all(payload.plant_id ? { plant_id: payload.plant_id } : {});
   } else if (payload.party_type === "machine") {
     const clause = payload.plant_id ? `WHERE EXISTS (SELECT 1 FROM asset_plants ap WHERE ap.asset_id = a.id AND ap.plant_id = @plant_id)
            OR NOT EXISTS (SELECT 1 FROM asset_plants ap2 WHERE ap2.asset_id = a.id)` : "";

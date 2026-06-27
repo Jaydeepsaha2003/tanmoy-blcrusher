@@ -66141,6 +66141,17 @@ function RackDetail() {
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: () => api.customers.list() });
   const { data: assets = [] } = useQuery({ queryKey: ["assets"], queryFn: () => api.assets.list() });
   const { data: outsourceVendors = [] } = useQuery({ queryKey: ["outsource"], queryFn: () => api.outsource.list() });
+  const rackPlantId = data?.rack?.plant_id ?? void 0;
+  const { data: rackVehicles = [] } = useQuery({
+    queryKey: ["rackVehicles", rackPlantId],
+    queryFn: () => api.rackVehicles.list(rackPlantId),
+    enabled: !!data
+  });
+  const { data: rackJcbs = [] } = useQuery({
+    queryKey: ["rackJcbs", rackPlantId],
+    queryFn: () => api.rackJcbs.list(rackPlantId),
+    enabled: !!data
+  });
   const { data: expenseTypes = [] } = useQuery({
     queryKey: ["expenseTypes"],
     queryFn: api.racks.expenseTypes
@@ -66179,6 +66190,9 @@ function RackDetail() {
     qc2.invalidateQueries({ queryKey: ["finished-available"] });
     qc2.invalidateQueries({ queryKey: ["movements"] });
     qc2.invalidateQueries({ queryKey: ["transporters"] });
+    qc2.invalidateQueries({ queryKey: ["rackVehicles"] });
+    qc2.invalidateQueries({ queryKey: ["rackJcbs"] });
+    qc2.invalidateQueries({ queryKey: ["diesel"] });
     qc2.invalidateQueries({ queryKey: ["expenseTypes"] });
     qc2.invalidateQueries({ queryKey: ["dashboard"] });
     qc2.invalidateQueries({ queryKey: ["ledger"] });
@@ -66300,14 +66314,17 @@ function RackDetail() {
     const first = products.find((p2) => p2.transit_shortage_cm > 0);
     setUnloadForm({
       rack_id: rackId,
+      carrier_kind: "vehicle",
+      rack_vehicle_id: rackVehicles[0]?.id ?? "",
+      rack_jcb_id: rackJcbs[0]?.id ?? "",
+      work_type: "unloading",
       product_name: first?.product_name || "",
-      transporter_id: transporters[0]?.id ?? null,
-      vehicle_no: "",
       trips: "",
-      per_trip_cm: "",
-      rate: "",
+      per_trip_cm: rackVehicles[0]?.cap_cm ?? "",
+      total_cm_in: "",
+      rate: rackVehicles[0]?.rate_per_trip ?? "",
       diesel_litres: "",
-      diesel_charged: false,
+      diesel_charged: true,
       date: today(),
       remarks: ""
     });
@@ -66335,19 +66352,44 @@ function RackDetail() {
     setSaleForm({
       ...src,
       rate: src.rate ?? "",
-      transporters: (src.transporters ?? []).map((t3) => ({ transporter_id: t3.transporter_id, vehicle_no: t3.vehicle_no, basis: t3.basis || "flat", qty: t3.qty || "", rate: t3.rate || "", charge: t3.charge })),
+      transporters: (src.transporters ?? []).map((t3) => ({
+        carrier: t3.rack_vehicle_id ? `v:${t3.rack_vehicle_id}` : t3.transporter_id ? `t:${t3.transporter_id}` : "",
+        vehicle_no: t3.vehicle_no,
+        basis: t3.basis || "flat",
+        qty: t3.qty || "",
+        rate: t3.rate || "",
+        charge: t3.charge,
+        diesel_litres: t3.diesel_litres ?? "",
+        diesel_charged: t3.diesel_charged == null ? true : !!t3.diesel_charged
+      })),
       machines: (src.machines ?? []).map((m2) => ({ asset_id: m2.asset_id, basis: m2.basis, qty: m2.qty, rate: m2.rate, outsource_id: m2.outsource_id }))
     });
   }
+  const carrierOptions = [
+    ...transporters.map((t3) => ({ value: `t:${t3.id}`, label: `🚚 ${t3.name}` })),
+    ...rackVehicles.map((v2) => ({ value: `v:${v2.id}`, label: `🚛 ${v2.vehicle_no}${v2.owner_name ? ` · ${v2.owner_name}` : ""}` }))
+  ];
   const sTLines = saleForm?.transporters ?? [];
   function addSaleTransporter() {
-    setSaleForm({ ...saleForm, transporters: [...sTLines, { transporter_id: 0, vehicle_no: "", basis: "flat", qty: "", rate: "", charge: "" }] });
+    setSaleForm({ ...saleForm, transporters: [...sTLines, { carrier: "", vehicle_no: "", basis: "flat", qty: "", rate: "", charge: "", diesel_litres: "", diesel_charged: true }] });
   }
   function setSaleTransporter(i2, patch) {
     setSaleForm({ ...saleForm, transporters: sTLines.map((t3, idx) => idx === i2 ? { ...t3, ...patch } : t3) });
   }
   function delSaleTransporter(i2) {
     setSaleForm({ ...saleForm, transporters: sTLines.filter((_2, idx) => idx !== i2) });
+  }
+  function setSaleCarrier(i2, carrier) {
+    const patch = { carrier };
+    if (carrier.startsWith("v:")) {
+      const v2 = rackVehicles.find((x2) => x2.id === Number(carrier.slice(2)));
+      if (v2) {
+        patch.vehicle_no = v2.vehicle_no;
+        if (sTLines[i2]?.basis === "flat") patch.basis = "trip";
+        if (v2.rate_per_trip != null && !sTLines[i2]?.rate) patch.rate = v2.rate_per_trip;
+      }
+    }
+    setSaleTransporter(i2, patch);
   }
   const sMLines = saleForm?.machines ?? [];
   function addSaleMachine() {
@@ -66360,11 +66402,15 @@ function RackDetail() {
     setSaleForm({ ...saleForm, machines: sMLines.filter((_2, idx) => idx !== i2) });
   }
   const saleLineCharge = (t3) => t3.basis === "trip" || t3.basis === "uom" ? (Number(t3.qty) || 0) * (Number(t3.rate) || 0) : Number(t3.charge) || 0;
+  const jcbRate = (j2, wt2) => !j2 ? "" : wt2 === "loading" ? j2.rate_loading ?? "" : wt2 === "other" ? j2.rate_other ?? "" : j2.rate_unloading ?? "";
   const loadingTotal = loadingForm ? (Number(loadingForm.trips) || 0) * (Number(loadingForm.per_trip_cm) || 0) : 0;
   const loadingAmount = loadingForm && loadingForm.rate !== "" ? loadingTotal * Number(loadingForm.rate) : null;
-  const unloadTotal = unloadForm ? (Number(unloadForm.trips) || 0) * (Number(unloadForm.per_trip_cm) || 0) : 0;
-  const unloadAmount = unloadForm && unloadForm.rate !== "" ? unloadTotal * Number(unloadForm.rate) : null;
+  const unloadIsVehicle = unloadForm?.carrier_kind === "vehicle";
+  const unloadTotal = unloadForm ? unloadIsVehicle ? (Number(unloadForm.trips) || 0) * (Number(unloadForm.per_trip_cm) || 0) : Number(unloadForm.total_cm_in) || 0 : 0;
+  const unloadCount = unloadForm ? Number(unloadForm.trips) || 0 : 0;
+  const unloadAmount = unloadForm && unloadForm.rate !== "" ? unloadCount * Number(unloadForm.rate) : null;
   const unloadAvailable = unloadForm ? (products.find((p2) => p2.product_name === unloadForm.product_name)?.transit_shortage_cm ?? 0) + (unloadForm.id ? unloadings.find((u2) => u2.id === unloadForm.id)?.total_cm ?? 0 : 0) : 0;
+  const jcbCountLabel = unloadForm?.work_type === "loading" ? "Tipper loads" : unloadForm?.work_type === "other" ? "Hours" : "Wagons";
   const saleQtyCm = saleForm ? toCm(Number(saleForm.quantity) || 0, saleForm.uom) : 0;
   const saleAmount = saleForm && saleForm.rate !== "" ? (Number(saleForm.quantity) || 0) * Number(saleForm.rate) : null;
   const saleAvailable = saleForm ? (products.find((p2) => p2.product_name === saleForm.product_name)?.balance_cm ?? 0) + (saleForm.id ? sales.find((s2) => s2.id === saleForm.id)?.qty_cm ?? 0 : 0) : 0;
@@ -66533,13 +66579,28 @@ function RackDetail() {
           {
             icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Receipt, { size: 16 }),
             title: "Rack Expenses",
-            action: /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { size: "sm", variant: "secondary", onClick: () => setExpenseForm({ rack_id: rackId, expense_type: "", amount: "", date: today(), remarks: "" }), disabled: rack.status === "closed", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 15 }),
-              " Add Expense"
+            action: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { size: "sm", variant: "secondary", onClick: () => setExpenseForm({ rack_id: rackId, expense_type: "", amount: "", date: today(), remarks: "" }), disabled: isClosed, children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 15 }),
+                " Add Expense"
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                Button,
+                {
+                  size: "sm",
+                  onClick: openNewUnloading,
+                  disabled: isClosed || rack.status === "loading" || !(rackVehicles.length || rackJcbs.length) || !products.some((p2) => p2.transit_shortage_cm > 0),
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(PackageOpen, { size: 15 }),
+                    " Add Unloading"
+                  ]
+                }
+              )
             ] })
           }
         ),
-        expenses.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No expenses recorded for this rack (railway freight, loading labour, etc.)." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
+        !(rackVehicles.length || rackJcbs.length) && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mb-2 text-xs text-warning", children: "Add vehicles / JCBs first (Rail Dispatch → Vehicles & JCB) to record an unloading." }),
+        expenses.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No direct expenses yet (railway freight, demurrage, labour…). Sale transport & machine costs are added on each sale and counted in the rack's cost." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Date" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Expense Type" }),
@@ -66557,74 +66618,71 @@ function RackDetail() {
               /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => removeExpense(x2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
             ] })
           ] }, x2.id)) })
-        ] })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-6", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          SectionTitle,
-          {
-            icon: /* @__PURE__ */ jsxRuntimeExports.jsx(PackageOpen, { size: 16 }),
-            title: "Unloadings — Received at Destination",
-            action: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              Button,
-              {
-                size: "sm",
-                variant: "secondary",
-                onClick: openNewUnloading,
-                disabled: isClosed || rack.status === "loading" || !products.some((p2) => p2.transit_shortage_cm > 0),
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 15 }),
-                  " Add Unloading"
-                ]
-              }
-            )
-          }
-        ),
-        rack.status === "loading" ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mb-2 text-xs text-muted-foreground", children: [
-          "Unloading opens once the rack leaves the plant (mark ",
-          /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: "In Transit" }),
-          " / ",
-          /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: "Reached" }),
-          "). Any quantity loaded but never unloaded is treated as transit shortage."
-        ] }) : null,
-        unloadings.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "Nothing unloaded yet. Record what physically arrives at the destination — the gap from the loaded quantity is the transport shortage." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "No" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Date" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Product" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Transporter / Vehicle" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Trips" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Per Trip (m³)" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Total (m³)" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Rate" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Amount" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
-          ] }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: unloadings.map((u2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-mono text-xs", children: u2.unloading_no }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: fmtDate(u2.date) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: u2.product_name }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-muted-foreground", children: [
-              u2.transporter_name ?? "-",
-              u2.vehicle_no ? ` · ${u2.vehicle_no}` : ""
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtQty(u2.trips) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtQty(u2.per_trip_cm) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right font-semibold", children: fmtQty(u2.total_cm) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: u2.rate == null ? "-" : fmtMoney(u2.rate) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtMoney(u2.amount) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => setUnloadForm({
-                ...u2,
-                trips: u2.trips || "",
-                per_trip_cm: u2.per_trip_cm || "",
-                rate: u2.rate ?? "",
-                diesel_litres: u2.diesel_litres ?? "",
-                diesel_charged: !!u2.diesel_charged
-              }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => removeUnloading(u2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
-            ] })
-          ] }, u2.id)) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-6", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("h3", { className: "mb-2.5 flex items-center gap-2 text-sm font-semibold", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(PackageOpen, { size: 16 }),
+            " Unloadings — Received at Destination (JCB / Tipper)"
+          ] }),
+          rack.status === "loading" ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mb-2 text-xs text-muted-foreground", children: [
+            "Unloading opens once the rack leaves the plant (mark ",
+            /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: "In Transit" }),
+            " / ",
+            /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: "Reached" }),
+            "). Quantity loaded but never unloaded is treated as transit shortage."
+          ] }) : null,
+          unloadings.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "Nothing unloaded yet. Use “Add Unloading” to record a JCB or Tipper vehicle bringing material off the rake — the charge posts to that machine's ledger." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "No" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Date" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Product" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "JCB / Vehicle" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Count" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Unloaded (m³)" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Rate" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Amount" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Diesel" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
+            ] }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: unloadings.map((u2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-mono text-xs", children: u2.unloading_no }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: fmtDate(u2.date) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: u2.product_name }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-muted-foreground", children: [
+                u2.resource_name ?? u2.transporter_name ?? "-",
+                u2.resource_type === "jcb" && u2.work_type ? /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "muted", className: "ml-1.5", children: u2.work_type }) : u2.resource_type === "vehicle" ? /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "muted", className: "ml-1.5", children: "tipper" }) : null
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtQty(u2.trips) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right font-semibold", children: fmtQty(u2.qty_cm) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: u2.rate == null ? "-" : fmtMoney(u2.rate) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtMoney(u2.amount) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right text-muted-foreground", children: [
+                u2.diesel_amount ? fmtMoney(u2.diesel_amount) : "-",
+                u2.diesel_litres ? ` (${fmtQty(u2.diesel_litres)} L)` : ""
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => setUnloadForm({
+                  rack_id: rackId,
+                  id: u2.id,
+                  unloading_no: u2.unloading_no,
+                  carrier_kind: u2.rack_jcb_id ? "jcb" : "vehicle",
+                  rack_vehicle_id: u2.rack_vehicle_id ?? (rackVehicles[0]?.id ?? ""),
+                  rack_jcb_id: u2.rack_jcb_id ?? (rackJcbs[0]?.id ?? ""),
+                  work_type: u2.work_type || "unloading",
+                  product_name: u2.product_name,
+                  trips: u2.trips || "",
+                  per_trip_cm: u2.per_trip_cm || "",
+                  total_cm_in: u2.rack_jcb_id ? u2.qty_cm || "" : "",
+                  rate: u2.rate ?? "",
+                  diesel_litres: u2.diesel_litres ?? "",
+                  diesel_charged: !!u2.diesel_charged,
+                  date: u2.date,
+                  remarks: u2.remarks
+                }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => removeUnloading(u2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+              ] })
+            ] }, u2.id)) })
+          ] })
         ] })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-6", children: [
@@ -66806,45 +66864,109 @@ function RackDetail() {
       {
         open: true,
         onClose: () => setUnloadForm(null),
-        title: unloadForm.id ? `Edit ${unloadForm.unloading_no}` : "Add Unloading (Yard → Destination)",
+        title: unloadForm.id ? `Edit ${unloadForm.unloading_no}` : "Add Unloading (JCB / Tipper)",
         width: "max-w-2xl",
         children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex gap-2", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              Button,
+              {
+                size: "sm",
+                variant: unloadForm.carrier_kind === "vehicle" ? "default" : "outline",
+                disabled: !rackVehicles.length,
+                onClick: () => {
+                  const v2 = rackVehicles.find((x2) => x2.id === Number(unloadForm.rack_vehicle_id)) ?? rackVehicles[0];
+                  setUnloadForm({ ...unloadForm, carrier_kind: "vehicle", rack_vehicle_id: v2?.id ?? "", per_trip_cm: v2?.cap_cm ?? unloadForm.per_trip_cm, rate: v2?.rate_per_trip ?? unloadForm.rate });
+                },
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Truck, { size: 15 }),
+                  " Tipper Vehicle"
+                ]
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              Button,
+              {
+                size: "sm",
+                variant: unloadForm.carrier_kind === "jcb" ? "default" : "outline",
+                disabled: !rackJcbs.length,
+                onClick: () => {
+                  const j2 = rackJcbs.find((x2) => x2.id === Number(unloadForm.rack_jcb_id)) ?? rackJcbs[0];
+                  setUnloadForm({ ...unloadForm, carrier_kind: "jcb", rack_jcb_id: j2?.id ?? "", rate: jcbRate(j2, unloadForm.work_type) });
+                },
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Forklift, { size: 15 }),
+                  " JCB"
+                ]
+              }
+            )
+          ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
               SearchSelect,
               {
                 value: unloadForm.product_name,
                 onChange: (v2) => setUnloadForm({ ...unloadForm, product_name: v2 }),
-                options: products.filter((p2) => p2.transit_shortage_cm > 0 || p2.product_name === unloadForm.product_name).map((p2) => ({
-                  value: p2.product_name,
-                  label: `${p2.product_name} (${fmtQty(p2.transit_shortage_cm)} m³ on rake)`
-                })),
+                options: products.filter((p2) => p2.transit_shortage_cm > 0 || p2.product_name === unloadForm.product_name).map((p2) => ({ value: p2.product_name, label: `${p2.product_name} (${fmtQty(p2.transit_shortage_cm)} m³ on rake)` })),
                 placeholder: "Select product…"
               }
             ) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Transporter", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-              SearchSelect,
-              {
-                value: unloadForm.transporter_id ?? "",
-                onChange: (v2) => setUnloadForm({ ...unloadForm, transporter_id: v2 ? Number(v2) : null }),
-                options: [
-                  { value: "", label: "— Select —" },
-                  ...transporters.map((t3) => ({ value: t3.id, label: t3.name }))
-                ]
-              }
-            ) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Vehicle No.", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: unloadForm.vehicle_no || "", onChange: (e3) => setUnloadForm({ ...unloadForm, vehicle_no: e3.target.value }), placeholder: "e.g. JH-01-AB-1234" }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "No. of Trips", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "1", value: unloadForm.trips, onChange: (e3) => setUnloadForm({ ...unloadForm, trips: e3.target.value }) }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Per Trip (m³)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: unloadForm.per_trip_cm, onChange: (e3) => setUnloadForm({ ...unloadForm, per_trip_cm: e3.target.value }) }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Total Unloaded (m³)", hint: "= trips × per trip", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: fmtQty(unloadTotal), disabled: true }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Rate per m³ (transport)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: unloadForm.rate, onChange: (e3) => setUnloadForm({ ...unloadForm, rate: e3.target.value }), placeholder: "Optional" }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Diesel (litres, optional)", hint: Number(unloadForm.diesel_litres) > 0 ? `In stock: ${fmtQty(unloadDieselQuote?.available ?? 0)} L` : "Drawn from the rack’s source-plant diesel stock (FIFO)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: unloadForm.diesel_litres, onChange: (e3) => setUnloadForm({ ...unloadForm, diesel_litres: e3.target.value }) }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Diesel Cost (FIFO)", hint: "Valued at the oldest stock's rate first", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: Number(unloadForm.diesel_litres) > 0 ? `₹${fmtMoney(unloadDieselQuote?.amount ?? 0)}` : "—", disabled: true }) }),
-            Number(unloadForm.diesel_litres) > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex cursor-pointer items-center gap-2 text-sm", children: [
+            unloadForm.carrier_kind === "vehicle" ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Tipper Vehicle", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                SearchSelect,
+                {
+                  value: unloadForm.rack_vehicle_id || "",
+                  onChange: (v2) => {
+                    const veh = rackVehicles.find((x2) => x2.id === Number(v2));
+                    setUnloadForm({ ...unloadForm, rack_vehicle_id: Number(v2), per_trip_cm: veh?.cap_cm ?? unloadForm.per_trip_cm, rate: veh?.rate_per_trip ?? unloadForm.rate });
+                  },
+                  options: rackVehicles.map((v2) => ({ value: v2.id, label: `${v2.vehicle_no}${v2.owner_name ? ` · ${v2.owner_name}` : ""}` })),
+                  placeholder: "Select vehicle…"
+                }
+              ) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "No. of Trips", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "1", value: unloadForm.trips, onChange: (e3) => setUnloadForm({ ...unloadForm, trips: e3.target.value }) }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Per Trip (m³)", hint: "From the vehicle's capacity (editable)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: unloadForm.per_trip_cm, onChange: (e3) => setUnloadForm({ ...unloadForm, per_trip_cm: e3.target.value }) }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Rate per Trip (₹)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: unloadForm.rate, onChange: (e3) => setUnloadForm({ ...unloadForm, rate: e3.target.value }), placeholder: "Optional" }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Total Unloaded (m³)", hint: "= trips × per trip", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: fmtQty(unloadTotal), disabled: true }) })
+            ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "JCB", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                SearchSelect,
+                {
+                  value: unloadForm.rack_jcb_id || "",
+                  onChange: (v2) => {
+                    const j2 = rackJcbs.find((x2) => x2.id === Number(v2));
+                    setUnloadForm({ ...unloadForm, rack_jcb_id: Number(v2), rate: jcbRate(j2, unloadForm.work_type) });
+                  },
+                  options: rackJcbs.map((j2) => ({ value: j2.id, label: `${j2.name}${j2.owner_name ? ` · ${j2.owner_name}` : ""}` })),
+                  placeholder: "Select JCB…"
+                }
+              ) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Type of Work", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                SearchSelect,
+                {
+                  value: unloadForm.work_type,
+                  onChange: (v2) => {
+                    const j2 = rackJcbs.find((x2) => x2.id === Number(unloadForm.rack_jcb_id));
+                    setUnloadForm({ ...unloadForm, work_type: v2, rate: jcbRate(j2, v2) });
+                  },
+                  options: [
+                    { value: "unloading", label: "JCB Unloading (per wagon)" },
+                    { value: "loading", label: "JCB Loading (per tipper load)" },
+                    { value: "other", label: "Other Work (per hour)" }
+                  ]
+                }
+              ) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: jcbCountLabel, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: unloadForm.trips, onChange: (e3) => setUnloadForm({ ...unloadForm, trips: e3.target.value }) }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Rate (₹)", hint: "From the JCB's work-type rate (editable)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: unloadForm.rate, onChange: (e3) => setUnloadForm({ ...unloadForm, rate: e3.target.value }), placeholder: "Optional" }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Unloaded (m³)", hint: "Material freed off the rake — drives the sellable balance", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: unloadForm.total_cm_in, onChange: (e3) => setUnloadForm({ ...unloadForm, total_cm_in: e3.target.value }), placeholder: "0 for 'other work'" }) })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Diesel (litres, optional)", hint: Number(unloadForm.diesel_litres) > 0 ? `In stock: ${fmtQty(unloadDieselQuote?.available ?? 0)} L · ₹${fmtMoney(unloadDieselQuote?.amount ?? 0)}` : "Drawn from the rack’s source-plant diesel stock (FIFO)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: unloadForm.diesel_litres, onChange: (e3) => setUnloadForm({ ...unloadForm, diesel_litres: e3.target.value }) }) }),
+            Number(unloadForm.diesel_litres) > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sm:col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex cursor-pointer items-center gap-2 text-sm", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx("input", { type: "checkbox", className: "h-4 w-4", checked: !!unloadForm.diesel_charged, onChange: (e3) => setUnloadForm({ ...unloadForm, diesel_charged: e3.target.checked }) }),
               "Charge this diesel (",
               `₹${fmtMoney(unloadDieselQuote?.amount ?? 0)}`,
-              ") to the transporter"
+              ") to the ",
+              unloadForm.carrier_kind === "jcb" ? "JCB" : "vehicle"
             ] }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: unloadForm.date, onChange: (e3) => setUnloadForm({ ...unloadForm, date: e3.target.value }) }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: unloadForm.remarks || "", onChange: (e3) => setUnloadForm({ ...unloadForm, remarks: e3.target.value }) }) })
@@ -66859,7 +66981,7 @@ function RackDetail() {
               unloadTotal > unloadAvailable && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ml-2 font-medium text-destructive", children: "— more than was loaded!" })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-              "Transport bill: ",
+              "Charge: ",
               /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: unloadAmount == null ? "—" : fmtMoney(unloadAmount) })
             ] })
           ] }),
@@ -66869,15 +66991,24 @@ function RackDetail() {
               Button,
               {
                 onClick: () => saveUnloading.mutate({
-                  ...unloadForm,
-                  trips: Number(unloadForm.trips) || 0,
-                  per_trip_cm: Number(unloadForm.per_trip_cm) || 0,
+                  id: unloadForm.id,
+                  rack_id: rackId,
+                  product_name: unloadForm.product_name,
+                  rack_vehicle_id: unloadForm.carrier_kind === "vehicle" ? Number(unloadForm.rack_vehicle_id) : null,
+                  rack_jcb_id: unloadForm.carrier_kind === "jcb" ? Number(unloadForm.rack_jcb_id) : null,
+                  work_type: unloadForm.carrier_kind === "jcb" ? unloadForm.work_type : null,
+                  transporter_id: null,
+                  vehicle_no: unloadForm.carrier_kind === "vehicle" ? rackVehicles.find((v2) => v2.id === Number(unloadForm.rack_vehicle_id))?.vehicle_no ?? "" : rackJcbs.find((j2) => j2.id === Number(unloadForm.rack_jcb_id))?.name ?? "",
+                  trips: unloadCount,
+                  per_trip_cm: unloadForm.carrier_kind === "vehicle" ? Number(unloadForm.per_trip_cm) || 0 : 0,
                   total_cm: unloadTotal,
                   rate: unloadForm.rate === "" ? null : Number(unloadForm.rate),
                   diesel_litres: unloadForm.diesel_litres === "" ? null : Number(unloadForm.diesel_litres),
-                  diesel_charged: !!unloadForm.diesel_charged
+                  diesel_charged: !!unloadForm.diesel_charged,
+                  date: unloadForm.date,
+                  remarks: unloadForm.remarks
                 }),
-                disabled: !unloadForm.product_name || !(unloadTotal > 0) || unloadTotal > unloadAvailable,
+                disabled: !unloadForm.product_name || (unloadForm.carrier_kind === "vehicle" ? !unloadForm.rack_vehicle_id : !unloadForm.rack_jcb_id) || !(unloadCount > 0 || unloadTotal > 0) || unloadTotal > unloadAvailable,
                 children: "Save Unloading"
               }
             )
@@ -66982,28 +67113,27 @@ function RackDetail() {
               /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "h-px flex-1 bg-border" })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
-              sTLines.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-[1fr_92px_96px_64px_76px_90px_32px] gap-2 px-1 text-[11px] font-semibold uppercase text-muted-foreground", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Transporter" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Vehicle" }),
+              sTLines.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-[1.3fr_84px_56px_70px_84px_64px_28px] gap-2 px-1 text-[11px] font-semibold uppercase text-muted-foreground", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Carrier" }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Basis" }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Qty" }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Rate ₹" }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Charge ₹" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Diesel L" }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("div", {})
               ] }),
               sTLines.map((t3, i2) => {
                 const computed = t3.basis === "trip" || t3.basis === "uom";
-                return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-[1fr_92px_96px_64px_76px_90px_32px] items-center gap-2", children: [
+                return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-[1.3fr_84px_56px_70px_84px_64px_28px] items-center gap-2", children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsx(
                     SearchSelect,
                     {
-                      value: t3.transporter_id || "",
-                      onChange: (v2) => setSaleTransporter(i2, { transporter_id: Number(v2) }),
-                      options: transporters.map((tr) => ({ value: tr.id, label: tr.name })),
-                      placeholder: "Transporter…"
+                      value: t3.carrier || "",
+                      onChange: (v2) => setSaleCarrier(i2, v2),
+                      options: carrierOptions,
+                      placeholder: "Transporter / vehicle…"
                     }
                   ),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: t3.vehicle_no, onChange: (e3) => setSaleTransporter(i2, { vehicle_no: e3.target.value }), placeholder: "JH01AB1234" }),
                   /* @__PURE__ */ jsxRuntimeExports.jsx(
                     SearchSelect,
                     {
@@ -67035,15 +67165,25 @@ function RackDetail() {
                     }
                   ),
                   computed ? /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "text", value: fmtMoney(saleLineCharge(t3)), disabled: true, className: "text-right font-medium" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: t3.charge, onChange: (e3) => setSaleTransporter(i2, { charge: e3.target.value }) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    Input,
+                    {
+                      type: "number",
+                      step: "0.01",
+                      value: t3.diesel_litres ?? "",
+                      placeholder: "0",
+                      onChange: (e3) => setSaleTransporter(i2, { diesel_litres: e3.target.value })
+                    }
+                  ),
                   /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => delSaleTransporter(i2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(X$1, { size: 15, className: "text-destructive" }) })
                 ] }, i2);
               })
             ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", size: "sm", disabled: !transporters.length, onClick: addSaleTransporter, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", size: "sm", disabled: !carrierOptions.length, onClick: addSaleTransporter, children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 14 }),
-              " Add Transporter"
+              " Add Carrier"
             ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[11px] text-muted-foreground", children: "Posts to the transporter ledger and the rack's profit/loss." })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[11px] text-muted-foreground", children: "Carrier = one of your transporters or a fleet vehicle — the charge posts to its ledger and the rack's cost. Diesel here is FIFO-costed from the rack's source plant, charged to the carrier, and deducted from Diesel stock." })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 space-y-3", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
@@ -67120,14 +67260,21 @@ function RackDetail() {
                   ...saleForm,
                   quantity: Number(saleForm.quantity),
                   rate: saleForm.rate === "" ? null : Number(saleForm.rate),
-                  transporters: (saleForm.transporters ?? []).filter((t3) => t3.transporter_id).map((t3) => ({
-                    transporter_id: Number(t3.transporter_id),
-                    vehicle_no: t3.vehicle_no || "",
-                    basis: t3.basis || "flat",
-                    qty: Number(t3.qty) || 0,
-                    rate: Number(t3.rate) || 0,
-                    charge: Number(t3.charge) || 0
-                  })),
+                  transporters: (saleForm.transporters ?? []).filter((t3) => t3.carrier).map((t3) => {
+                    const [kind, idStr] = String(t3.carrier).split(":");
+                    const id22 = Number(idStr);
+                    return {
+                      transporter_id: kind === "t" ? id22 : 0,
+                      rack_vehicle_id: kind === "v" ? id22 : null,
+                      vehicle_no: t3.vehicle_no || "",
+                      basis: t3.basis || "flat",
+                      qty: Number(t3.qty) || 0,
+                      rate: Number(t3.rate) || 0,
+                      charge: Number(t3.charge) || 0,
+                      diesel_litres: t3.diesel_litres === "" || t3.diesel_litres == null ? null : Number(t3.diesel_litres),
+                      diesel_charged: t3.diesel_charged ?? true
+                    };
+                  }),
                   machines: (saleForm.machines ?? []).filter((m2) => m2.asset_id).map((m2) => ({ asset_id: Number(m2.asset_id), basis: m2.basis || "hour", qty: Number(m2.qty) || 0, rate: Number(m2.rate) || 0, outsource_id: m2.outsource_id ? Number(m2.outsource_id) : null }))
                 }),
                 disabled: !saleForm.customer_id || !saleForm.product_name || !(Number(saleForm.quantity) > 0) || saleQtyCm > saleAvailable,
@@ -78203,7 +78350,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-CnTymNhU.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-By2WgZT6.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
@@ -80843,7 +80990,9 @@ const partyLabel = {
   company: "Company",
   plant: "Plant",
   business: "Business",
-  machine: "Machine"
+  machine: "Machine",
+  rack_vehicle: "Vehicle",
+  rack_jcb: "JCB"
 };
 const balanceLabel = {
   customer: "Receivable",
@@ -80854,7 +81003,9 @@ const balanceLabel = {
   company: "Net Balance",
   plant: "Net (Profit / Loss)",
   business: "Net (Profit / Loss)",
-  machine: "Net (Profit / Loss)"
+  machine: "Net (Profit / Loss)",
+  rack_vehicle: "Payable",
+  rack_jcb: "Payable"
 };
 function balanceClass(t3, v2) {
   if (t3 === "rack" || t3 === "plant" || t3 === "business" || t3 === "machine") return v2 >= 0 ? "text-success" : "text-destructive";
@@ -81166,6 +81317,8 @@ function Ledgers() {
               { value: "business", label: "Businesses (P&L)" },
               { value: "plant", label: "Plants (P&L)" },
               { value: "machine", label: "Machines (P&L)" },
+              { value: "rack_vehicle", label: "Rack Vehicles" },
+              { value: "rack_jcb", label: "Rack JCBs" },
               { value: "rack", label: "Racks" }
             ]
           }
