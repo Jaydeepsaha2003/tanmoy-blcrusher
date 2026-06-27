@@ -1734,6 +1734,10 @@ textarea::placeholder {
     grid-column: span 2 / span 2;
   }
 
+  .sm\:block {
+    display: block;
+  }
+
   .sm\:inline {
     display: inline;
   }

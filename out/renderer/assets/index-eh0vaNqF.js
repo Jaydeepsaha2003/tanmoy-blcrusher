@@ -11422,6 +11422,18 @@ const api = {
     deleteSale: (id2) => call("racks.deleteSale", { id: id2 }),
     listSales: (filter) => call("racks.listSales", filter)
   },
+  rackVehicles: {
+    list: (plant_id) => call("rackVehicles.list", { plant_id }),
+    create: (p2) => call("rackVehicles.create", p2),
+    update: (p2) => call("rackVehicles.update", p2),
+    delete: (id2) => call("rackVehicles.delete", { id: id2 })
+  },
+  rackJcbs: {
+    list: (plant_id) => call("rackJcbs.list", { plant_id }),
+    create: (p2) => call("rackJcbs.create", p2),
+    update: (p2) => call("rackJcbs.update", p2),
+    delete: (id2) => call("rackJcbs.delete", { id: id2 })
+  },
   ledgers: {
     get: (party_type, party_id, from, to) => call("ledgers.get", { party_type, party_id, from, to }),
     balances: (party_type, plant_id) => call("ledgers.balances", { party_type, plant_id }),
@@ -12166,6 +12178,18 @@ const FlaskConical = createLucideIcon("FlaskConical", [
   ],
   ["path", { d: "M6.453 15h11.094", key: "3shlmq" }],
   ["path", { d: "M8.5 2h7", key: "csnxdl" }]
+]);
+/**
+ * @license lucide-react v0.468.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const Forklift = createLucideIcon("Forklift", [
+  ["path", { d: "M12 12H5a2 2 0 0 0-2 2v5", key: "7zsz91" }],
+  ["circle", { cx: "13", cy: "19", r: "2", key: "wjnkru" }],
+  ["circle", { cx: "5", cy: "19", r: "2", key: "v8kfzx" }],
+  ["path", { d: "M8 19h3m5-17v17h6M6 12V7c0-1.1.9-2 2-2h3l5 5", key: "13bk1p" }]
 ]);
 /**
  * @license lucide-react v0.468.0 - ISC
@@ -36038,7 +36062,10 @@ const NAV = [
   },
   {
     heading: "Rail Dispatch",
-    items: [{ to: "/racks", label: "Railway Racks", icon: TrainFront, module: "racks" }]
+    items: [
+      { to: "/racks", label: "Railway Racks", icon: TrainFront, module: "racks" },
+      { to: "/rack-fleet", label: "Vehicles & JCB", icon: Truck, module: "racks" }
+    ]
   },
   {
     heading: "Direct Sales",
@@ -67138,6 +67165,211 @@ function SectionTitle({
     action
   ] });
 }
+function RackFleet() {
+  const qc2 = useQueryClient();
+  const toast = useToast();
+  const { plantId } = usePlant();
+  const [tab, setTab] = reactExports.useState("vehicles");
+  const [q2, setQ] = reactExports.useState("");
+  const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
+  const { data: vehicles = [] } = useQuery({ queryKey: ["rackVehicles", plantId], queryFn: () => api.rackVehicles.list(plantId) });
+  const { data: jcbs = [] } = useQuery({ queryKey: ["rackJcbs", plantId], queryFn: () => api.rackJcbs.list(plantId) });
+  const [vForm, setVForm] = reactExports.useState(null);
+  const [jForm, setJForm] = reactExports.useState(null);
+  const plantNames = (ids) => (ids ?? []).length ? (ids ?? []).map((id2) => plants.find((p2) => p2.id === id2)?.name ?? "").filter(Boolean).join(", ") : "All plants";
+  function togglePlant(form, set, id2) {
+    const cur = form.plant_ids ?? [];
+    set({ ...form, plant_ids: cur.includes(id2) ? cur.filter((x2) => x2 !== id2) : [...cur, id2] });
+  }
+  const saveVehicle = useMutation({
+    mutationFn: (p2) => p2.id ? api.rackVehicles.update(p2) : api.rackVehicles.create(p2),
+    onSuccess: () => {
+      qc2.invalidateQueries({ queryKey: ["rackVehicles"] });
+      setVForm(null);
+      toast.success("Vehicle saved.");
+    },
+    onError: (e3) => toast.error(e3.message)
+  });
+  const saveJcb = useMutation({
+    mutationFn: (p2) => p2.id ? api.rackJcbs.update(p2) : api.rackJcbs.create(p2),
+    onSuccess: () => {
+      qc2.invalidateQueries({ queryKey: ["rackJcbs"] });
+      setJForm(null);
+      toast.success("JCB saved.");
+    },
+    onError: (e3) => toast.error(e3.message)
+  });
+  async function removeVehicle(v2) {
+    if (!await confirmDialog({ title: "Delete vehicle", message: `Delete "${v2.vehicle_no}"?` })) return;
+    await api.rackVehicles.delete(v2.id);
+    qc2.invalidateQueries({ queryKey: ["rackVehicles"] });
+    toast.success("Deleted.");
+  }
+  async function removeJcb(j2) {
+    if (!await confirmDialog({ title: "Delete JCB", message: `Delete "${j2.name}"?` })) return;
+    await api.rackJcbs.delete(j2.id);
+    qc2.invalidateQueries({ queryKey: ["rackJcbs"] });
+    toast.success("Deleted.");
+  }
+  const vFiltered = reactExports.useMemo(() => {
+    const t3 = q2.trim().toLowerCase();
+    if (!t3) return vehicles;
+    return vehicles.filter((v2) => `${v2.vehicle_no} ${v2.owner_name} ${v2.driver_name}`.toLowerCase().includes(t3));
+  }, [vehicles, q2]);
+  const jFiltered = reactExports.useMemo(() => {
+    const t3 = q2.trim().toLowerCase();
+    if (!t3) return jcbs;
+    return jcbs.filter((j2) => `${j2.name} ${j2.owner_name} ${j2.driver_name}`.toLowerCase().includes(t3));
+  }, [jcbs, q2]);
+  function exportExcel() {
+    if (tab === "vehicles") {
+      downloadExcel(
+        "rack-vehicles",
+        "Rack Vehicles",
+        ["Vehicle No", "Owner", "Owner Mobile", "Driver", "Driver Mobile", "Cap (m³)", "Cap (Ton)", "Cap (CFT)", "Rate / Trip", "Plants"],
+        vehicles.map((v2) => [v2.vehicle_no, v2.owner_name, v2.owner_mobile, v2.driver_name, v2.driver_mobile, v2.cap_cm ?? "", v2.cap_ton ?? "", v2.cap_cft ?? "", v2.rate_per_trip ?? "", plantNames(v2.plant_ids)])
+      );
+    } else {
+      downloadExcel(
+        "rack-jcbs",
+        "Rack JCB Loaders",
+        ["JCB", "Owner", "Owner Mobile", "Driver", "Driver Mobile", "Unloading /wagon", "Loading /tipper", "Other /hour", "Plants"],
+        jcbs.map((j2) => [j2.name, j2.owner_name, j2.owner_mobile, j2.driver_name, j2.driver_mobile, j2.rate_unloading ?? "", j2.rate_loading ?? "", j2.rate_other ?? "", plantNames(j2.plant_ids)])
+      );
+    }
+  }
+  function newVehicle() {
+    setVForm({ vehicle_no: "", owner_name: "", owner_mobile: "", driver_name: "", driver_mobile: "", cap_cm: "", cap_ton: "", cap_cft: "", rate_per_trip: "", remarks: "", plant_ids: plantId ? [plantId] : [] });
+  }
+  function newJcb() {
+    setJForm({ name: "", owner_name: "", owner_mobile: "", driver_name: "", driver_mobile: "", rate_unloading: "", rate_loading: "", rate_other: "", remarks: "", plant_ids: plantId ? [plantId] : [] });
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      PageHeader,
+      {
+        title: "Rack Vehicles & JCB",
+        description: "Hired vehicles and JCB loaders for railway-rack work, available per plant",
+        actions: /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", onClick: exportExcel, disabled: tab === "vehicles" ? !vehicles.length : !jcbs.length, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(FileSpreadsheet, { size: 16 }),
+            " Excel"
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { onClick: tab === "vehicles" ? newVehicle : newJcb, disabled: !plants.length, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 16 }),
+            " ",
+            tab === "vehicles" ? "New Vehicle" : "New JCB"
+          ] })
+        ] })
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(Page, { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap items-center gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: tab === "vehicles" ? "default" : "outline", size: "sm", onClick: () => setTab("vehicles"), children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Truck, { size: 15 }),
+          " Vehicles"
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: tab === "jcb" ? "default" : "outline", size: "sm", onClick: () => setTab("jcb"), children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Forklift, { size: 15 }),
+          " JCB Loaders"
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mx-1 h-5 w-px bg-border" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { className: "w-full sm:w-60", placeholder: "Search no, owner, driver…", value: q2, onChange: (e3) => setQ(e3.target.value) }),
+        q2 && /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "sm", onClick: () => setQ(""), children: "Clear" })
+      ] }),
+      tab === "vehicles" ? vFiltered.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: vehicles.length ? "No vehicles match your search." : "No vehicles yet. Add a vehicle to build the rack fleet." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Vehicle No" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Owner" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Driver" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Capacity (m³ / Ton / CFT)" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Rate / Trip" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plants" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: vFiltered.map((v2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: v2.vehicle_no }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: [v2.owner_name, v2.owner_mobile].filter(Boolean).join(" · ") || "-" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: [v2.driver_name, v2.driver_mobile].filter(Boolean).join(" · ") || "-" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: [v2.cap_cm, v2.cap_ton, v2.cap_cft].map((c2) => c2 == null ? "–" : fmtQty(c2)).join(" / ") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: v2.rate_per_trip == null ? "-" : fmtMoney(v2.rate_per_trip) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: plantNames(v2.plant_ids) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => setVForm({ ...v2, cap_cm: v2.cap_cm ?? "", cap_ton: v2.cap_ton ?? "", cap_cft: v2.cap_cft ?? "", rate_per_trip: v2.rate_per_trip ?? "", plant_ids: v2.plant_ids ?? [] }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => removeVehicle(v2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+          ] })
+        ] }, v2.id)) })
+      ] }) : jFiltered.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: jcbs.length ? "No JCBs match your search." : "No JCB loaders yet. Add one with its per-work-type rates." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "JCB" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Owner" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Driver" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Unloading (/wagon)" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Loading (/tipper)" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Other (/hour)" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plants" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: jFiltered.map((j2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: j2.name }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: [j2.owner_name, j2.owner_mobile].filter(Boolean).join(" · ") || "-" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: [j2.driver_name, j2.driver_mobile].filter(Boolean).join(" · ") || "-" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: j2.rate_unloading == null ? "-" : fmtMoney(j2.rate_unloading) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: j2.rate_loading == null ? "-" : fmtMoney(j2.rate_loading) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: j2.rate_other == null ? "-" : fmtMoney(j2.rate_other) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: plantNames(j2.plant_ids) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => setJForm({ ...j2, rate_unloading: j2.rate_unloading ?? "", rate_loading: j2.rate_loading ?? "", rate_other: j2.rate_other ?? "", plant_ids: j2.plant_ids ?? [] }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => removeJcb(j2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+          ] })
+        ] }, j2.id)) })
+      ] })
+    ] }),
+    vForm && /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { open: true, onClose: () => setVForm(null), title: vForm.id ? `Edit ${vForm.vehicle_no}` : "New Vehicle", width: "max-w-2xl", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Vehicle No.", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: vForm.vehicle_no, onChange: (e3) => setVForm({ ...vForm, vehicle_no: e3.target.value }), placeholder: "e.g. JH-01-AB-1234" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Rate per Trip (₹)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: vForm.rate_per_trip, onChange: (e3) => setVForm({ ...vForm, rate_per_trip: e3.target.value }), placeholder: "Optional" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Owner Name", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: vForm.owner_name, onChange: (e3) => setVForm({ ...vForm, owner_name: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Owner Mobile", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: vForm.owner_mobile, onChange: (e3) => setVForm({ ...vForm, owner_mobile: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Driver Name", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: vForm.driver_name, onChange: (e3) => setVForm({ ...vForm, driver_name: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Driver Mobile", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: vForm.driver_mobile, onChange: (e3) => setVForm({ ...vForm, driver_mobile: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Capacity (m³)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: vForm.cap_cm, onChange: (e3) => setVForm({ ...vForm, cap_cm: e3.target.value }), placeholder: "per trip" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Capacity (Ton)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: vForm.cap_ton, onChange: (e3) => setVForm({ ...vForm, cap_ton: e3.target.value }), placeholder: "per trip" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Capacity (CFT)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: vForm.cap_cft, onChange: (e3) => setVForm({ ...vForm, cap_cft: e3.target.value }), placeholder: "per trip" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: vForm.remarks, onChange: (e3) => setVForm({ ...vForm, remarks: e3.target.value }) }) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plants", hint: "Tick the plants this vehicle works for — leave all unticked for all plants", children: /* @__PURE__ */ jsxRuntimeExports.jsx(PlantCheckboxes, { plants, selected: vForm.plant_ids ?? [], onToggle: (id2) => togglePlant(vForm, setVForm, id2) }) }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 flex justify-end gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setVForm(null), children: "Cancel" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: () => saveVehicle.mutate(vForm), disabled: !vForm.vehicle_no?.trim(), children: "Save Vehicle" })
+      ] })
+    ] }),
+    jForm && /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { open: true, onClose: () => setJForm(null), title: jForm.id ? `Edit ${jForm.name}` : "New JCB Loader", width: "max-w-2xl", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "JCB Name / No.", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: jForm.name, onChange: (e3) => setJForm({ ...jForm, name: e3.target.value }), placeholder: "e.g. JCB-01" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "hidden sm:block" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Owner Name", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: jForm.owner_name, onChange: (e3) => setJForm({ ...jForm, owner_name: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Owner Mobile", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: jForm.owner_mobile, onChange: (e3) => setJForm({ ...jForm, owner_mobile: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Driver Name", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: jForm.driver_name, onChange: (e3) => setJForm({ ...jForm, driver_name: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Driver Mobile", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: jForm.driver_mobile, onChange: (e3) => setJForm({ ...jForm, driver_mobile: e3.target.value }) }) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 space-y-3", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground/80", children: "Rates by work type" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-3", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "JCB Unloading", hint: "per wagon", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: jForm.rate_unloading, onChange: (e3) => setJForm({ ...jForm, rate_unloading: e3.target.value }), placeholder: "₹ / wagon" }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "JCB Loading", hint: "per tipper load", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: jForm.rate_loading, onChange: (e3) => setJForm({ ...jForm, rate_loading: e3.target.value }), placeholder: "₹ / tipper" }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Other Work", hint: "per hour", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: jForm.rate_other, onChange: (e3) => setJForm({ ...jForm, rate_other: e3.target.value }), placeholder: "₹ / hour" }) })
+        ] })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: jForm.remarks, onChange: (e3) => setJForm({ ...jForm, remarks: e3.target.value }) }) }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plants", hint: "Tick the plants this JCB works for — leave all unticked for all plants", children: /* @__PURE__ */ jsxRuntimeExports.jsx(PlantCheckboxes, { plants, selected: jForm.plant_ids ?? [], onToggle: (id2) => togglePlant(jForm, setJForm, id2) }) }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 flex justify-end gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setJForm(null), children: "Cancel" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: () => saveJcb.mutate(jForm), disabled: !jForm.name?.trim(), children: "Save JCB" })
+      ] })
+    ] })
+  ] });
+}
 const scriptRel = function detectScriptRel() {
   const relList = typeof document !== "undefined" && document.createElement("link").relList;
   return relList && relList.supports && relList.supports("modulepreload") ? "modulepreload" : "preload";
@@ -77971,7 +78203,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-B4yhohcV.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-CnTymNhU.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
@@ -82681,6 +82913,7 @@ function AppRoutes() {
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/employees", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "payroll", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Employees, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/payroll", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "payroll", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Payroll, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/racks", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "racks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Racks, {}) }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/rack-fleet", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "racks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(RackFleet, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/racks/:id", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "racks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(RackDetail, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/ledgers", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "ledgers", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Ledgers, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/dispatch", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "dispatch", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Dispatch, {}) }) }),

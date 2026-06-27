@@ -676,6 +676,45 @@ CREATE TABLE IF NOT EXISTS company_plants (
   plant_id   INTEGER NOT NULL REFERENCES plants(id)
 );
 
+-- Railway-rack fleet: hired vehicles and JCB loaders, assignable to multiple plants.
+CREATE TABLE IF NOT EXISTS rack_vehicles (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  vehicle_no    TEXT NOT NULL,
+  owner_name    TEXT NOT NULL DEFAULT '',
+  owner_mobile  TEXT NOT NULL DEFAULT '',
+  driver_name   TEXT NOT NULL DEFAULT '',
+  driver_mobile TEXT NOT NULL DEFAULT '',
+  cap_cm        REAL,
+  cap_ton       REAL,
+  cap_cft       REAL,
+  rate_per_trip REAL,
+  remarks       TEXT NOT NULL DEFAULT '',
+  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS rack_jcbs (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  name           TEXT NOT NULL,
+  owner_name     TEXT NOT NULL DEFAULT '',
+  owner_mobile   TEXT NOT NULL DEFAULT '',
+  driver_name    TEXT NOT NULL DEFAULT '',
+  driver_mobile  TEXT NOT NULL DEFAULT '',
+  rate_unloading REAL,
+  rate_loading   REAL,
+  rate_other     REAL,
+  remarks        TEXT NOT NULL DEFAULT '',
+  created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS rack_vehicle_plants (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  rack_vehicle_id INTEGER NOT NULL REFERENCES rack_vehicles(id),
+  plant_id        INTEGER NOT NULL REFERENCES plants(id)
+);
+CREATE TABLE IF NOT EXISTS rack_jcb_plants (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  rack_jcb_id INTEGER NOT NULL REFERENCES rack_jcbs(id),
+  plant_id    INTEGER NOT NULL REFERENCES plants(id)
+);
+
 CREATE TABLE IF NOT EXISTS asset_plant_moves (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   asset_id      INTEGER NOT NULL REFERENCES assets(id),
@@ -858,6 +897,8 @@ CREATE INDEX IF NOT EXISTS idx_cplants_customer ON customer_plants(customer_id);
 CREATE INDEX IF NOT EXISTS idx_splants_supplier ON supplier_plants(supplier_id);
 CREATE INDEX IF NOT EXISTS idx_tplants_transporter ON transporter_plants(transporter_id);
 CREATE INDEX IF NOT EXISTS idx_coplants_company ON company_plants(company_id);
+CREATE INDEX IF NOT EXISTS idx_rvplants_vehicle ON rack_vehicle_plants(rack_vehicle_id);
+CREATE INDEX IF NOT EXISTS idx_rjplants_jcb ON rack_jcb_plants(rack_jcb_id);
 CREATE INDEX IF NOT EXISTS idx_amoves_asset ON asset_plant_moves(asset_id);
 CREATE INDEX IF NOT EXISTS idx_spare_parts_plant ON spare_parts(plant_id);
 CREATE INDEX IF NOT EXISTS idx_part_moves_part ON spare_part_movements(part_id);
@@ -1842,6 +1883,49 @@ CREATE INDEX idx_coplants_company ON company_plants(company_id)`
     id: "028_challan_no",
     sql: `ALTER TABLE purchases ADD COLUMN challan_no VARCHAR(191) NOT NULL DEFAULT '';
 ALTER TABLE rack_sales ADD COLUMN challan_no VARCHAR(191) NOT NULL DEFAULT ''`
+  },
+  {
+    // Rack fleet: hired vehicles + JCB loaders, assignable to multiple plants.
+    id: "029_rack_fleet",
+    sql: `CREATE TABLE IF NOT EXISTS rack_vehicles (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  vehicle_no    VARCHAR(191) NOT NULL,
+  owner_name    VARCHAR(191) NOT NULL DEFAULT '',
+  owner_mobile  VARCHAR(64) NOT NULL DEFAULT '',
+  driver_name   VARCHAR(191) NOT NULL DEFAULT '',
+  driver_mobile VARCHAR(64) NOT NULL DEFAULT '',
+  cap_cm        DOUBLE,
+  cap_ton       DOUBLE,
+  cap_cft       DOUBLE,
+  rate_per_trip DOUBLE,
+  remarks       TEXT,
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS rack_jcbs (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  name           VARCHAR(191) NOT NULL,
+  owner_name     VARCHAR(191) NOT NULL DEFAULT '',
+  owner_mobile   VARCHAR(64) NOT NULL DEFAULT '',
+  driver_name    VARCHAR(191) NOT NULL DEFAULT '',
+  driver_mobile  VARCHAR(64) NOT NULL DEFAULT '',
+  rate_unloading DOUBLE,
+  rate_loading   DOUBLE,
+  rate_other     DOUBLE,
+  remarks        TEXT,
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS rack_vehicle_plants (
+  id              INT AUTO_INCREMENT PRIMARY KEY,
+  rack_vehicle_id INT NOT NULL,
+  plant_id        INT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS rack_jcb_plants (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  rack_jcb_id INT NOT NULL,
+  plant_id    INT NOT NULL
+);
+CREATE INDEX idx_rvplants_vehicle ON rack_vehicle_plants(rack_vehicle_id);
+CREATE INDEX idx_rjplants_jcb ON rack_jcb_plants(rack_jcb_id)`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -2842,7 +2926,9 @@ var PARTY_PLANT_TABLE = {
   customer: { junction: "customer_plants", col: "customer_id" },
   supplier: { junction: "supplier_plants", col: "supplier_id" },
   transporter: { junction: "transporter_plants", col: "transporter_id" },
-  company: { junction: "company_plants", col: "company_id" }
+  company: { junction: "company_plants", col: "company_id" },
+  rack_vehicle: { junction: "rack_vehicle_plants", col: "rack_vehicle_id" },
+  rack_jcb: { junction: "rack_jcb_plants", col: "rack_jcb_id" }
 };
 function plantIdSet(p) {
   if (Array.isArray(p.plant_ids)) return [...new Set(p.plant_ids.map(Number).filter((n) => n > 0))];
@@ -5328,6 +5414,158 @@ async function listSales(filter = {}) {
        ${clause}
        ORDER BY rs.date DESC, rs.id DESC`
   ).all(params);
+}
+
+// src/main/services/rackFleet.ts
+function numOrNull(v) {
+  const n = Number(v);
+  return v == null || v === "" || isNaN(n) ? null : n;
+}
+async function listRackVehicles(payload = {}) {
+  const d = getDb();
+  const clause = payload.plant_id ? `WHERE ${plantScopeSql("v", "rack_vehicle")}` : "";
+  const rows = await d.prepare(`SELECT v.* FROM rack_vehicles v ${clause} ORDER BY v.vehicle_no`).all(payload);
+  await attachPartyPlants(d, "rack_vehicle", rows);
+  return rows;
+}
+async function createRackVehicle(p) {
+  const d = getDb();
+  const no = (p.vehicle_no || "").trim().toUpperCase();
+  if (!no) throw new Error("Vehicle no. is required.");
+  const plants = plantIdSet(p);
+  const id = await d.transaction(async () => {
+    const info = await d.prepare(
+      `INSERT INTO rack_vehicles
+          (vehicle_no, owner_name, owner_mobile, driver_name, driver_mobile, cap_cm, cap_ton, cap_cft, rate_per_trip, remarks)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      no,
+      properCase(p.owner_name || ""),
+      (p.owner_mobile || "").trim(),
+      properCase(p.driver_name || ""),
+      (p.driver_mobile || "").trim(),
+      numOrNull(p.cap_cm),
+      numOrNull(p.cap_ton),
+      numOrNull(p.cap_cft),
+      numOrNull(p.rate_per_trip),
+      p.remarks ?? ""
+    );
+    const vid = Number(info.lastInsertRowid);
+    await writePartyPlants(d, "rack_vehicle", vid, plants);
+    return vid;
+  });
+  const row = await d.prepare(`SELECT * FROM rack_vehicles WHERE id = ?`).get(id);
+  await attachPartyPlants(d, "rack_vehicle", [row]);
+  return row;
+}
+async function updateRackVehicle(p) {
+  const d = getDb();
+  if (!p.id) throw new Error("Missing vehicle id.");
+  const no = (p.vehicle_no || "").trim().toUpperCase();
+  if (!no) throw new Error("Vehicle no. is required.");
+  const plants = plantIdSet(p);
+  await d.transaction(async () => {
+    await d.prepare(
+      `UPDATE rack_vehicles SET vehicle_no=?, owner_name=?, owner_mobile=?, driver_name=?, driver_mobile=?,
+           cap_cm=?, cap_ton=?, cap_cft=?, rate_per_trip=?, remarks=? WHERE id=?`
+    ).run(
+      no,
+      properCase(p.owner_name || ""),
+      (p.owner_mobile || "").trim(),
+      properCase(p.driver_name || ""),
+      (p.driver_mobile || "").trim(),
+      numOrNull(p.cap_cm),
+      numOrNull(p.cap_ton),
+      numOrNull(p.cap_cft),
+      numOrNull(p.rate_per_trip),
+      p.remarks ?? "",
+      p.id
+    );
+    await writePartyPlants(d, "rack_vehicle", p.id, plants);
+  });
+  const row = await d.prepare(`SELECT * FROM rack_vehicles WHERE id = ?`).get(p.id);
+  await attachPartyPlants(d, "rack_vehicle", [row]);
+  return row;
+}
+async function deleteRackVehicle(payload) {
+  const d = getDb();
+  await d.transaction(async () => {
+    await d.prepare(`DELETE FROM rack_vehicle_plants WHERE rack_vehicle_id = ?`).run(payload.id);
+    await d.prepare(`DELETE FROM rack_vehicles WHERE id = ?`).run(payload.id);
+  });
+  return { ok: true };
+}
+async function listRackJcbs(payload = {}) {
+  const d = getDb();
+  const clause = payload.plant_id ? `WHERE ${plantScopeSql("j", "rack_jcb")}` : "";
+  const rows = await d.prepare(`SELECT j.* FROM rack_jcbs j ${clause} ORDER BY j.name`).all(payload);
+  await attachPartyPlants(d, "rack_jcb", rows);
+  return rows;
+}
+async function createRackJcb(p) {
+  const d = getDb();
+  const name = properCase(p.name || "");
+  if (!name) throw new Error("JCB name / no. is required.");
+  const plants = plantIdSet(p);
+  const id = await d.transaction(async () => {
+    const info = await d.prepare(
+      `INSERT INTO rack_jcbs
+          (name, owner_name, owner_mobile, driver_name, driver_mobile, rate_unloading, rate_loading, rate_other, remarks)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      name,
+      properCase(p.owner_name || ""),
+      (p.owner_mobile || "").trim(),
+      properCase(p.driver_name || ""),
+      (p.driver_mobile || "").trim(),
+      numOrNull(p.rate_unloading),
+      numOrNull(p.rate_loading),
+      numOrNull(p.rate_other),
+      p.remarks ?? ""
+    );
+    const jid = Number(info.lastInsertRowid);
+    await writePartyPlants(d, "rack_jcb", jid, plants);
+    return jid;
+  });
+  const row = await d.prepare(`SELECT * FROM rack_jcbs WHERE id = ?`).get(id);
+  await attachPartyPlants(d, "rack_jcb", [row]);
+  return row;
+}
+async function updateRackJcb(p) {
+  const d = getDb();
+  if (!p.id) throw new Error("Missing JCB id.");
+  const name = properCase(p.name || "");
+  if (!name) throw new Error("JCB name / no. is required.");
+  const plants = plantIdSet(p);
+  await d.transaction(async () => {
+    await d.prepare(
+      `UPDATE rack_jcbs SET name=?, owner_name=?, owner_mobile=?, driver_name=?, driver_mobile=?,
+           rate_unloading=?, rate_loading=?, rate_other=?, remarks=? WHERE id=?`
+    ).run(
+      name,
+      properCase(p.owner_name || ""),
+      (p.owner_mobile || "").trim(),
+      properCase(p.driver_name || ""),
+      (p.driver_mobile || "").trim(),
+      numOrNull(p.rate_unloading),
+      numOrNull(p.rate_loading),
+      numOrNull(p.rate_other),
+      p.remarks ?? "",
+      p.id
+    );
+    await writePartyPlants(d, "rack_jcb", p.id, plants);
+  });
+  const row = await d.prepare(`SELECT * FROM rack_jcbs WHERE id = ?`).get(p.id);
+  await attachPartyPlants(d, "rack_jcb", [row]);
+  return row;
+}
+async function deleteRackJcb(payload) {
+  const d = getDb();
+  await d.transaction(async () => {
+    await d.prepare(`DELETE FROM rack_jcb_plants WHERE rack_jcb_id = ?`).run(payload.id);
+    await d.prepare(`DELETE FROM rack_jcbs WHERE id = ?`).run(payload.id);
+  });
+  return { ok: true };
 }
 
 // src/main/services/ledgers.ts
@@ -8220,6 +8458,14 @@ var handlers = {
   "racks.updateSale": updateSale,
   "racks.deleteSale": deleteSale,
   "racks.listSales": listSales,
+  "rackVehicles.list": listRackVehicles,
+  "rackVehicles.create": createRackVehicle,
+  "rackVehicles.update": updateRackVehicle,
+  "rackVehicles.delete": deleteRackVehicle,
+  "rackJcbs.list": listRackJcbs,
+  "rackJcbs.create": createRackJcb,
+  "rackJcbs.update": updateRackJcb,
+  "rackJcbs.delete": deleteRackJcb,
   "ledgers.get": getLedger,
   "ledgers.balances": getPartyBalances,
   "ledgers.allDues": getAllDues,
