@@ -19,6 +19,16 @@ const PARTY_TABLE: Record<PartyType, string> = {
   outsource: 'outsource'
 }
 
+/** Ledger heads that accept payments (the base parties + fleet vehicles/JCBs). */
+const PAYMENT_TABLES: Partial<Record<LedgerType, string>> = {
+  customer: 'customers',
+  supplier: 'suppliers',
+  transporter: 'transporters',
+  outsource: 'outsource',
+  rack_vehicle: 'rack_vehicles',
+  rack_jcb: 'rack_jcbs'
+}
+
 function roundMoney(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100
 }
@@ -60,6 +70,20 @@ async function partyName(partyType: LedgerType, partyId: number): Promise<string
     if (!row) throw new Error('Machine not found.')
     return row.name
   }
+  if (partyType === 'rack_vehicle') {
+    const row = (await d.prepare(`SELECT vehicle_no AS name FROM rack_vehicles WHERE id = ?`).get(partyId)) as
+      | { name: string }
+      | undefined
+    if (!row) throw new Error('Vehicle not found.')
+    return row.name
+  }
+  if (partyType === 'rack_jcb') {
+    const row = (await d.prepare(`SELECT name FROM rack_jcbs WHERE id = ?`).get(partyId)) as
+      | { name: string }
+      | undefined
+    if (!row) throw new Error('JCB not found.')
+    return row.name
+  }
   const table = PARTY_TABLE[partyType as PartyType]
   if (!table) throw new Error('Invalid party type.')
   const row = (await d.prepare(`SELECT name FROM ${table} WHERE id = ?`).get(partyId)) as
@@ -88,7 +112,7 @@ async function companyLinks(companyId: number): Promise<{ type: PartyType; id: n
 /* ---------------- Payments ---------------- */
 
 export interface PaymentInput {
-  party_type: PartyType
+  party_type: LedgerType
   party_id: number
   direction: PaymentDirection
   amount: number
@@ -100,7 +124,7 @@ export interface PaymentInput {
 
 export async function addPayment(p: PaymentInput): Promise<PaymentEntry> {
   const d = getDb()
-  if (!PARTY_TABLE[p.party_type]) throw new Error('Invalid party type.')
+  if (!PAYMENT_TABLES[p.party_type]) throw new Error('Invalid party type.')
   if (p.direction !== 'in' && p.direction !== 'out') throw new Error('Invalid payment direction.')
   if (!(Number(p.amount) > 0)) throw new Error('Amount must be greater than 0.')
   await partyName(p.party_type, p.party_id) // validates existence
@@ -154,11 +178,14 @@ export async function listPayments(filter: PaymentFilter = {}): Promise<PaymentE
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''
   return (await d
     .prepare(
-      `SELECT pay.*, COALESCE(c.name, s.name, t.name) AS party_name
+      `SELECT pay.*, COALESCE(c.name, s.name, t.name, o.name, rv.vehicle_no, rj.name) AS party_name
        FROM payments pay
        LEFT JOIN customers c ON pay.party_type='customer' AND c.id = pay.party_id
        LEFT JOIN suppliers s ON pay.party_type='supplier' AND s.id = pay.party_id
        LEFT JOIN transporters t ON pay.party_type='transporter' AND t.id = pay.party_id
+       LEFT JOIN outsource o ON pay.party_type='outsource' AND o.id = pay.party_id
+       LEFT JOIN rack_vehicles rv ON pay.party_type='rack_vehicle' AND rv.id = pay.party_id
+       LEFT JOIN rack_jcbs rj ON pay.party_type='rack_jcb' AND rj.id = pay.party_id
        ${clause}
        ORDER BY pay.date DESC, pay.id DESC`
     )
@@ -255,6 +282,28 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
           debit: x.amount,
           credit: 0
         })
+    // Unloading charges (JCB / tipper at destination) — a rack cost.
+    const runl = (await d
+      .prepare(
+        `SELECT ru.unloading_no, ru.date, ru.created_at, COALESCE(ru.amount,0) AS amount, ru.qty_cm,
+                COALESCE(rv.vehicle_no, rj.name, t.name, 'Carrier') AS who
+         FROM rack_unloadings ru
+         LEFT JOIN rack_vehicles rv ON rv.id = ru.rack_vehicle_id
+         LEFT JOIN rack_jcbs rj ON rj.id = ru.rack_jcb_id
+         LEFT JOIN transporters t ON t.id = ru.transporter_id
+         WHERE ru.rack_id = ?`
+      )
+      .all(partyId)) as { unloading_no: string; date: string; created_at: string; amount: number; qty_cm: number; who: string }[]
+    for (const x of runl)
+      if (x.amount > 0)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Unloading — ${x.qty_cm} m³ (${x.who})`,
+          ref: x.unloading_no,
+          debit: x.amount,
+          credit: 0
+        })
     const expenses = (await d
       .prepare(
         `SELECT expense_type, amount, date, created_at, remarks FROM rack_expenses WHERE rack_id = ?`
@@ -305,9 +354,12 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
     // Transporter + machine cost lines on this rack's sales (rack costs → debit).
     const saleTrans = (await d
       .prepare(
-        `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rst.charge,0) AS charge, t.name AS tname
+        `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rst.charge,0) AS charge,
+                COALESCE(t.name, rv.vehicle_no, 'Carrier') AS tname
          FROM rack_sale_transporters rst JOIN rack_sales rs ON rs.id = rst.rack_sale_id
-         JOIN transporters t ON t.id = rst.transporter_id WHERE rs.rack_id = ?`
+         LEFT JOIN transporters t ON t.id = rst.transporter_id
+         LEFT JOIN rack_vehicles rv ON rv.id = rst.rack_vehicle_id
+         WHERE rs.rack_id = ?`
       )
       .all(partyId)) as { sale_no: string; date: string; created_at: string; charge: number; tname: string }[]
     for (const x of saleTrans)
@@ -397,7 +449,11 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
           (SELECT COALESCE(SUM(amount),0) FROM rack_sales WHERE rack_id=r.id)
             - (SELECT COALESCE(SUM(amount),0) FROM rack_loadings WHERE rack_id=r.id)
             - (SELECT COALESCE(SUM(amount),0) FROM rack_unloadings WHERE rack_id=r.id)
-            - (SELECT COALESCE(SUM(amount),0) FROM rack_expenses WHERE rack_id=r.id) AS profit,
+            - (SELECT COALESCE(SUM(amount),0) FROM rack_expenses WHERE rack_id=r.id)
+            - (SELECT COALESCE(SUM(rst.charge),0) FROM rack_sale_transporters rst
+                 JOIN rack_sales rs ON rs.id=rst.rack_sale_id WHERE rs.rack_id=r.id)
+            - (SELECT COALESCE(SUM(rsm.amount),0) FROM rack_sale_machines rsm
+                 JOIN rack_sales rs ON rs.id=rsm.rack_sale_id WHERE rs.rack_id=r.id) AS profit,
           (SELECT COALESCE(SUM(total_cm),0) FROM rack_loadings WHERE rack_id=r.id AND plant_id=@pid) AS plant_cm,
           (SELECT COALESCE(SUM(total_cm),0) FROM rack_loadings WHERE rack_id=r.id) AS total_cm
          FROM racks r
@@ -1228,15 +1284,18 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
           debit: 0,
           credit: x.charge
         })
-    // Transporter cost lines on rack sales — payable.
+    // Transporter cost lines on rack sales — payable; sale-time diesel charged is recovered (debit).
     const rstin = (await d
       .prepare(
-        `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rst.charge,0) AS charge, COALESCE(rst.vehicle_no,'') AS vno
+        `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rst.charge,0) AS charge, COALESCE(rst.vehicle_no,'') AS vno,
+                COALESCE(rst.diesel_amount,0) AS diesel, COALESCE(rst.diesel_charged,0) AS diesel_charged
          FROM rack_sale_transporters rst JOIN rack_sales rs ON rs.id = rst.rack_sale_id
          WHERE rst.transporter_id = ?`
       )
-      .all(partyId)) as { sale_no: string; date: string; created_at: string; charge: number; vno: string }[]
-    for (const x of rstin)
+      .all(partyId)) as {
+      sale_no: string; date: string; created_at: string; charge: number; vno: string; diesel: number; diesel_charged: number
+    }[]
+    for (const x of rstin) {
       if (x.charge > 0)
         entries.push({
           date: x.date,
@@ -1246,6 +1305,16 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
           debit: 0,
           credit: x.charge
         })
+      if (x.diesel > 0 && x.diesel_charged)
+        entries.push({
+          date: x.date,
+          created_at: x.created_at,
+          particulars: `Diesel issued (deduction)`,
+          ref: x.sale_no,
+          debit: x.diesel,
+          credit: 0
+        })
+    }
     // Diesel issued and charged to this transporter — recovered from what we owe (debit).
     const dsl = (await d
       .prepare(
@@ -1268,6 +1337,76 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
         debit: x.amount,
         credit: 0
       })
+  }
+
+  if (partyType === 'rack_vehicle') {
+    // Unloading work this tipper did at the destination — payable to it.
+    const unl = (await d
+      .prepare(
+        `SELECT ru.unloading_no, ru.date, ru.created_at, COALESCE(ru.amount,0) AS amount,
+                COALESCE(ru.diesel_amount,0) AS diesel, COALESCE(ru.diesel_charged,0) AS diesel_charged,
+                ru.qty_cm, ru.trips, r.rack_no
+         FROM rack_unloadings ru JOIN racks r ON r.id = ru.rack_id WHERE ru.rack_vehicle_id = ?`
+      )
+      .all(partyId)) as {
+      unloading_no: string; date: string; created_at: string; amount: number; diesel: number
+      diesel_charged: number; qty_cm: number; trips: number; rack_no: string
+    }[]
+    for (const x of unl) {
+      if (x.amount > 0)
+        entries.push({
+          date: x.date, created_at: x.created_at,
+          particulars: `Unloading — ${x.trips} trips, ${x.qty_cm} m³ · Rack ${x.rack_no}`,
+          ref: x.unloading_no, debit: 0, credit: x.amount
+        })
+      if (x.diesel > 0 && x.diesel_charged)
+        entries.push({ date: x.date, created_at: x.created_at, particulars: `Diesel issued (deduction)`, ref: x.unloading_no, debit: x.diesel, credit: 0 })
+    }
+    // Transport this tipper did at sale time — payable to it.
+    const st = (await d
+      .prepare(
+        `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rst.charge,0) AS charge,
+                COALESCE(rst.diesel_amount,0) AS diesel, COALESCE(rst.diesel_charged,0) AS diesel_charged, r.rack_no
+         FROM rack_sale_transporters rst JOIN rack_sales rs ON rs.id = rst.rack_sale_id
+         JOIN racks r ON r.id = rs.rack_id WHERE rst.rack_vehicle_id = ?`
+      )
+      .all(partyId)) as {
+      sale_no: string; date: string; created_at: string; charge: number; diesel: number; diesel_charged: number; rack_no: string
+    }[]
+    for (const x of st) {
+      if (x.charge > 0)
+        entries.push({
+          date: x.date, created_at: x.created_at,
+          particulars: `Sale transport · Rack ${x.rack_no}`, ref: x.sale_no, debit: 0, credit: x.charge
+        })
+      if (x.diesel > 0 && x.diesel_charged)
+        entries.push({ date: x.date, created_at: x.created_at, particulars: `Diesel issued (deduction)`, ref: x.sale_no, debit: x.diesel, credit: 0 })
+    }
+  }
+
+  if (partyType === 'rack_jcb') {
+    const wLabel: Record<string, string> = { unloading: 'unloading (per wagon)', loading: 'loading (per tipper)', other: 'other work (per hour)' }
+    const unl = (await d
+      .prepare(
+        `SELECT ru.unloading_no, ru.date, ru.created_at, COALESCE(ru.amount,0) AS amount,
+                COALESCE(ru.diesel_amount,0) AS diesel, COALESCE(ru.diesel_charged,0) AS diesel_charged,
+                ru.qty_cm, ru.trips, ru.work_type, r.rack_no
+         FROM rack_unloadings ru JOIN racks r ON r.id = ru.rack_id WHERE ru.rack_jcb_id = ?`
+      )
+      .all(partyId)) as {
+      unloading_no: string; date: string; created_at: string; amount: number; diesel: number
+      diesel_charged: number; qty_cm: number; trips: number; work_type: string | null; rack_no: string
+    }[]
+    for (const x of unl) {
+      if (x.amount > 0)
+        entries.push({
+          date: x.date, created_at: x.created_at,
+          particulars: `JCB ${wLabel[x.work_type ?? 'unloading'] ?? 'work'} — ${x.trips} · Rack ${x.rack_no}`,
+          ref: x.unloading_no, debit: 0, credit: x.amount
+        })
+      if (x.diesel > 0 && x.diesel_charged)
+        entries.push({ date: x.date, created_at: x.created_at, particulars: `Diesel issued (deduction)`, ref: x.unloading_no, debit: x.diesel, credit: 0 })
+    }
   }
 
   const payments = (await getDb()
@@ -1447,6 +1586,16 @@ export async function getPartyBalances(payload: {
       id: number
       name: string
     }[]
+  } else if (payload.party_type === 'rack_vehicle') {
+    const clause = payload.plant_id ? `WHERE ${plantScopeSql('t', 'rack_vehicle')}` : ''
+    parties = (await d
+      .prepare(`SELECT t.id, t.vehicle_no AS name FROM rack_vehicles t ${clause} ORDER BY t.vehicle_no`)
+      .all(payload.plant_id ? { plant_id: payload.plant_id } : {})) as { id: number; name: string }[]
+  } else if (payload.party_type === 'rack_jcb') {
+    const clause = payload.plant_id ? `WHERE ${plantScopeSql('t', 'rack_jcb')}` : ''
+    parties = (await d
+      .prepare(`SELECT t.id, t.name FROM rack_jcbs t ${clause} ORDER BY t.name`)
+      .all(payload.plant_id ? { plant_id: payload.plant_id } : {})) as { id: number; name: string }[]
   } else if (payload.party_type === 'machine') {
     // Machines available at the plant (or shared everywhere when unassigned).
     const clause = payload.plant_id

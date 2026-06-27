@@ -125,7 +125,7 @@ export function Payments(): React.JSX.Element {
       'Payment Status',
       ['Party', 'Type', 'Debit', 'Credit', 'Balance', 'Direction', 'Status'],
       rows.map((r) => [
-        r.name, typeLabel[r.party_type], r.total_debit, r.total_credit, Math.abs(r.balance),
+        r.name, typeLabel[r.party_type as PartyType], r.total_debit, r.total_credit, Math.abs(r.balance),
         r.balance > 0 ? (r.kind === 'receivable' ? 'Receivable' : 'Payable') : r.balance < 0 ? 'Advance' : '—',
         Math.abs(r.balance) < 0.01 ? 'Settled' : 'Outstanding'
       ])
@@ -229,7 +229,7 @@ export function Payments(): React.JSX.Element {
               {rows.map((r) => (
                 <TR key={`${r.party_type}-${r.party_id}`}>
                   <TD className="font-medium">{r.name}</TD>
-                  <TD><Badge variant={typeBadge[r.party_type]}>{typeLabel[r.party_type]}</Badge></TD>
+                  <TD><Badge variant={typeBadge[r.party_type as PartyType]}>{typeLabel[r.party_type as PartyType]}</Badge></TD>
                   <TD className="text-right">{fmtMoney(r.total_debit)}</TD>
                   <TD className="text-right">{fmtMoney(r.total_credit)}</TD>
                   <TD className={`text-right font-semibold ${r.kind === 'receivable' ? 'text-primary' : 'text-destructive'}`}>

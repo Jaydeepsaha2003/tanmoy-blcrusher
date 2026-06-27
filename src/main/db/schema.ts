@@ -198,12 +198,16 @@ CREATE TABLE IF NOT EXISTS dispatch_machines (
 CREATE TABLE IF NOT EXISTS rack_sale_transporters (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   rack_sale_id   INTEGER NOT NULL REFERENCES rack_sales(id),
-  transporter_id INTEGER NOT NULL REFERENCES transporters(id),
+  transporter_id INTEGER REFERENCES transporters(id),
+  rack_vehicle_id INTEGER REFERENCES rack_vehicles(id),
   vehicle_no     TEXT NOT NULL DEFAULT '',
   basis          TEXT NOT NULL DEFAULT 'flat',
   qty            REAL NOT NULL DEFAULT 0,
   rate           REAL NOT NULL DEFAULT 0,
   charge         REAL NOT NULL DEFAULT 0,
+  diesel_litres  REAL,
+  diesel_amount  REAL,
+  diesel_charged INTEGER NOT NULL DEFAULT 0,
   created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
@@ -429,6 +433,9 @@ CREATE TABLE IF NOT EXISTS rack_unloadings (
   diesel_litres  REAL,
   diesel_amount  REAL,
   diesel_charged INTEGER NOT NULL DEFAULT 0,
+  rack_vehicle_id INTEGER REFERENCES rack_vehicles(id),
+  rack_jcb_id    INTEGER REFERENCES rack_jcbs(id),
+  work_type      TEXT,
   date           TEXT NOT NULL,
   remarks        TEXT NOT NULL DEFAULT '',
   created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))

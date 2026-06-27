@@ -220,12 +220,16 @@ CREATE TABLE IF NOT EXISTS dispatch_machines (
 CREATE TABLE IF NOT EXISTS rack_sale_transporters (
   id             INT AUTO_INCREMENT PRIMARY KEY,
   rack_sale_id   INT NOT NULL,
-  transporter_id INT NOT NULL,
+  transporter_id INT,
+  rack_vehicle_id INT,
   vehicle_no     VARCHAR(64) NOT NULL DEFAULT '',
   basis          VARCHAR(8) NOT NULL DEFAULT 'flat',
   qty            DOUBLE NOT NULL DEFAULT 0,
   rate           DOUBLE NOT NULL DEFAULT 0,
   charge         DOUBLE NOT NULL DEFAULT 0,
+  diesel_litres  DOUBLE,
+  diesel_amount  DOUBLE,
+  diesel_charged INT NOT NULL DEFAULT 0,
   created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS rack_sale_machines (
@@ -375,6 +379,10 @@ CREATE TABLE IF NOT EXISTS rack_unloadings (
   amount         DOUBLE,
   diesel_litres  DOUBLE,
   diesel_amount  DOUBLE,
+  diesel_charged INT NOT NULL DEFAULT 0,
+  rack_vehicle_id INT,
+  rack_jcb_id    INT,
+  work_type      VARCHAR(16),
   date           VARCHAR(32) NOT NULL,
   remarks        TEXT,
   created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -1012,6 +1020,22 @@ CREATE TABLE IF NOT EXISTS rack_jcb_plants (
 );
 CREATE INDEX idx_rvplants_vehicle ON rack_vehicle_plants(rack_vehicle_id);
 CREATE INDEX idx_rjplants_jcb ON rack_jcb_plants(rack_jcb_id)`
+  },
+  {
+    // Unloadings bind to a fleet vehicle/JCB (their own ledger heads); sale transport
+    // can use a fleet vehicle and carry diesel charged to the carrier.
+    id: '030_rack_unload_carrier',
+    sql: `ALTER TABLE rack_unloadings ADD COLUMN rack_vehicle_id INT;
+ALTER TABLE rack_unloadings ADD COLUMN rack_jcb_id INT;
+ALTER TABLE rack_unloadings ADD COLUMN work_type VARCHAR(16);
+ALTER TABLE rack_sale_transporters ADD COLUMN rack_vehicle_id INT;
+ALTER TABLE rack_sale_transporters ADD COLUMN diesel_litres DOUBLE;
+ALTER TABLE rack_sale_transporters ADD COLUMN diesel_amount DOUBLE;
+ALTER TABLE rack_sale_transporters ADD COLUMN diesel_charged INT NOT NULL DEFAULT 0;
+ALTER TABLE rack_sale_transporters MODIFY transporter_id INT NULL;
+CREATE INDEX idx_runload_vehicle ON rack_unloadings(rack_vehicle_id);
+CREATE INDEX idx_runload_jcb ON rack_unloadings(rack_jcb_id);
+CREATE INDEX idx_rstrans_vehicle ON rack_sale_transporters(rack_vehicle_id)`
   }
 ]
 
@@ -1121,6 +1145,14 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   // Challan no on purchases and rack sales.
   await addColumn('purchases', 'challan_no', `TEXT NOT NULL DEFAULT ''`)
   await addColumn('rack_sales', 'challan_no', `TEXT NOT NULL DEFAULT ''`)
+  // Unloadings bind to a fleet vehicle/JCB; sale transport can use a fleet vehicle + diesel.
+  await addColumn('rack_unloadings', 'rack_vehicle_id', 'INTEGER')
+  await addColumn('rack_unloadings', 'rack_jcb_id', 'INTEGER')
+  await addColumn('rack_unloadings', 'work_type', 'TEXT')
+  await addColumn('rack_sale_transporters', 'rack_vehicle_id', 'INTEGER')
+  await addColumn('rack_sale_transporters', 'diesel_litres', 'REAL')
+  await addColumn('rack_sale_transporters', 'diesel_amount', 'REAL')
+  await addColumn('rack_sale_transporters', 'diesel_charged', 'INTEGER NOT NULL DEFAULT 0')
 }
 
 /**

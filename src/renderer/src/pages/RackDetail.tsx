@@ -7,6 +7,7 @@ import {
   Pencil,
   Trash2,
   Truck,
+  Forklift,
   PackageOpen,
   Receipt,
   ShoppingCart,
@@ -15,7 +16,7 @@ import {
   X
 } from 'lucide-react'
 import { api } from '@/lib/api'
-import type { RackLoading, RackUnloading, RackExpense, RackSale, RackStatus, Uom } from '@shared/types'
+import type { RackLoading, RackUnloading, RackExpense, RackSale, RackStatus, Uom, JcbWorkType } from '@shared/types'
 import { toCm, fromCm, UOMS } from '@shared/types'
 import { PageHeader, Page } from '@/components/layout'
 import {
@@ -70,6 +71,18 @@ export function RackDetail(): React.JSX.Element {
   const { data: customers = [] } = useQuery({ queryKey: ['customers'], queryFn: () => api.customers.list() })
   const { data: assets = [] } = useQuery({ queryKey: ['assets'], queryFn: () => api.assets.list() })
   const { data: outsourceVendors = [] } = useQuery({ queryKey: ['outsource'], queryFn: () => api.outsource.list() })
+  // Fleet masters scoped to the rack's source plant (fall back to all/common when no plant).
+  const rackPlantId = data?.rack?.plant_id ?? undefined
+  const { data: rackVehicles = [] } = useQuery({
+    queryKey: ['rackVehicles', rackPlantId],
+    queryFn: () => api.rackVehicles.list(rackPlantId),
+    enabled: !!data
+  })
+  const { data: rackJcbs = [] } = useQuery({
+    queryKey: ['rackJcbs', rackPlantId],
+    queryFn: () => api.rackJcbs.list(rackPlantId),
+    enabled: !!data
+  })
   const { data: expenseTypes = [] } = useQuery({
     queryKey: ['expenseTypes'],
     queryFn: api.racks.expenseTypes
@@ -112,6 +125,9 @@ export function RackDetail(): React.JSX.Element {
     qc.invalidateQueries({ queryKey: ['finished-available'] })
     qc.invalidateQueries({ queryKey: ['movements'] })
     qc.invalidateQueries({ queryKey: ['transporters'] })
+    qc.invalidateQueries({ queryKey: ['rackVehicles'] })
+    qc.invalidateQueries({ queryKey: ['rackJcbs'] })
+    qc.invalidateQueries({ queryKey: ['diesel'] })
     qc.invalidateQueries({ queryKey: ['expenseTypes'] })
     qc.invalidateQueries({ queryKey: ['dashboard'] })
     qc.invalidateQueries({ queryKey: ['ledger'] })
@@ -246,14 +262,17 @@ export function RackDetail(): React.JSX.Element {
     const first = products.find((p) => p.transit_shortage_cm > 0)
     setUnloadForm({
       rack_id: rackId,
+      carrier_kind: 'vehicle' as 'vehicle' | 'jcb',
+      rack_vehicle_id: rackVehicles[0]?.id ?? '',
+      rack_jcb_id: rackJcbs[0]?.id ?? '',
+      work_type: 'unloading' as JcbWorkType,
       product_name: first?.product_name || '',
-      transporter_id: transporters[0]?.id ?? null,
-      vehicle_no: '',
       trips: '',
-      per_trip_cm: '',
-      rate: '',
+      per_trip_cm: rackVehicles[0]?.cap_cm ?? '',
+      total_cm_in: '',
+      rate: rackVehicles[0]?.rate_per_trip ?? '',
       diesel_litres: '',
-      diesel_charged: false,
+      diesel_charged: true,
       date: today(),
       remarks: ''
     })
@@ -283,34 +302,68 @@ export function RackDetail(): React.JSX.Element {
     setSaleForm({
       ...src,
       rate: src.rate ?? '',
-      transporters: (src.transporters ?? []).map((t) => ({ transporter_id: t.transporter_id, vehicle_no: t.vehicle_no, basis: t.basis || 'flat', qty: t.qty || '', rate: t.rate || '', charge: t.charge })),
+      transporters: (src.transporters ?? []).map((t) => ({
+        carrier: t.rack_vehicle_id ? `v:${t.rack_vehicle_id}` : t.transporter_id ? `t:${t.transporter_id}` : '',
+        vehicle_no: t.vehicle_no,
+        basis: t.basis || 'flat',
+        qty: t.qty || '',
+        rate: t.rate || '',
+        charge: t.charge,
+        diesel_litres: t.diesel_litres ?? '',
+        diesel_charged: t.diesel_charged == null ? true : !!t.diesel_charged
+      })),
       machines: (src.machines ?? []).map((m) => ({ asset_id: m.asset_id, basis: m.basis, qty: m.qty, rate: m.rate, outsource_id: m.outsource_id }))
     })
   }
 
-  // Sale cost-line helpers
+  // Sale cost-line helpers. A carrier line is keyed by a "t:<id>" (transporter) or "v:<id>" (fleet vehicle).
+  const carrierOptions = [
+    ...transporters.map((t) => ({ value: `t:${t.id}`, label: `🚚 ${t.name}` })),
+    ...rackVehicles.map((v) => ({ value: `v:${v.id}`, label: `🚛 ${v.vehicle_no}${v.owner_name ? ` · ${v.owner_name}` : ''}` }))
+  ]
   const sTLines = saleForm?.transporters ?? []
-  function addSaleTransporter(): void { setSaleForm({ ...saleForm, transporters: [...sTLines, { transporter_id: 0, vehicle_no: '', basis: 'flat', qty: '', rate: '', charge: '' }] }) }
+  function addSaleTransporter(): void { setSaleForm({ ...saleForm, transporters: [...sTLines, { carrier: '', vehicle_no: '', basis: 'flat', qty: '', rate: '', charge: '', diesel_litres: '', diesel_charged: true }] }) }
   function setSaleTransporter(i: number, patch: any): void { setSaleForm({ ...saleForm, transporters: sTLines.map((t: any, idx: number) => (idx === i ? { ...t, ...patch } : t)) }) }
   function delSaleTransporter(i: number): void { setSaleForm({ ...saleForm, transporters: sTLines.filter((_: any, idx: number) => idx !== i) }) }
+  /** Picking a fleet vehicle prefills its per-trip rate (and a per-trip basis). */
+  function setSaleCarrier(i: number, carrier: string): void {
+    const patch: any = { carrier }
+    if (carrier.startsWith('v:')) {
+      const v = rackVehicles.find((x) => x.id === Number(carrier.slice(2)))
+      if (v) { patch.vehicle_no = v.vehicle_no; if (sTLines[i]?.basis === 'flat') patch.basis = 'trip'; if (v.rate_per_trip != null && !sTLines[i]?.rate) patch.rate = v.rate_per_trip }
+    }
+    setSaleTransporter(i, patch)
+  }
   const sMLines = saleForm?.machines ?? []
   function addSaleMachine(): void { setSaleForm({ ...saleForm, machines: [...sMLines, { asset_id: 0, basis: 'hour', qty: '', rate: '', outsource_id: null }] }) }
   function setSaleMachine(i: number, patch: any): void { setSaleForm({ ...saleForm, machines: sMLines.map((m: any, idx: number) => (idx === i ? { ...m, ...patch } : m)) }) }
   function delSaleMachine(i: number): void { setSaleForm({ ...saleForm, machines: sMLines.filter((_: any, idx: number) => idx !== i) }) }
   const saleLineCharge = (t: any): number =>
     t.basis === 'trip' || t.basis === 'uom' ? (Number(t.qty) || 0) * (Number(t.rate) || 0) : Number(t.charge) || 0
+  /** The JCB's rate for the chosen work type (unloading=per wagon, loading=per tipper, other=per hour). */
+  const jcbRate = (j: { rate_unloading: number | null; rate_loading: number | null; rate_other: number | null } | undefined, wt: string): number | string =>
+    !j ? '' : wt === 'loading' ? (j.rate_loading ?? '') : wt === 'other' ? (j.rate_other ?? '') : (j.rate_unloading ?? '')
 
   const loadingTotal =
     loadingForm ? (Number(loadingForm.trips) || 0) * (Number(loadingForm.per_trip_cm) || 0) : 0
   const loadingAmount = loadingForm && loadingForm.rate !== '' ? loadingTotal * Number(loadingForm.rate) : null
 
-  const unloadTotal =
-    unloadForm ? (Number(unloadForm.trips) || 0) * (Number(unloadForm.per_trip_cm) || 0) : 0
-  const unloadAmount = unloadForm && unloadForm.rate !== '' ? unloadTotal * Number(unloadForm.rate) : null
+  const unloadIsVehicle = unloadForm?.carrier_kind === 'vehicle'
+  // m³ that came off the rake (drives sellable): tipper = trips × capacity; JCB = entered directly.
+  const unloadTotal = unloadForm
+    ? unloadIsVehicle
+      ? (Number(unloadForm.trips) || 0) * (Number(unloadForm.per_trip_cm) || 0)
+      : Number(unloadForm.total_cm_in) || 0
+    : 0
+  // Charge is per unit (per trip / per wagon / per tipper-load / per hour) × the count.
+  const unloadCount = unloadForm ? Number(unloadForm.trips) || 0 : 0
+  const unloadAmount = unloadForm && unloadForm.rate !== '' ? unloadCount * Number(unloadForm.rate) : null
   const unloadAvailable = unloadForm
     ? (products.find((p) => p.product_name === unloadForm.product_name)?.transit_shortage_cm ?? 0) +
       (unloadForm.id ? unloadings.find((u) => u.id === unloadForm.id)?.total_cm ?? 0 : 0)
     : 0
+  const jcbCountLabel =
+    unloadForm?.work_type === 'loading' ? 'Tipper loads' : unloadForm?.work_type === 'other' ? 'Hours' : 'Wagons'
 
   const saleQtyCm = saleForm ? toCm(Number(saleForm.quantity) || 0, saleForm.uom, rackFactors) : 0
   const saleAmount =
@@ -502,21 +555,33 @@ export function RackDetail(): React.JSX.Element {
           )}
         </div>
 
-        {/* ---- Expenses ---- */}
+        {/* ---- Expenses & Unloadings ---- */}
         <div className="mb-6">
           <SectionTitle
             icon={<Receipt size={16} />}
             title="Rack Expenses"
             action={
-              <Button size="sm" variant="secondary" onClick={() =>
-                setExpenseForm({ rack_id: rackId, expense_type: '', amount: '', date: today(), remarks: '' })
-              } disabled={rack.status === 'closed'}>
-                <Plus size={15} /> Add Expense
-              </Button>
+              <div className="flex gap-2">
+                <Button size="sm" variant="secondary" onClick={() =>
+                  setExpenseForm({ rack_id: rackId, expense_type: '', amount: '', date: today(), remarks: '' })
+                } disabled={isClosed}>
+                  <Plus size={15} /> Add Expense
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={openNewUnloading}
+                  disabled={isClosed || rack.status === 'loading' || !(rackVehicles.length || rackJcbs.length) || !products.some((p) => p.transit_shortage_cm > 0)}
+                >
+                  <PackageOpen size={15} /> Add Unloading
+                </Button>
+              </div>
             }
           />
+          {!(rackVehicles.length || rackJcbs.length) && (
+            <p className="mb-2 text-xs text-warning">Add vehicles / JCBs first (Rail Dispatch → Vehicles &amp; JCB) to record an unloading.</p>
+          )}
           {expenses.length === 0 ? (
-            <EmptyState message="No expenses recorded for this rack (railway freight, loading labour, etc.)." />
+            <EmptyState message="No direct expenses yet (railway freight, demurrage, labour…). Sale transport & machine costs are added on each sale and counted in the rack's cost." />
           ) : (
             <Table>
               <THead>
@@ -548,85 +613,89 @@ export function RackDetail(): React.JSX.Element {
               </TBody>
             </Table>
           )}
-        </div>
 
-        {/* ---- Unloadings ---- */}
-        <div className="mb-6">
-          <SectionTitle
-            icon={<PackageOpen size={16} />}
-            title="Unloadings — Received at Destination"
-            action={
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={openNewUnloading}
-                disabled={isClosed || rack.status === 'loading' || !products.some((p) => p.transit_shortage_cm > 0)}
-              >
-                <Plus size={15} /> Add Unloading
-              </Button>
-            }
-          />
-          {rack.status === 'loading' ? (
-            <p className="mb-2 text-xs text-muted-foreground">
-              Unloading opens once the rack leaves the plant (mark <b>In Transit</b> / <b>Reached</b>).
-              Any quantity loaded but never unloaded is treated as transit shortage.
-            </p>
-          ) : null}
-          {unloadings.length === 0 ? (
-            <EmptyState message="Nothing unloaded yet. Record what physically arrives at the destination — the gap from the loaded quantity is the transport shortage." />
-          ) : (
-            <Table>
-              <THead>
-                <TR>
-                  <TH>No</TH>
-                  <TH>Date</TH>
-                  <TH>Product</TH>
-                  <TH>Transporter / Vehicle</TH>
-                  <TH className="text-right">Trips</TH>
-                  <TH className="text-right">Per Trip (m³)</TH>
-                  <TH className="text-right">Total (m³)</TH>
-                  <TH className="text-right">Rate</TH>
-                  <TH className="text-right">Amount</TH>
-                  <TH className="text-right">Actions</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {unloadings.map((u) => (
-                  <TR key={u.id}>
-                    <TD className="font-mono text-xs">{u.unloading_no}</TD>
-                    <TD>{fmtDate(u.date)}</TD>
-                    <TD className="font-medium">{u.product_name}</TD>
-                    <TD className="text-muted-foreground">
-                      {u.transporter_name ?? '-'}
-                      {u.vehicle_no ? ` · ${u.vehicle_no}` : ''}
-                    </TD>
-                    <TD className="text-right">{fmtQty(u.trips)}</TD>
-                    <TD className="text-right">{fmtQty(u.per_trip_cm)}</TD>
-                    <TD className="text-right font-semibold">{fmtQty(u.total_cm)}</TD>
-                    <TD className="text-right">{u.rate == null ? '-' : fmtMoney(u.rate)}</TD>
-                    <TD className="text-right">{fmtMoney(u.amount)}</TD>
-                    <TD className="text-right">
-                      <Button variant="ghost" size="icon" onClick={() =>
-                        setUnloadForm({
-                          ...u,
+          {/* Unloadings — relocated here; each is billed to a JCB or Tipper vehicle */}
+          <div className="mt-6">
+            <h3 className="mb-2.5 flex items-center gap-2 text-sm font-semibold">
+              <PackageOpen size={16} /> Unloadings — Received at Destination (JCB / Tipper)
+            </h3>
+            {rack.status === 'loading' ? (
+              <p className="mb-2 text-xs text-muted-foreground">
+                Unloading opens once the rack leaves the plant (mark <b>In Transit</b> / <b>Reached</b>).
+                Quantity loaded but never unloaded is treated as transit shortage.
+              </p>
+            ) : null}
+            {unloadings.length === 0 ? (
+              <EmptyState message="Nothing unloaded yet. Use “Add Unloading” to record a JCB or Tipper vehicle bringing material off the rake — the charge posts to that machine's ledger." />
+            ) : (
+              <Table>
+                <THead>
+                  <TR>
+                    <TH>No</TH>
+                    <TH>Date</TH>
+                    <TH>Product</TH>
+                    <TH>JCB / Vehicle</TH>
+                    <TH className="text-right">Count</TH>
+                    <TH className="text-right">Unloaded (m³)</TH>
+                    <TH className="text-right">Rate</TH>
+                    <TH className="text-right">Amount</TH>
+                    <TH className="text-right">Diesel</TH>
+                    <TH className="text-right">Actions</TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {unloadings.map((u) => (
+                    <TR key={u.id}>
+                      <TD className="font-mono text-xs">{u.unloading_no}</TD>
+                      <TD>{fmtDate(u.date)}</TD>
+                      <TD className="font-medium">{u.product_name}</TD>
+                      <TD className="text-muted-foreground">
+                        {u.resource_name ?? u.transporter_name ?? '-'}
+                        {u.resource_type === 'jcb' && u.work_type ? (
+                          <Badge variant="muted" className="ml-1.5">{u.work_type}</Badge>
+                        ) : u.resource_type === 'vehicle' ? (
+                          <Badge variant="muted" className="ml-1.5">tipper</Badge>
+                        ) : null}
+                      </TD>
+                      <TD className="text-right">{fmtQty(u.trips)}</TD>
+                      <TD className="text-right font-semibold">{fmtQty(u.qty_cm)}</TD>
+                      <TD className="text-right">{u.rate == null ? '-' : fmtMoney(u.rate)}</TD>
+                      <TD className="text-right">{fmtMoney(u.amount)}</TD>
+                      <TD className="text-right text-muted-foreground">
+                        {u.diesel_amount ? fmtMoney(u.diesel_amount) : '-'}
+                        {u.diesel_litres ? ` (${fmtQty(u.diesel_litres)} L)` : ''}
+                      </TD>
+                      <TD className="text-right">
+                        <Button variant="ghost" size="icon" onClick={() => setUnloadForm({
+                          rack_id: rackId,
+                          id: u.id,
+                          unloading_no: u.unloading_no,
+                          carrier_kind: u.rack_jcb_id ? 'jcb' : 'vehicle',
+                          rack_vehicle_id: u.rack_vehicle_id ?? (rackVehicles[0]?.id ?? ''),
+                          rack_jcb_id: u.rack_jcb_id ?? (rackJcbs[0]?.id ?? ''),
+                          work_type: (u.work_type as JcbWorkType) || 'unloading',
+                          product_name: u.product_name,
                           trips: u.trips || '',
                           per_trip_cm: u.per_trip_cm || '',
+                          total_cm_in: u.rack_jcb_id ? (u.qty_cm || '') : '',
                           rate: u.rate ?? '',
                           diesel_litres: u.diesel_litres ?? '',
-                          diesel_charged: !!u.diesel_charged
-                        })
-                      }>
-                        <Pencil size={15} />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => removeUnloading(u)}>
-                        <Trash2 size={15} className="text-destructive" />
-                      </Button>
-                    </TD>
-                  </TR>
-                ))}
-              </TBody>
-            </Table>
-          )}
+                          diesel_charged: !!u.diesel_charged,
+                          date: u.date,
+                          remarks: u.remarks
+                        })}>
+                          <Pencil size={15} />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => removeUnloading(u)}>
+                          <Trash2 size={15} className="text-destructive" />
+                        </Button>
+                      </TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+            )}
+          </div>
         </div>
 
         {/* ---- Sales ---- */}
@@ -833,76 +902,100 @@ export function RackDetail(): React.JSX.Element {
       {/* ---- Unloading modal ---- */}
       {unloadForm && (
         <Modal open onClose={() => setUnloadForm(null)}
-          title={unloadForm.id ? `Edit ${unloadForm.unloading_no}` : 'Add Unloading (Yard → Destination)'}
+          title={unloadForm.id ? `Edit ${unloadForm.unloading_no}` : 'Add Unloading (JCB / Tipper)'}
           width="max-w-2xl">
+          <div className="mb-4 flex gap-2">
+            <Button size="sm" variant={unloadForm.carrier_kind === 'vehicle' ? 'default' : 'outline'} disabled={!rackVehicles.length}
+              onClick={() => { const v = rackVehicles.find((x) => x.id === Number(unloadForm.rack_vehicle_id)) ?? rackVehicles[0]; setUnloadForm({ ...unloadForm, carrier_kind: 'vehicle', rack_vehicle_id: v?.id ?? '', per_trip_cm: v?.cap_cm ?? unloadForm.per_trip_cm, rate: v?.rate_per_trip ?? unloadForm.rate }) }}>
+              <Truck size={15} /> Tipper Vehicle
+            </Button>
+            <Button size="sm" variant={unloadForm.carrier_kind === 'jcb' ? 'default' : 'outline'} disabled={!rackJcbs.length}
+              onClick={() => { const j = rackJcbs.find((x) => x.id === Number(unloadForm.rack_jcb_id)) ?? rackJcbs[0]; setUnloadForm({ ...unloadForm, carrier_kind: 'jcb', rack_jcb_id: j?.id ?? '', rate: jcbRate(j, unloadForm.work_type) }) }}>
+              <Forklift size={15} /> JCB
+            </Button>
+          </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Product">
               <SearchSelect
                 value={unloadForm.product_name}
-                onChange={(v) =>
-                  setUnloadForm({ ...unloadForm, product_name: v })}
+                onChange={(v) => setUnloadForm({ ...unloadForm, product_name: v })}
                 options={products
                   .filter((p) => p.transit_shortage_cm > 0 || p.product_name === unloadForm.product_name)
-                  .map((p) => ({
-                    value: p.product_name,
-                    label: `${p.product_name} (${fmtQty(p.transit_shortage_cm)} m³ on rake)`
-                  }))}
+                  .map((p) => ({ value: p.product_name, label: `${p.product_name} (${fmtQty(p.transit_shortage_cm)} m³ on rake)` }))}
                 placeholder="Select product…"
               />
             </Field>
-            <Field label="Transporter">
-              <SearchSelect
-                value={unloadForm.transporter_id ?? ''}
-                onChange={(v) =>
-                  setUnloadForm({ ...unloadForm, transporter_id: v ? Number(v) : null })}
-                options={[
-                  { value: '', label: '— Select —' },
-                  ...transporters.map((t) => ({ value: t.id, label: t.name }))
-                ]}
-              />
-            </Field>
-            <Field label="Vehicle No.">
-              <Input value={unloadForm.vehicle_no || ''} onChange={(e) =>
-                setUnloadForm({ ...unloadForm, vehicle_no: e.target.value })} placeholder="e.g. JH-01-AB-1234" />
-            </Field>
-            <Field label="No. of Trips">
-              <Input type="number" step="1" value={unloadForm.trips} onChange={(e) =>
-                setUnloadForm({ ...unloadForm, trips: e.target.value })} />
-            </Field>
-            <Field label="Per Trip (m³)">
-              <Input type="number" step="0.001" value={unloadForm.per_trip_cm} onChange={(e) =>
-                setUnloadForm({ ...unloadForm, per_trip_cm: e.target.value })} />
-            </Field>
-            <Field label="Total Unloaded (m³)" hint="= trips × per trip">
-              <Input value={fmtQty(unloadTotal)} disabled />
-            </Field>
-            <Field label="Rate per m³ (transport)">
-              <Input type="number" step="0.01" value={unloadForm.rate} onChange={(e) =>
-                setUnloadForm({ ...unloadForm, rate: e.target.value })} placeholder="Optional" />
-            </Field>
-            <Field label="Diesel (litres, optional)" hint={Number(unloadForm.diesel_litres) > 0 ? `In stock: ${fmtQty(unloadDieselQuote?.available ?? 0)} L` : 'Drawn from the rack’s source-plant diesel stock (FIFO)'}>
-              <Input type="number" step="0.01" value={unloadForm.diesel_litres} onChange={(e) =>
-                setUnloadForm({ ...unloadForm, diesel_litres: e.target.value })} />
-            </Field>
-            <Field label="Diesel Cost (FIFO)" hint="Valued at the oldest stock's rate first">
-              <Input value={Number(unloadForm.diesel_litres) > 0 ? `₹${fmtMoney(unloadDieselQuote?.amount ?? 0)}` : '—'} disabled />
+            {unloadForm.carrier_kind === 'vehicle' ? (
+              <>
+                <Field label="Tipper Vehicle">
+                  <SearchSelect
+                    value={unloadForm.rack_vehicle_id || ''}
+                    onChange={(v) => { const veh = rackVehicles.find((x) => x.id === Number(v)); setUnloadForm({ ...unloadForm, rack_vehicle_id: Number(v), per_trip_cm: veh?.cap_cm ?? unloadForm.per_trip_cm, rate: veh?.rate_per_trip ?? unloadForm.rate }) }}
+                    options={rackVehicles.map((v) => ({ value: v.id, label: `${v.vehicle_no}${v.owner_name ? ` · ${v.owner_name}` : ''}` }))}
+                    placeholder="Select vehicle…"
+                  />
+                </Field>
+                <Field label="No. of Trips">
+                  <Input type="number" step="1" value={unloadForm.trips} onChange={(e) => setUnloadForm({ ...unloadForm, trips: e.target.value })} />
+                </Field>
+                <Field label="Per Trip (m³)" hint="From the vehicle's capacity (editable)">
+                  <Input type="number" step="0.001" value={unloadForm.per_trip_cm} onChange={(e) => setUnloadForm({ ...unloadForm, per_trip_cm: e.target.value })} />
+                </Field>
+                <Field label="Rate per Trip (₹)">
+                  <Input type="number" step="0.01" value={unloadForm.rate} onChange={(e) => setUnloadForm({ ...unloadForm, rate: e.target.value })} placeholder="Optional" />
+                </Field>
+                <Field label="Total Unloaded (m³)" hint="= trips × per trip">
+                  <Input value={fmtQty(unloadTotal)} disabled />
+                </Field>
+              </>
+            ) : (
+              <>
+                <Field label="JCB">
+                  <SearchSelect
+                    value={unloadForm.rack_jcb_id || ''}
+                    onChange={(v) => { const j = rackJcbs.find((x) => x.id === Number(v)); setUnloadForm({ ...unloadForm, rack_jcb_id: Number(v), rate: jcbRate(j, unloadForm.work_type) }) }}
+                    options={rackJcbs.map((j) => ({ value: j.id, label: `${j.name}${j.owner_name ? ` · ${j.owner_name}` : ''}` }))}
+                    placeholder="Select JCB…"
+                  />
+                </Field>
+                <Field label="Type of Work">
+                  <SearchSelect
+                    value={unloadForm.work_type}
+                    onChange={(v) => { const j = rackJcbs.find((x) => x.id === Number(unloadForm.rack_jcb_id)); setUnloadForm({ ...unloadForm, work_type: v as JcbWorkType, rate: jcbRate(j, v) }) }}
+                    options={[
+                      { value: 'unloading', label: 'JCB Unloading (per wagon)' },
+                      { value: 'loading', label: 'JCB Loading (per tipper load)' },
+                      { value: 'other', label: 'Other Work (per hour)' }
+                    ]}
+                  />
+                </Field>
+                <Field label={jcbCountLabel}>
+                  <Input type="number" step="0.01" value={unloadForm.trips} onChange={(e) => setUnloadForm({ ...unloadForm, trips: e.target.value })} />
+                </Field>
+                <Field label="Rate (₹)" hint="From the JCB's work-type rate (editable)">
+                  <Input type="number" step="0.01" value={unloadForm.rate} onChange={(e) => setUnloadForm({ ...unloadForm, rate: e.target.value })} placeholder="Optional" />
+                </Field>
+                <Field label="Unloaded (m³)" hint="Material freed off the rake — drives the sellable balance">
+                  <Input type="number" step="0.001" value={unloadForm.total_cm_in} onChange={(e) => setUnloadForm({ ...unloadForm, total_cm_in: e.target.value })} placeholder="0 for 'other work'" />
+                </Field>
+              </>
+            )}
+            <Field label="Diesel (litres, optional)" hint={Number(unloadForm.diesel_litres) > 0 ? `In stock: ${fmtQty(unloadDieselQuote?.available ?? 0)} L · ₹${fmtMoney(unloadDieselQuote?.amount ?? 0)}` : 'Drawn from the rack’s source-plant diesel stock (FIFO)'}>
+              <Input type="number" step="0.01" value={unloadForm.diesel_litres} onChange={(e) => setUnloadForm({ ...unloadForm, diesel_litres: e.target.value })} />
             </Field>
             {Number(unloadForm.diesel_litres) > 0 && (
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <label className="flex cursor-pointer items-center gap-2 text-sm">
-                  <input type="checkbox" className="h-4 w-4" checked={!!unloadForm.diesel_charged} onChange={(e) =>
-                    setUnloadForm({ ...unloadForm, diesel_charged: e.target.checked })} />
-                  Charge this diesel ({`₹${fmtMoney(unloadDieselQuote?.amount ?? 0)}`}) to the transporter
+                  <input type="checkbox" className="h-4 w-4" checked={!!unloadForm.diesel_charged} onChange={(e) => setUnloadForm({ ...unloadForm, diesel_charged: e.target.checked })} />
+                  Charge this diesel ({`₹${fmtMoney(unloadDieselQuote?.amount ?? 0)}`}) to the {unloadForm.carrier_kind === 'jcb' ? 'JCB' : 'vehicle'}
                 </label>
               </div>
             )}
             <Field label="Date">
-              <Input type="date" value={unloadForm.date} onChange={(e) =>
-                setUnloadForm({ ...unloadForm, date: e.target.value })} />
+              <Input type="date" value={unloadForm.date} onChange={(e) => setUnloadForm({ ...unloadForm, date: e.target.value })} />
             </Field>
             <Field label="Remarks">
-              <Input value={unloadForm.remarks || ''} onChange={(e) =>
-                setUnloadForm({ ...unloadForm, remarks: e.target.value })} />
+              <Input value={unloadForm.remarks || ''} onChange={(e) => setUnloadForm({ ...unloadForm, remarks: e.target.value })} />
             </Field>
           </div>
           <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/60 px-4 py-2.5 text-sm">
@@ -912,23 +1005,40 @@ export function RackDetail(): React.JSX.Element {
                 <span className="ml-2 font-medium text-destructive">— more than was loaded!</span>
               )}
             </span>
-            <span>Transport bill: <b>{unloadAmount == null ? '—' : fmtMoney(unloadAmount)}</b></span>
+            <span>Charge: <b>{unloadAmount == null ? '—' : fmtMoney(unloadAmount)}</b></span>
           </div>
           <div className="mt-5 flex justify-end gap-2">
             <Button variant="outline" onClick={() => setUnloadForm(null)}>Cancel</Button>
             <Button
               onClick={() =>
                 saveUnloading.mutate({
-                  ...unloadForm,
-                  trips: Number(unloadForm.trips) || 0,
-                  per_trip_cm: Number(unloadForm.per_trip_cm) || 0,
+                  id: unloadForm.id,
+                  rack_id: rackId,
+                  product_name: unloadForm.product_name,
+                  rack_vehicle_id: unloadForm.carrier_kind === 'vehicle' ? Number(unloadForm.rack_vehicle_id) : null,
+                  rack_jcb_id: unloadForm.carrier_kind === 'jcb' ? Number(unloadForm.rack_jcb_id) : null,
+                  work_type: unloadForm.carrier_kind === 'jcb' ? unloadForm.work_type : null,
+                  transporter_id: null,
+                  vehicle_no:
+                    unloadForm.carrier_kind === 'vehicle'
+                      ? rackVehicles.find((v) => v.id === Number(unloadForm.rack_vehicle_id))?.vehicle_no ?? ''
+                      : rackJcbs.find((j) => j.id === Number(unloadForm.rack_jcb_id))?.name ?? '',
+                  trips: unloadCount,
+                  per_trip_cm: unloadForm.carrier_kind === 'vehicle' ? Number(unloadForm.per_trip_cm) || 0 : 0,
                   total_cm: unloadTotal,
                   rate: unloadForm.rate === '' ? null : Number(unloadForm.rate),
                   diesel_litres: unloadForm.diesel_litres === '' ? null : Number(unloadForm.diesel_litres),
-                  diesel_charged: !!unloadForm.diesel_charged
+                  diesel_charged: !!unloadForm.diesel_charged,
+                  date: unloadForm.date,
+                  remarks: unloadForm.remarks
                 })
               }
-              disabled={!unloadForm.product_name || !(unloadTotal > 0) || unloadTotal > unloadAvailable}
+              disabled={
+                !unloadForm.product_name ||
+                (unloadForm.carrier_kind === 'vehicle' ? !unloadForm.rack_vehicle_id : !unloadForm.rack_jcb_id) ||
+                !(unloadCount > 0 || unloadTotal > 0) ||
+                unloadTotal > unloadAvailable
+              }
             >
               Save Unloading
             </Button>
@@ -1049,21 +1159,20 @@ export function RackDetail(): React.JSX.Element {
             </div>
             <div className="space-y-2">
               {sTLines.length > 0 && (
-                <div className="grid grid-cols-[1fr_92px_96px_64px_76px_90px_32px] gap-2 px-1 text-[11px] font-semibold uppercase text-muted-foreground">
-                  <div>Transporter</div><div>Vehicle</div><div>Basis</div><div>Qty</div><div>Rate ₹</div><div>Charge ₹</div><div></div>
+                <div className="grid grid-cols-[1.3fr_84px_56px_70px_84px_64px_28px] gap-2 px-1 text-[11px] font-semibold uppercase text-muted-foreground">
+                  <div>Carrier</div><div>Basis</div><div>Qty</div><div>Rate ₹</div><div>Charge ₹</div><div>Diesel L</div><div></div>
                 </div>
               )}
               {sTLines.map((t: any, i: number) => {
                 const computed = t.basis === 'trip' || t.basis === 'uom'
                 return (
-                  <div key={i} className="grid grid-cols-[1fr_92px_96px_64px_76px_90px_32px] items-center gap-2">
+                  <div key={i} className="grid grid-cols-[1.3fr_84px_56px_70px_84px_64px_28px] items-center gap-2">
                     <SearchSelect
-                      value={t.transporter_id || ''}
-                      onChange={(v) => setSaleTransporter(i, { transporter_id: Number(v) })}
-                      options={transporters.map((tr) => ({ value: tr.id, label: tr.name }))}
-                      placeholder="Transporter…"
+                      value={t.carrier || ''}
+                      onChange={(v) => setSaleCarrier(i, v)}
+                      options={carrierOptions}
+                      placeholder="Transporter / vehicle…"
                     />
-                    <Input value={t.vehicle_no} onChange={(e) => setSaleTransporter(i, { vehicle_no: e.target.value })} placeholder="JH01AB1234" />
                     <SearchSelect
                       value={t.basis || 'flat'}
                       onChange={(v) => setSaleTransporter(i, { basis: v })}
@@ -1078,15 +1187,20 @@ export function RackDetail(): React.JSX.Element {
                     ) : (
                       <Input type="number" step="0.01" value={t.charge} onChange={(e) => setSaleTransporter(i, { charge: e.target.value })} />
                     )}
+                    <Input type="number" step="0.01" value={t.diesel_litres ?? ''} placeholder="0"
+                      onChange={(e) => setSaleTransporter(i, { diesel_litres: e.target.value })} />
                     <Button variant="ghost" size="icon" onClick={() => delSaleTransporter(i)}><X size={15} className="text-destructive" /></Button>
                   </div>
                 )
               })}
             </div>
-            <Button variant="outline" size="sm" disabled={!transporters.length} onClick={addSaleTransporter}>
-              <Plus size={14} /> Add Transporter
+            <Button variant="outline" size="sm" disabled={!carrierOptions.length} onClick={addSaleTransporter}>
+              <Plus size={14} /> Add Carrier
             </Button>
-            <p className="text-[11px] text-muted-foreground">Posts to the transporter ledger and the rack's profit/loss.</p>
+            <p className="text-[11px] text-muted-foreground">
+              Carrier = one of your transporters or a fleet vehicle — the charge posts to its ledger and the rack's cost.
+              Diesel here is FIFO-costed from the rack's source plant, charged to the carrier, and deducted from Diesel stock.
+            </p>
           </div>
 
           {/* Machine cost lines */}
@@ -1150,15 +1264,22 @@ export function RackDetail(): React.JSX.Element {
                   quantity: Number(saleForm.quantity),
                   rate: saleForm.rate === '' ? null : Number(saleForm.rate),
                   transporters: (saleForm.transporters ?? [])
-                    .filter((t: any) => t.transporter_id)
-                    .map((t: any) => ({
-                      transporter_id: Number(t.transporter_id),
-                      vehicle_no: t.vehicle_no || '',
-                      basis: t.basis || 'flat',
-                      qty: Number(t.qty) || 0,
-                      rate: Number(t.rate) || 0,
-                      charge: Number(t.charge) || 0
-                    })),
+                    .filter((t: any) => t.carrier)
+                    .map((t: any) => {
+                      const [kind, idStr] = String(t.carrier).split(':')
+                      const id = Number(idStr)
+                      return {
+                        transporter_id: kind === 't' ? id : 0,
+                        rack_vehicle_id: kind === 'v' ? id : null,
+                        vehicle_no: t.vehicle_no || '',
+                        basis: t.basis || 'flat',
+                        qty: Number(t.qty) || 0,
+                        rate: Number(t.rate) || 0,
+                        charge: Number(t.charge) || 0,
+                        diesel_litres: t.diesel_litres === '' || t.diesel_litres == null ? null : Number(t.diesel_litres),
+                        diesel_charged: t.diesel_charged ?? true
+                      }
+                    }),
                   machines: (saleForm.machines ?? [])
                     .filter((m: any) => m.asset_id)
                     .map((m: any) => ({ asset_id: Number(m.asset_id), basis: m.basis || 'hour', qty: Number(m.qty) || 0, rate: Number(m.rate) || 0, outsource_id: m.outsource_id ? Number(m.outsource_id) : null }))

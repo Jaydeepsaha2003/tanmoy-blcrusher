@@ -16,8 +16,17 @@ export type MovementType =
   | 'transfer'
 export type RackStatus = 'loading' | 'in_transit' | 'reached' | 'closed'
 export type PartyType = 'customer' | 'supplier' | 'transporter' | 'outsource'
-/** Ledgers exist for parties, per rack (job account), per company (roles), per plant & business (P&L). */
-export type LedgerType = PartyType | 'rack' | 'company' | 'plant' | 'business' | 'machine'
+/** Ledgers exist for parties, per rack (job account), per company (roles), per plant & business (P&L).
+ *  rack_vehicle / rack_jcb are fleet machines billed for rack work (payable, like a transporter). */
+export type LedgerType =
+  | PartyType
+  | 'rack'
+  | 'company'
+  | 'plant'
+  | 'business'
+  | 'machine'
+  | 'rack_vehicle'
+  | 'rack_jcb'
 export type AssetType = 'machine' | 'vehicle'
 export type ExpenseCategory =
   | 'electricity'
@@ -510,6 +519,9 @@ export interface RackLoading {
   created_at: string
 }
 
+/** JCB work types: unloading per wagon, loading per tipper load, other per hour. */
+export type JcbWorkType = 'unloading' | 'loading' | 'other'
+
 export interface RackUnloading {
   id: number
   unloading_no: string
@@ -518,7 +530,16 @@ export interface RackUnloading {
   product_name: string
   transporter_id: number | null
   transporter_name?: string
+  /** The fleet carrier doing this unloading: a Tipper vehicle OR a JCB (one of them). */
+  rack_vehicle_id?: number | null
+  rack_jcb_id?: number | null
+  /** For a JCB carrier: which rate applies (per wagon / per tipper / per hour). */
+  work_type?: JcbWorkType | null
+  /** Resolved display name + kind of the bound carrier (set on detail). */
+  resource_name?: string | null
+  resource_type?: 'vehicle' | 'jcb' | null
   vehicle_no: string
+  /** Billing count: trips (tipper) or wagons / tipper-loads / hours (JCB). */
   trips: number
   per_trip_cm: number
   total_cm: number
@@ -527,7 +548,7 @@ export interface RackUnloading {
   amount: number | null
   diesel_litres: number | null
   diesel_amount: number | null
-  /** 1 = the FIFO diesel cost is debited to this unloading's transporter. */
+  /** 1 = the FIFO diesel cost is debited to this unloading's carrier (vehicle/JCB). */
   diesel_charged?: number
   date: string
   remarks: string
@@ -572,17 +593,28 @@ export interface RackSale {
   machine_total?: number
 }
 
-/** A transporter cost line on a rack sale (mirrors DispatchTransporter). */
+/** A transport cost line on a rack sale (mirrors DispatchTransporter). The carrier is
+ *  either one of your transporters OR a fleet vehicle (rack_vehicle_id). Diesel issued
+ *  here is FIFO-costed from the rack's source plant and (by default) charged to the carrier. */
 export interface RackSaleTransporter {
   id?: number
   rack_sale_id?: number
-  transporter_id: number
+  /** Transporter carrier (0/absent when the carrier is a fleet vehicle). */
+  transporter_id: number | null
   transporter_name?: string
+  /** Fleet-vehicle carrier (absent when the carrier is a transporter). */
+  rack_vehicle_id?: number | null
+  /** Resolved carrier name for display (transporter name or vehicle no). */
+  carrier_name?: string
   vehicle_no: string
   basis: PurchaseTransportBasis
   qty: number
   rate: number
   charge: number
+  diesel_litres?: number | null
+  diesel_amount?: number | null
+  /** 1 = the FIFO diesel cost is debited to this line's carrier. */
+  diesel_charged?: number
 }
 
 /** A machine-usage cost line on a rack sale (mirrors DispatchMachine). */
@@ -621,7 +653,7 @@ export interface RackDetailData {
 
 export interface PaymentEntry {
   id: number
-  party_type: PartyType
+  party_type: LedgerType
   party_id: number
   party_name?: string
   direction: PaymentDirection
@@ -684,7 +716,7 @@ export interface PartyBalance {
 
 /** A single party's outstanding position for the consolidated Payment Status screen. */
 export interface DueRow {
-  party_type: PartyType
+  party_type: LedgerType
   party_id: number
   name: string
   total_debit: number

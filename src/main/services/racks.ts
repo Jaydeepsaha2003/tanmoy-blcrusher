@@ -13,7 +13,8 @@ import type {
   Uom,
   UomFactors,
   MachineBasis,
-  PurchaseTransportBasis
+  PurchaseTransportBasis,
+  JcbWorkType
 } from '@shared/types'
 import { toCm, properCase } from '@shared/types'
 import { addMovement, finishedBalance } from './movements'
@@ -65,8 +66,12 @@ const RACK_AGG = `
   COALESCE((SELECT SUM(total_cm) FROM rack_loadings WHERE rack_id = r.id),0) AS loaded_cm,
   COALESCE((SELECT SUM(qty_cm) FROM rack_unloadings WHERE rack_id = r.id),0) AS unloaded_cm,
   COALESCE((SELECT SUM(amount) FROM rack_loadings WHERE rack_id = r.id),0)
-    + COALESCE((SELECT SUM(amount) FROM rack_unloadings WHERE rack_id = r.id),0) AS transport_cost,
-  COALESCE((SELECT SUM(amount) FROM rack_expenses WHERE rack_id = r.id),0) AS expense_total,
+    + COALESCE((SELECT SUM(amount) FROM rack_unloadings WHERE rack_id = r.id),0)
+    + COALESCE((SELECT SUM(rst.charge) FROM rack_sale_transporters rst
+         JOIN rack_sales rs ON rs.id = rst.rack_sale_id WHERE rs.rack_id = r.id),0) AS transport_cost,
+  COALESCE((SELECT SUM(amount) FROM rack_expenses WHERE rack_id = r.id),0)
+    + COALESCE((SELECT SUM(rsm.amount) FROM rack_sale_machines rsm
+         JOIN rack_sales rs ON rs.id = rsm.rack_sale_id WHERE rs.rack_id = r.id),0) AS expense_total,
   COALESCE((SELECT SUM(qty_cm) FROM rack_sales WHERE rack_id = r.id),0) AS sold_cm,
   COALESCE((SELECT SUM(amount) FROM rack_sales WHERE rack_id = r.id),0) AS sales_amount,
   (SELECT name FROM plants WHERE id = r.plant_id) AS plant_name`
@@ -221,10 +226,16 @@ export async function getRackDetail(payload: { id: number }): Promise<RackDetail
     .all(payload.id)) as RackLoading[]
   const unloadings = (await d
     .prepare(
-      `SELECT ru.*, r.rack_no, t.name AS transporter_name
+      `SELECT ru.*, r.rack_no, t.name AS transporter_name,
+              rv.vehicle_no AS vehicle_name, rj.name AS jcb_name,
+              COALESCE(rv.vehicle_no, rj.name, t.name) AS resource_name,
+              CASE WHEN ru.rack_vehicle_id IS NOT NULL THEN 'vehicle'
+                   WHEN ru.rack_jcb_id IS NOT NULL THEN 'jcb' ELSE NULL END AS resource_type
        FROM rack_unloadings ru
        JOIN racks r ON r.id = ru.rack_id
        LEFT JOIN transporters t ON t.id = ru.transporter_id
+       LEFT JOIN rack_vehicles rv ON rv.id = ru.rack_vehicle_id
+       LEFT JOIN rack_jcbs rj ON rj.id = ru.rack_jcb_id
        WHERE ru.rack_id = ?
        ORDER BY ru.date DESC, ru.id DESC`
     )
@@ -521,25 +532,36 @@ export interface UnloadingInput {
   id?: number
   rack_id: number
   product_name: string
-  transporter_id: number | null
+  /** Carrier doing this unloading: a fleet Tipper vehicle OR a JCB (exactly one).
+   *  Legacy rows may instead carry a transporter_id. */
+  rack_vehicle_id?: number | null
+  rack_jcb_id?: number | null
+  /** For a JCB carrier: which rate applies (per wagon / per tipper / per hour). */
+  work_type?: JcbWorkType | null
+  transporter_id?: number | null
   vehicle_no: string
+  /** Billing count: trips (tipper) or wagons / tipper-loads / hours (JCB). */
   trips: number
   per_trip_cm: number
   total_cm?: number
   rate: number | null
   diesel_litres: number | null
   diesel_amount: number | null
-  /** Tick to debit the FIFO diesel cost to this unloading's transporter. */
+  /** Tick to debit the FIFO diesel cost to this unloading's carrier (vehicle/JCB). */
   diesel_charged?: boolean | number
   date: string
   remarks: string
 }
 
+/** Charge is billed per unit (per trip for a tipper; per wagon/load/hour for a JCB);
+ *  the m³ that came off the rake drives the sellable balance and may differ from the count. */
 function resolveUnloading(p: UnloadingInput): { total: number; amount: number | null } {
   let total = Number(p.total_cm) || 0
   if (!(total > 0)) total = roundQty((Number(p.trips) || 0) * (Number(p.per_trip_cm) || 0))
-  if (!(total > 0)) throw new Error('Unloaded quantity must be greater than 0 (trips × per-trip m³).')
-  return { total: roundQty(total), amount: computeAmount(p.rate, total) }
+  const count = Number(p.trips) || 0
+  if (!(count > 0) && !(total > 0))
+    throw new Error('Enter the work count (trips / wagons / hours) and/or the m³ unloaded.')
+  return { total: roundQty(total), amount: computeAmount(p.rate, count) }
 }
 
 function unloadingFields(
@@ -549,10 +571,15 @@ function unloadingFields(
   diesel: { litres: number | null; amount: number | null },
   dieselCharged: number
 ): Record<string, unknown> {
+  const vehId = p.rack_vehicle_id ? Number(p.rack_vehicle_id) : null
+  const jcbId = p.rack_jcb_id ? Number(p.rack_jcb_id) : null
   return {
     rack_id: p.rack_id,
     product_name: p.product_name.trim(),
     transporter_id: p.transporter_id ?? null,
+    rack_vehicle_id: vehId,
+    rack_jcb_id: jcbId,
+    work_type: jcbId ? (p.work_type || 'unloading') : null,
     vehicle_no: p.vehicle_no ?? '',
     trips: Number(p.trips) || 0,
     per_trip_cm: Number(p.per_trip_cm) || 0,
@@ -570,6 +597,11 @@ function unloadingFields(
   }
 }
 
+/** A diesel charge sticks to whichever carrier this unloading is bound to. */
+function unloadingHasCarrier(p: UnloadingInput): boolean {
+  return !!(p.rack_vehicle_id || p.rack_jcb_id || p.transporter_id)
+}
+
 export async function addUnloading(p: UnloadingInput): Promise<RackUnloading> {
   const d = getDb()
   const rack = (await d.prepare(`SELECT * FROM racks WHERE id = ?`).get(p.rack_id)) as Rack | undefined
@@ -584,14 +616,16 @@ export async function addUnloading(p: UnloadingInput): Promise<RackUnloading> {
     )
   // Unloadings have no plant of their own — diesel draws from the rack's source plant.
   const diesel = await rackDiesel(d, rack.plant_id, p.diesel_litres)
-  const diesel_charged = diesel.litres && p.transporter_id && p.diesel_charged ? 1 : 0
+  const diesel_charged = diesel.litres && unloadingHasCarrier(p) && p.diesel_charged ? 1 : 0
   const no = await nextNumber('RKU', 'rack_unloading')
   const info = await d
     .prepare(
       `INSERT INTO rack_unloadings
-        (unloading_no, rack_id, product_name, transporter_id, vehicle_no, trips, per_trip_cm, total_cm,
+        (unloading_no, rack_id, product_name, transporter_id, rack_vehicle_id, rack_jcb_id, work_type,
+         vehicle_no, trips, per_trip_cm, total_cm,
          uom, quantity, qty_cm, rate, amount, diesel_litres, diesel_amount, diesel_charged, date, remarks)
-       VALUES (@unloading_no,@rack_id,@product_name,@transporter_id,@vehicle_no,@trips,@per_trip_cm,@total_cm,
+       VALUES (@unloading_no,@rack_id,@product_name,@transporter_id,@rack_vehicle_id,@rack_jcb_id,@work_type,
+         @vehicle_no,@trips,@per_trip_cm,@total_cm,
          @uom,@quantity,@qty_cm,@rate,@amount,@diesel_litres,@diesel_amount,@diesel_charged,@date,@remarks)`
     )
     .run({ unloading_no: no, ...unloadingFields(p, total, amount, diesel, diesel_charged) })
@@ -611,10 +645,11 @@ export async function updateUnloading(p: UnloadingInput): Promise<RackUnloading>
     | { plant_id: number | null }
     | undefined
   const diesel = await rackDiesel(d, rackRow?.plant_id ?? null, p.diesel_litres, { src: 'unloading', id: p.id })
-  const diesel_charged = diesel.litres && p.transporter_id && p.diesel_charged ? 1 : 0
+  const diesel_charged = diesel.litres && unloadingHasCarrier(p) && p.diesel_charged ? 1 : 0
   await d.transaction(async () => {
     await d.prepare(
       `UPDATE rack_unloadings SET product_name=@product_name, transporter_id=@transporter_id,
+         rack_vehicle_id=@rack_vehicle_id, rack_jcb_id=@rack_jcb_id, work_type=@work_type,
          vehicle_no=@vehicle_no, trips=@trips, per_trip_cm=@per_trip_cm, total_cm=@total_cm,
          uom=@uom, quantity=@quantity, qty_cm=@qty_cm, rate=@rate, amount=@amount,
          diesel_litres=@diesel_litres, diesel_amount=@diesel_amount, diesel_charged=@diesel_charged, date=@date, remarks=@remarks WHERE id=@id`
@@ -779,12 +814,18 @@ export async function listExpenses(filter: ExpenseFilter = {}): Promise<RackExpe
 /* ---------------- Sales (rack -> customer, any UOM) ---------------- */
 
 interface RackSaleTransporterInput {
-  transporter_id: number
+  /** Carrier is a transporter OR a fleet vehicle — exactly one is set. */
+  transporter_id?: number | null
+  rack_vehicle_id?: number | null
   vehicle_no?: string
   basis?: PurchaseTransportBasis
   qty?: number
   rate?: number
   charge?: number
+  /** Diesel issued to this carrier (FIFO from the rack's source plant). */
+  diesel_litres?: number | null
+  /** Default ON — debit the FIFO diesel cost to the carrier's ledger. */
+  diesel_charged?: boolean | number
 }
 interface RackSaleMachineInput {
   asset_id: number
@@ -794,25 +835,48 @@ interface RackSaleMachineInput {
   outsource_id?: number | null
 }
 
-/** Replace the transporter + machine cost lines for a rack sale. */
+/** Replace the transport + machine cost lines for a rack sale. Each transport line's carrier is
+ *  a transporter (transporter_id) or a fleet vehicle (rack_vehicle_id); diesel issued on a line is
+ *  FIFO-costed from the rack's source plant and (by default) charged to that carrier. */
 async function writeRackSaleChildLines(
   d: Db,
   saleId: number,
+  plantId: number | null | undefined,
   transporters?: RackSaleTransporterInput[],
   machines?: RackSaleMachineInput[]
 ): Promise<void> {
   await d.prepare(`DELETE FROM rack_sale_transporters WHERE rack_sale_id = ?`).run(saleId)
   await d.prepare(`DELETE FROM rack_sale_machines WHERE rack_sale_id = ?`).run(saleId)
   const tStmt = d.prepare(
-    `INSERT INTO rack_sale_transporters (rack_sale_id, transporter_id, vehicle_no, basis, qty, rate, charge) VALUES (?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO rack_sale_transporters
+       (rack_sale_id, transporter_id, rack_vehicle_id, vehicle_no, basis, qty, rate, charge, diesel_litres, diesel_amount, diesel_charged)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   for (const t of transporters ?? []) {
-    if (!t.transporter_id) continue
+    const transporterId = t.transporter_id ? Number(t.transporter_id) : 0
+    const vehicleId = t.rack_vehicle_id ? Number(t.rack_vehicle_id) : null
+    if (!transporterId && !vehicleId) continue
     const basis: PurchaseTransportBasis = t.basis === 'trip' || t.basis === 'uom' ? t.basis : 'flat'
     const qty = basis === 'flat' ? 0 : Number(t.qty) || 0
     const rate = basis === 'flat' ? 0 : Number(t.rate) || 0
     const charge = basis === 'flat' ? roundMoney(Number(t.charge) || 0) : roundMoney(qty * rate)
-    await tStmt.run(saleId, t.transporter_id, properCase(t.vehicle_no || ''), basis, qty, rate, charge)
+    // Diesel issued to this carrier: FIFO from the rack's source plant (blocks if short).
+    // Prior lines of this sale are already inserted, so the FIFO sees the correct remaining stock.
+    const diesel = await rackDiesel(d, plantId, t.diesel_litres)
+    const dieselCharged = diesel.litres && (t.diesel_charged ?? true) ? 1 : 0
+    await tStmt.run(
+      saleId,
+      transporterId,
+      vehicleId,
+      properCase(t.vehicle_no || ''),
+      basis,
+      qty,
+      rate,
+      charge,
+      diesel.litres,
+      diesel.amount,
+      dieselCharged
+    )
   }
   const mStmt = d.prepare(
     `INSERT INTO rack_sale_machines (rack_sale_id, asset_id, basis, qty, rate, amount, outsource_id) VALUES (?, ?, ?, ?, ?, ?, ?)`
@@ -833,8 +897,12 @@ export async function getSaleDetail(payload: { id: number }): Promise<RackSale |
   if (!sale) return null
   sale.transporters = (await d
     .prepare(
-      `SELECT rst.*, t.name AS transporter_name FROM rack_sale_transporters rst
-       JOIN transporters t ON t.id = rst.transporter_id WHERE rst.rack_sale_id = ? ORDER BY rst.id`
+      `SELECT rst.*, t.name AS transporter_name, rv.vehicle_no AS rack_vehicle_no,
+              COALESCE(t.name, rv.vehicle_no) AS carrier_name
+       FROM rack_sale_transporters rst
+       LEFT JOIN transporters t ON t.id = rst.transporter_id
+       LEFT JOIN rack_vehicles rv ON rv.id = rst.rack_vehicle_id
+       WHERE rst.rack_sale_id = ? ORDER BY rst.id`
     )
     .all(payload.id)) as RackSaleTransporter[]
   sale.machines = (await d
@@ -912,7 +980,7 @@ export async function addSale(p: SaleInput): Promise<RackSale> {
         remarks: p.remarks ?? ''
       })
     const saleId = Number(info.lastInsertRowid)
-    await writeRackSaleChildLines(d, saleId, p.transporters, p.machines)
+    await writeRackSaleChildLines(d, saleId, rack.plant_id, p.transporters, p.machines)
     return saleId
   })
   return (await d.prepare(`SELECT * FROM rack_sales WHERE id = ?`).get(id)) as RackSale
@@ -923,6 +991,9 @@ export async function updateSale(p: SaleInput): Promise<RackSale> {
   if (!p.id) throw new Error('Missing sale id.')
   const old = (await d.prepare(`SELECT * FROM rack_sales WHERE id = ?`).get(p.id)) as RackSale | undefined
   if (!old) throw new Error('Sale not found.')
+  const rackRow = (await d.prepare(`SELECT plant_id FROM racks WHERE id = ?`).get(old.rack_id)) as
+    | { plant_id: number | null }
+    | undefined
   const { qtyCm, amount } = resolveSale(p, await rackPlantFactors(d, old.rack_id))
   const available = await rackSellable(d, old.rack_id, p.product_name, p.id)
   if (qtyCm > available)
@@ -949,7 +1020,7 @@ export async function updateSale(p: SaleInput): Promise<RackSale> {
       date: p.date,
       remarks: p.remarks ?? ''
     })
-    await writeRackSaleChildLines(d, p.id!, p.transporters, p.machines)
+    await writeRackSaleChildLines(d, p.id!, rackRow?.plant_id ?? null, p.transporters, p.machines)
   })
   return (await d.prepare(`SELECT * FROM rack_sales WHERE id = ?`).get(p.id)) as RackSale
 }

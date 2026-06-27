@@ -26,10 +26,11 @@ export async function avgDieselRate(): Promise<number> {
 }
 
 /** Source of a diesel issuance, so an edit can exclude its own litres when recomputing. */
-export type DieselSource = { src: 'issue' | 'loading' | 'unloading'; id: number }
+export type DieselSource = { src: 'issue' | 'loading' | 'unloading' | 'sale_transport'; id: number }
 
-/** Total diesel litres issued from a plant across every source (issues + rack loadings/unloadings).
- *  Rack unloadings carry no plant of their own, so they scope to the rack's source plant. */
+/** Total diesel litres issued from a plant across every source (issues + rack loadings/unloadings
+ *  + rack-sale transport). Rack unloadings/sale transport carry no plant of their own, so they
+ *  scope to the rack's source plant. */
 async function issuedLitres(d: Db, plantId: number | undefined, exclude?: DieselSource): Promise<number> {
   const pid = plantId
   const ex = (src: string, col = 'id'): string =>
@@ -41,7 +42,13 @@ async function issuedLitres(d: Db, plantId: number | undefined, exclude?: Diesel
   const c = (await d
     .prepare(`SELECT COALESCE(SUM(ru.diesel_litres),0) AS q FROM rack_unloadings ru JOIN racks r ON r.id = ru.rack_id ${uWhere}${ex('unloading', 'ru.id')}`)
     .get({ pid })) as { q: number }
-  return litres((a.q || 0) + (b.q || 0) + (c.q || 0))
+  const e = (await d
+    .prepare(
+      `SELECT COALESCE(SUM(rst.diesel_litres),0) AS q FROM rack_sale_transporters rst
+         JOIN rack_sales rs ON rs.id = rst.rack_sale_id JOIN racks r ON r.id = rs.rack_id ${uWhere}${ex('sale_transport', 'rst.id')}`
+    )
+    .get({ pid })) as { q: number }
+  return litres((a.q || 0) + (b.q || 0) + (c.q || 0) + (e.q || 0))
 }
 
 async function stockOf(d: Db, plantId?: number): Promise<DieselStock> {

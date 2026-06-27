@@ -43,7 +43,9 @@ const partyLabel: Record<LedgerType, string> = {
   company: 'Company',
   plant: 'Plant',
   business: 'Business',
-  machine: 'Machine'
+  machine: 'Machine',
+  rack_vehicle: 'Vehicle',
+  rack_jcb: 'JCB'
 }
 const balanceLabel: Record<LedgerType, string> = {
   customer: 'Receivable',
@@ -54,7 +56,9 @@ const balanceLabel: Record<LedgerType, string> = {
   company: 'Net Balance',
   plant: 'Net (Profit / Loss)',
   business: 'Net (Profit / Loss)',
-  machine: 'Net (Profit / Loss)'
+  machine: 'Net (Profit / Loss)',
+  rack_vehicle: 'Payable',
+  rack_jcb: 'Payable'
 }
 
 /** Red/green semantics differ per ledger: dues are red, rack/plant/business profit / net receivable green-ish. */
@@ -415,6 +419,8 @@ export function Ledgers(): React.JSX.Element {
               { value: 'business', label: 'Businesses (P&L)' },
               { value: 'plant', label: 'Plants (P&L)' },
               { value: 'machine', label: 'Machines (P&L)' },
+              { value: 'rack_vehicle', label: 'Rack Vehicles' },
+              { value: 'rack_jcb', label: 'Rack JCBs' },
               { value: 'rack', label: 'Racks' }
             ]}
           />
