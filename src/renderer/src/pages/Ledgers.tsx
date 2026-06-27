@@ -487,7 +487,7 @@ export function Ledgers(): React.JSX.Element {
             </>
           )
         ) : (
-          <>
+          <div style={{ fontFamily: "Calibri, 'Segoe UI', Carlito, system-ui, sans-serif" }}>
             {/* Tally-style ledger header band */}
             <div className="print-area mb-4 flex flex-col gap-3 rounded-xl border bg-card p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -574,7 +574,7 @@ export function Ledgers(): React.JSX.Element {
                 </TBody>
               </Table>
             )}
-          </>
+          </div>
         )}
       </Page>
 

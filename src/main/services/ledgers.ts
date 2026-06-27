@@ -929,6 +929,10 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
     const dispatches = (await d
       .prepare(
         `SELECT dispatch_no, date, created_at, product_name, COALESCE(sale_quantity, quantity) AS quantity, uom,
+          rate, COALESCE(vehicle_no,'') AS vehicle_no, COALESCE(challan_no,'') AS challan_no,
+          COALESCE(amount,0) AS goods,
+          CASE WHEN transport_billed=1 THEN COALESCE(transport_charge,0) ELSE 0 END AS transport,
+          CASE WHEN other_billed=1 THEN COALESCE(other_charge,0) ELSE 0 END AS other,
           (COALESCE(amount,0)
             + CASE WHEN transport_billed=1 THEN transport_charge ELSE 0 END
             + CASE WHEN other_billed=1 THEN other_charge ELSE 0 END) AS billed,
@@ -942,21 +946,36 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
       product_name: string
       quantity: number
       uom: string
+      rate: number | null
+      vehicle_no: string
+      challan_no: string
+      goods: number
+      transport: number
+      other: number
       billed: number
       paid_amount: number
     }[]
+    const uomLabel = (u: string): string => (u === 'CM' ? 'm³' : u === 'TON' ? 'Ton' : u === 'CFT' ? 'CFT' : u)
     for (const x of dispatches) {
-      if (x.billed > 0)
+      if (x.billed > 0) {
+        // A rich, professional line: product, rate/unit, vehicle, challan and any billed extras.
+        const bits = [`Direct sale — ${x.product_name}`]
+        if (x.rate != null) bits.push(`@ ${roundMoney(x.rate)}/${uomLabel(x.uom)}`)
+        if (x.vehicle_no) bits.push(`Veh ${x.vehicle_no}`)
+        if (x.challan_no) bits.push(`Challan ${x.challan_no}`)
+        if (x.transport > 0) bits.push(`+ transport ${roundMoney(x.transport)}`)
+        if (x.other > 0) bits.push(`+ other ${roundMoney(x.other)}`)
         entries.push({
           date: x.date,
           created_at: x.created_at,
-          particulars: `Direct sale — ${x.product_name}`,
+          particulars: bits.join(' · '),
           ref: x.dispatch_no,
           qty: x.quantity,
           uom: x.uom,
           debit: x.billed,
           credit: 0
         })
+      }
       if (x.paid_amount > 0)
         entries.push({
           date: x.date,

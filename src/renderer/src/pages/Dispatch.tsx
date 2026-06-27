@@ -452,15 +452,17 @@ export function Dispatch(): React.JSX.Element {
                     />
                   </Field>
                 )}
-                <Field label="Source Plant" required hint={plantId ? 'Locked to active plant' : undefined}>
-                  <SearchSelect
-                    value={form.plant_id || ''}
-                    disabled={!!plantId}
-                    onChange={(v) => setForm({ ...form, plant_id: Number(v), product_name: '', to_plant_id: form.to_plant_id === Number(v) ? null : form.to_plant_id })}
-                    options={plants.map((p) => ({ value: p.id, label: p.name }))}
-                    placeholder="Select plant…"
-                  />
-                </Field>
+                {!isOutsource && (
+                  <Field label="Source Plant" required hint={plantId ? 'Locked to active plant' : undefined}>
+                    <SearchSelect
+                      value={form.plant_id || ''}
+                      disabled={!!plantId}
+                      onChange={(v) => setForm({ ...form, plant_id: Number(v), product_name: '', to_plant_id: form.to_plant_id === Number(v) ? null : form.to_plant_id })}
+                      options={plants.map((p) => ({ value: p.id, label: p.name }))}
+                      placeholder="Select plant…"
+                    />
+                  </Field>
+                )}
                 <Field label="Date" required>
                   <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
                 </Field>
@@ -506,7 +508,7 @@ export function Dispatch(): React.JSX.Element {
               </div>
               {isOutsource && (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <Field label="Outsource Vendor" required hint="Who the outsourced material came from — gets the buy posted to their ledger">
+                  <Field label="Source — Outsource Vendor" required hint="The third-party vendor the goods come from (used instead of a source plant); the buy posts to their ledger">
                     <SearchSelect
                       value={form.outsource_id ?? ''}
                       onChange={(v) => setForm({ ...form, outsource_id: v ? Number(v) : null })}
