@@ -300,6 +300,7 @@ CREATE TABLE IF NOT EXISTS purchases (
   amount            REAL,
   paid_amount       REAL NOT NULL DEFAULT 0,
   payment_status    TEXT NOT NULL DEFAULT 'unpaid',
+  challan_no        TEXT NOT NULL DEFAULT '',
   date              TEXT NOT NULL,
   remarks           TEXT NOT NULL DEFAULT '',
   created_at        TEXT NOT NULL DEFAULT (datetime('now','localtime'))
@@ -603,6 +604,7 @@ CREATE TABLE IF NOT EXISTS rack_sales (
   qty_cm       REAL NOT NULL,
   rate         REAL,
   amount       REAL,
+  challan_no   TEXT NOT NULL DEFAULT '',
   date         TEXT NOT NULL,
   remarks      TEXT NOT NULL DEFAULT '',
   created_at   TEXT NOT NULL DEFAULT (datetime('now','localtime'))
@@ -1834,6 +1836,12 @@ CREATE INDEX idx_coplants_company ON company_plants(company_id)`
     // Per-plant opening balances (a plant tag on each opening row).
     id: "027_opening_plant",
     sql: `ALTER TABLE opening_balances ADD COLUMN plant_id INT`
+  },
+  {
+    // Challan no on purchases and rack sales (type or auto-generate).
+    id: "028_challan_no",
+    sql: `ALTER TABLE purchases ADD COLUMN challan_no VARCHAR(191) NOT NULL DEFAULT '';
+ALTER TABLE rack_sales ADD COLUMN challan_no VARCHAR(191) NOT NULL DEFAULT ''`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -1920,6 +1928,8 @@ async function sqliteLegacyMigrate(adapter2) {
   await addColumn("diesel_issues", "charged", "INTEGER NOT NULL DEFAULT 0");
   await addColumn("rack_loadings", "diesel_charged", "INTEGER NOT NULL DEFAULT 0");
   await addColumn("rack_unloadings", "diesel_charged", "INTEGER NOT NULL DEFAULT 0");
+  await addColumn("purchases", "challan_no", `TEXT NOT NULL DEFAULT ''`);
+  await addColumn("rack_sales", "challan_no", `TEXT NOT NULL DEFAULT ''`);
 }
 async function importProductsFromSettings(adapter2) {
   const all = (await adapter2.exec(`SELECT id, name FROM products ORDER BY id`, void 0, null)).rows;
@@ -3390,12 +3400,14 @@ async function createPurchase(p) {
   const amount = computeAmount(p.rate, p.quantity);
   const id = await d.transaction(async () => {
     const no = await nextNumber("PUR", "purchase");
+    const challan = (p.challan_no ?? "").trim() || await nextNumber("CHN", "challan");
     const info = await d.prepare(
       `INSERT INTO purchases
-          (purchase_no, supplier_id, plant_id, stock_location_id, material_type, purchase_mode, product_name, outsource_id, from_plant_id, linked_dispatch_id, uom, quantity, qty_cm, rate, amount, paid_amount, payment_status, date, remarks)
-         VALUES (@purchase_no,@supplier_id,@plant_id,@stock_location_id,@material_type,@purchase_mode,@product_name,@outsource_id,@from_plant_id,@linked_dispatch_id,@uom,@quantity,@qty_cm,@rate,@amount,@paid_amount,@payment_status,@date,@remarks)`
+          (purchase_no, supplier_id, plant_id, stock_location_id, material_type, purchase_mode, product_name, outsource_id, from_plant_id, linked_dispatch_id, uom, quantity, qty_cm, rate, amount, paid_amount, payment_status, challan_no, date, remarks)
+         VALUES (@purchase_no,@supplier_id,@plant_id,@stock_location_id,@material_type,@purchase_mode,@product_name,@outsource_id,@from_plant_id,@linked_dispatch_id,@uom,@quantity,@qty_cm,@rate,@amount,@paid_amount,@payment_status,@challan_no,@date,@remarks)`
     ).run({
       purchase_no: no,
+      challan_no: challan,
       supplier_id: p.supplier_id,
       plant_id: p.plant_id,
       stock_location_id: locId,
@@ -3460,13 +3472,15 @@ async function updatePurchase(p) {
   const qtyCm = roundQty(toCm(p.quantity, uom, await plantUomFactors(p.plant_id)));
   const amount = computeAmount(p.rate, p.quantity);
   await d.transaction(async () => {
+    const challan = (p.challan_no ?? "").trim() || old.challan_no || await nextNumber("CHN", "challan");
     await d.prepare(
       `UPDATE purchases SET supplier_id=@supplier_id, plant_id=@plant_id, stock_location_id=@stock_location_id,
          material_type=@material_type, purchase_mode=@purchase_mode, product_name=@product_name, outsource_id=@outsource_id,
          uom=@uom, quantity=@quantity, qty_cm=@qty_cm, rate=@rate, amount=@amount, paid_amount=@paid_amount,
-         payment_status=@payment_status, date=@date, remarks=@remarks WHERE id=@id`
+         payment_status=@payment_status, challan_no=@challan_no, date=@date, remarks=@remarks WHERE id=@id`
     ).run({
       id: p.id,
+      challan_no: challan,
       supplier_id: p.supplier_id,
       plant_id: p.plant_id,
       stock_location_id: locId,
@@ -5211,10 +5225,11 @@ async function addSale(p) {
     );
   const id = await d.transaction(async () => {
     const no = await nextNumber("SL", "rack_sale");
+    const challan = (p.challan_no ?? "").trim() || await nextNumber("CHN", "challan");
     const info = await d.prepare(
       `INSERT INTO rack_sales
-          (sale_no, rack_id, customer_id, product_name, uom, quantity, qty_cm, rate, amount, truck_no, date, remarks)
-         VALUES (@sale_no,@rack_id,@customer_id,@product_name,@uom,@quantity,@qty_cm,@rate,@amount,@truck_no,@date,@remarks)`
+          (sale_no, rack_id, customer_id, product_name, uom, quantity, qty_cm, rate, amount, truck_no, challan_no, date, remarks)
+         VALUES (@sale_no,@rack_id,@customer_id,@product_name,@uom,@quantity,@qty_cm,@rate,@amount,@truck_no,@challan_no,@date,@remarks)`
     ).run({
       sale_no: no,
       rack_id: p.rack_id,
@@ -5226,6 +5241,7 @@ async function addSale(p) {
       rate: p.rate,
       amount,
       truck_no: (p.truck_no ?? "").trim(),
+      challan_no: challan,
       date: p.date,
       remarks: p.remarks ?? ""
     });
@@ -5246,10 +5262,11 @@ async function updateSale(p) {
     throw new Error(
       `Not enough unloaded material at destination. Available ${p.product_name}: ${available} m\xB3, requested: ${qtyCm} m\xB3.`
     );
+  const challan = (p.challan_no ?? "").trim() || old.challan_no || await nextNumber("CHN", "challan");
   await d.transaction(async () => {
     await d.prepare(
       `UPDATE rack_sales SET customer_id=@customer_id, product_name=@product_name, uom=@uom,
-         quantity=@quantity, qty_cm=@qty_cm, rate=@rate, amount=@amount, truck_no=@truck_no, date=@date, remarks=@remarks
+         quantity=@quantity, qty_cm=@qty_cm, rate=@rate, amount=@amount, truck_no=@truck_no, challan_no=@challan_no, date=@date, remarks=@remarks
        WHERE id=@id`
     ).run({
       id: p.id,
@@ -5261,6 +5278,7 @@ async function updateSale(p) {
       rate: p.rate,
       amount,
       truck_no: (p.truck_no ?? "").trim(),
+      challan_no: challan,
       date: p.date,
       remarks: p.remarks ?? ""
     });

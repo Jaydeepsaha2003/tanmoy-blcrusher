@@ -59882,6 +59882,7 @@ function Purchases() {
       rate: "",
       paid_amount: 0,
       payment_status: "unpaid",
+      challan_no: "",
       date: today(),
       remarks: "",
       transporters: [],
@@ -59964,9 +59965,10 @@ function Purchases() {
     downloadExcel(
       "purchases",
       "Purchases",
-      ["Purchase No", "Date", "Mode", "Supplier", "Plant", "Item", "UOM", "Quantity", "Qty (m³)", "Rate", "Amount", "Transport", "Machines", "Paid", "Status", "Remarks"],
+      ["Purchase No", "Challan No", "Date", "Mode", "Supplier", "Plant", "Item", "UOM", "Quantity", "Qty (m³)", "Rate", "Amount", "Transport", "Machines", "Paid", "Status", "Remarks"],
       data.map((p2) => [
         p2.purchase_no,
+        p2.challan_no ?? "",
         fmtDate(p2.date),
         p2.purchase_mode === "mining" ? "Mining" : p2.material_type === "finished" ? "Finished" : "Raw",
         p2.supplier_name,
@@ -60143,6 +60145,7 @@ function Purchases() {
             }
           ) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Purchase Date", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: form.date, onChange: (e3) => setForm({ ...form, date: e3.target.value }) }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Challan No.", hint: form.id ? "Supplier challan / delivery note" : "Blank = auto-generate", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.challan_no || "", onChange: (e3) => setForm({ ...form, challan_no: e3.target.value }), placeholder: "Auto-generate" }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", required: true, hint: plantId ? "Active plant" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
             SearchSelect,
             {
@@ -66292,6 +66295,7 @@ function RackDetail() {
       quantity: "",
       rate: "",
       truck_no: "",
+      challan_no: "",
       date: today(),
       remarks: "",
       transporters: [],
@@ -66641,7 +66645,13 @@ function RackDetail() {
             /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
           ] }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: sales.map((s2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-mono text-xs", children: s2.sale_no }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "font-mono text-xs", children: [
+              s2.sale_no,
+              s2.challan_no && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-[10px] text-muted-foreground", children: [
+                "Challan ",
+                s2.challan_no
+              ] })
+            ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: fmtDate(s2.date) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: s2.customer_name }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { children: [
@@ -66935,6 +66945,7 @@ function RackDetail() {
             ),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `Rate per ${saleForm.uom}`, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: saleForm.rate, onChange: (e3) => setSaleForm({ ...saleForm, rate: e3.target.value }), placeholder: "Optional" }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Truck No.", hint: "Truck delivering to the customer", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: saleForm.truck_no || "", onChange: (e3) => setSaleForm({ ...saleForm, truck_no: e3.target.value }), placeholder: "e.g. JH-01-AB-1234" }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Challan No.", hint: saleForm.id ? "Delivery note" : "Blank = auto-generate", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: saleForm.challan_no || "", onChange: (e3) => setSaleForm({ ...saleForm, challan_no: e3.target.value }), placeholder: "Auto-generate" }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: saleForm.date, onChange: (e3) => setSaleForm({ ...saleForm, date: e3.target.value }) }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: saleForm.remarks || "", onChange: (e3) => setSaleForm({ ...saleForm, remarks: e3.target.value }) }) }) })
           ] }),
@@ -77960,7 +77971,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-Ct_0IQdn.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-BXNtByD2.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
