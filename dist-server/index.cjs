@@ -5962,24 +5962,36 @@ async function buildEntries(partyType, partyId) {
   if (partyType === "customer") {
     const dispatches = await d.prepare(
       `SELECT dispatch_no, date, created_at, product_name, COALESCE(sale_quantity, quantity) AS quantity, uom,
+          rate, COALESCE(vehicle_no,'') AS vehicle_no, COALESCE(challan_no,'') AS challan_no,
+          COALESCE(amount,0) AS goods,
+          CASE WHEN transport_billed=1 THEN COALESCE(transport_charge,0) ELSE 0 END AS transport,
+          CASE WHEN other_billed=1 THEN COALESCE(other_charge,0) ELSE 0 END AS other,
           (COALESCE(amount,0)
             + CASE WHEN transport_billed=1 THEN transport_charge ELSE 0 END
             + CASE WHEN other_billed=1 THEN other_charge ELSE 0 END) AS billed,
           paid_amount
          FROM dispatches WHERE customer_id = ?`
     ).all(partyId);
+    const uomLabel = (u) => u === "CM" ? "m\xB3" : u === "TON" ? "Ton" : u === "CFT" ? "CFT" : u;
     for (const x of dispatches) {
-      if (x.billed > 0)
+      if (x.billed > 0) {
+        const bits = [`Direct sale \u2014 ${x.product_name}`];
+        if (x.rate != null) bits.push(`@ ${roundMoney2(x.rate)}/${uomLabel(x.uom)}`);
+        if (x.vehicle_no) bits.push(`Veh ${x.vehicle_no}`);
+        if (x.challan_no) bits.push(`Challan ${x.challan_no}`);
+        if (x.transport > 0) bits.push(`+ transport ${roundMoney2(x.transport)}`);
+        if (x.other > 0) bits.push(`+ other ${roundMoney2(x.other)}`);
         entries.push({
           date: x.date,
           created_at: x.created_at,
-          particulars: `Direct sale \u2014 ${x.product_name}`,
+          particulars: bits.join(" \xB7 "),
           ref: x.dispatch_no,
           qty: x.quantity,
           uom: x.uom,
           debit: x.billed,
           credit: 0
         });
+      }
       if (x.paid_amount > 0)
         entries.push({
           date: x.date,

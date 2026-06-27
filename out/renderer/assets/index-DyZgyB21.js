@@ -61904,7 +61904,7 @@ function Dispatch() {
                 placeholder: "Select customer…"
               }
             ) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Source Plant", required: true, hint: plantId ? "Locked to active plant" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            !isOutsource && /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Source Plant", required: true, hint: plantId ? "Locked to active plant" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
               SearchSelect,
               {
                 value: form.plant_id || "",
@@ -61950,7 +61950,7 @@ function Dispatch() {
               }
             ) }) })
           ] }),
-          isOutsource && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Outsource Vendor", required: true, hint: "Who the outsourced material came from — gets the buy posted to their ledger", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          isOutsource && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Source — Outsource Vendor", required: true, hint: "The third-party vendor the goods come from (used instead of a source plant); the buy posts to their ledger", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
             SearchSelect,
             {
               value: form.outsource_id ?? "",
@@ -77971,7 +77971,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-BXNtByD2.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-B4yhohcV.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
@@ -81012,7 +81012,7 @@ function Ledgers() {
             ] })
           ] }, b2.party_id)) })
         ] })
-      ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+      ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { fontFamily: "Calibri, 'Segoe UI', Carlito, system-ui, sans-serif" }, children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "print-area mb-4 flex flex-col gap-3 rounded-xl border bg-card p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
