@@ -2,6 +2,7 @@ import { getDb } from '../db'
 import { nextNumber } from '../db'
 import type { PlantExpense, ExpenseCategory, ExpenseCategoryTotal, ExpenseBookRow, PaymentStatus } from '@shared/types'
 import { properCase, derivePaymentStatus } from '@shared/types'
+import { issuePartsForRef, clearPartsForRef } from './parts'
 
 function money(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100
@@ -234,6 +235,8 @@ export interface ExpenseInput {
   rate?: number | null
   hours?: number | null
   parts?: string
+  /** Spare parts issued from stock for this entry (maintenance) — FIFO-costed and added to amount. */
+  parts_used?: { part_id: number; quantity: number }[]
   amount: number
   payment_status: PaymentStatus
   paid_amount?: number
@@ -292,36 +295,61 @@ function resolve(p: ExpenseInput): Record<string, unknown> {
 
 export async function createPlantExpense(p: ExpenseInput): Promise<PlantExpense> {
   const d = getDb()
-  const fields = resolve(p)
-  const no = await nextNumber('PEX', 'plant_expense')
-  const info = await d
-    .prepare(
-      `INSERT INTO plant_expenses
-        (expense_no, plant_id, category, title, asset_id, outsource_id, meter_open, meter_close, units, rate, hours,
-         parts, amount, payment_status, paid_amount, date, remarks)
-       VALUES (@expense_no,@plant_id,@category,@title,@asset_id,@outsource_id,@meter_open,@meter_close,@units,@rate,@hours,
-         @parts,@amount,@payment_status,@paid_amount,@date,@remarks)`
-    )
-    .run({ expense_no: no, ...fields })
-  return (await d.prepare(`SELECT * FROM plant_expenses WHERE id = ?`).get(info.lastInsertRowid)) as PlantExpense
+  const id = await d.transaction(async () => {
+    const no = await nextNumber('PEX', 'plant_expense')
+    // Issue any spare parts from stock (FIFO) against this entry; their cost adds to the amount.
+    const partsCost = p.parts_used?.length
+      ? await issuePartsForRef(d, { asset_id: p.asset_id ?? null, ref_no: no, date: p.date, note: properCase(p.title), parts: p.parts_used })
+      : 0
+    const fields = resolve({ ...p, amount: (Number(p.amount) || 0) + partsCost })
+    const info = await d
+      .prepare(
+        `INSERT INTO plant_expenses
+          (expense_no, plant_id, category, title, asset_id, outsource_id, meter_open, meter_close, units, rate, hours,
+           parts, amount, payment_status, paid_amount, date, remarks)
+         VALUES (@expense_no,@plant_id,@category,@title,@asset_id,@outsource_id,@meter_open,@meter_close,@units,@rate,@hours,
+           @parts,@amount,@payment_status,@paid_amount,@date,@remarks)`
+      )
+      .run({ expense_no: no, ...fields })
+    return Number(info.lastInsertRowid)
+  })
+  return (await d.prepare(`SELECT * FROM plant_expenses WHERE id = ?`).get(id)) as PlantExpense
 }
 
 export async function updatePlantExpense(p: ExpenseInput): Promise<PlantExpense> {
   const d = getDb()
   if (!p.id) throw new Error('Missing expense id.')
-  const fields = resolve(p)
-  await d.prepare(
-    `UPDATE plant_expenses SET plant_id=@plant_id, category=@category, title=@title, asset_id=@asset_id,
-       outsource_id=@outsource_id,
-       meter_open=@meter_open, meter_close=@meter_close, units=@units, rate=@rate, hours=@hours,
-       parts=@parts, amount=@amount, payment_status=@payment_status, paid_amount=@paid_amount,
-       date=@date, remarks=@remarks WHERE id=@id`
-  ).run({ id: p.id, ...fields })
+  const old = (await d.prepare(`SELECT expense_no FROM plant_expenses WHERE id = ?`).get(p.id)) as
+    | { expense_no: string }
+    | undefined
+  if (!old) throw new Error('Expense not found.')
+  await d.transaction(async () => {
+    // Re-sync the spare parts issued against this entry (restore old, re-issue current).
+    await clearPartsForRef(d, old.expense_no)
+    const partsCost = p.parts_used?.length
+      ? await issuePartsForRef(d, { asset_id: p.asset_id ?? null, ref_no: old.expense_no, date: p.date, note: properCase(p.title), parts: p.parts_used })
+      : 0
+    const fields = resolve({ ...p, amount: (Number(p.amount) || 0) + partsCost })
+    await d.prepare(
+      `UPDATE plant_expenses SET plant_id=@plant_id, category=@category, title=@title, asset_id=@asset_id,
+         outsource_id=@outsource_id,
+         meter_open=@meter_open, meter_close=@meter_close, units=@units, rate=@rate, hours=@hours,
+         parts=@parts, amount=@amount, payment_status=@payment_status, paid_amount=@paid_amount,
+         date=@date, remarks=@remarks WHERE id=@id`
+    ).run({ id: p.id, ...fields })
+  })
   return (await d.prepare(`SELECT * FROM plant_expenses WHERE id = ?`).get(p.id)) as PlantExpense
 }
 
 export async function deletePlantExpense(payload: { id: number }): Promise<{ ok: boolean }> {
   const d = getDb()
-  await d.prepare(`DELETE FROM plant_expenses WHERE id = ?`).run(payload.id)
+  const old = (await d.prepare(`SELECT expense_no FROM plant_expenses WHERE id = ?`).get(payload.id)) as
+    | { expense_no: string }
+    | undefined
+  await d.transaction(async () => {
+    // Restore any spare parts issued against this entry, then remove it.
+    if (old?.expense_no) await clearPartsForRef(d, old.expense_no)
+    await d.prepare(`DELETE FROM plant_expenses WHERE id = ?`).run(payload.id)
+  })
   return { ok: true }
 }

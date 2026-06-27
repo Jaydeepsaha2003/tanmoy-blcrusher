@@ -48,6 +48,14 @@ export function SpareParts(): React.JSX.Element {
   const { data: plants = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
   const { data: assets = [] } = useQuery({ queryKey: ['assets', plantId], queryFn: () => api.assets.list(plantId) })
 
+  // Live FIFO cost of the part being issued (stock-out), so the user sees whether a cost is attached.
+  const outQty = stockMove?.mode === 'out' ? Number(stockMove.quantity) || 0 : 0
+  const { data: outQuote } = useQuery({
+    queryKey: ['partFifo', stockMove?.part_id, outQty],
+    queryFn: () => api.parts.fifoQuote({ part_id: Number(stockMove.part_id), quantity: outQty }),
+    enabled: stockMove?.mode === 'out' && !!stockMove?.part_id && outQty > 0
+  })
+
   const filtered = React.useMemo(() => {
     const term = q.trim().toLowerCase()
     if (!term) return parts
@@ -75,7 +83,6 @@ export function SpareParts(): React.JSX.Element {
           part_id: p.part_id,
           asset_id: Number(p.asset_id),
           quantity: Number(p.quantity),
-          rate,
           date: p.date,
           note: p.note
         })
@@ -266,19 +273,33 @@ export function SpareParts(): React.JSX.Element {
                 </Field>
               </>
             )}
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Quantity" hint={stockMove.mode === 'out' ? 'Quantity issued for use' : 'Quantity received into stock'}><Input autoFocus type="number" min="0" step="0.001" value={stockMove.quantity} onChange={(e) => setStockMove({ ...stockMove, quantity: e.target.value })} /></Field>
-              <Field
-                label="Rate per Unit (₹)"
-                hint={
-                  Number(stockMove.quantity) > 0 && Number(stockMove.rate) > 0
-                    ? `= ₹${(Number(stockMove.quantity) * Number(stockMove.rate)).toFixed(2)}`
-                    : stockMove.mode === 'out' ? 'Issue value (optional)' : 'Purchase rate (optional)'
-                }
-              >
-                <Input type="number" min="0" step="0.01" value={stockMove.rate ?? ''} onChange={(e) => setStockMove({ ...stockMove, rate: e.target.value })} placeholder="0.00" />
-              </Field>
-            </div>
+            {stockMove.mode === 'in' ? (
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Quantity" hint="Quantity received into stock"><Input autoFocus type="number" min="0" step="0.001" value={stockMove.quantity} onChange={(e) => setStockMove({ ...stockMove, quantity: e.target.value })} /></Field>
+                <Field
+                  label="Rate per Unit (₹)"
+                  hint={Number(stockMove.quantity) > 0 && Number(stockMove.rate) > 0 ? `= ₹${(Number(stockMove.quantity) * Number(stockMove.rate)).toFixed(2)}` : 'Purchase rate (optional)'}
+                >
+                  <Input type="number" min="0" step="0.01" value={stockMove.rate ?? ''} onChange={(e) => setStockMove({ ...stockMove, rate: e.target.value })} placeholder="0.00" />
+                </Field>
+              </div>
+            ) : (
+              <>
+                <Field label="Quantity" hint="Quantity issued for use"><Input autoFocus type="number" min="0" step="0.001" value={stockMove.quantity} onChange={(e) => setStockMove({ ...stockMove, quantity: e.target.value })} /></Field>
+                <div className="rounded-lg bg-muted/60 px-3.5 py-2.5 text-sm">
+                  {outQty > 0 ? (
+                    outQuote?.hasCost ? (
+                      <span>Issue cost (FIFO): <b>₹{fmtMoney(outQuote.amount)}</b> <span className="text-muted-foreground">@ ₹{fmtMoney(outQuote.rate)}/unit</span>{outQuote.unpricedQty > 0 && <span className="text-warning"> · {fmtQty(outQuote.unpricedQty)} {stockMove.unit || ''} unpriced</span>}</span>
+                    ) : (
+                      <span className="text-muted-foreground">No cost — this part's stock was added without a rate.</span>
+                    )
+                  ) : (
+                    <span className="text-muted-foreground">Enter a quantity to see the FIFO issue cost.</span>
+                  )}
+                  {outQuote && <span className="ml-2 text-muted-foreground">· In stock: {fmtQty(outQuote.available)}</span>}
+                </div>
+              </>
+            )}
             <Field label="Date"><Input type="date" value={stockMove.date} onChange={(e) => setStockMove({ ...stockMove, date: e.target.value })} /></Field>
             {stockMove.mode === 'out' && (
               <Field label="Used For Machine / Vehicle" required>

@@ -160,10 +160,12 @@ export const handlers: Record<string, (payload: any) => unknown> = {
   'rackVehicles.list': rackFleet.listRackVehicles,
   'rackVehicles.create': rackFleet.createRackVehicle,
   'rackVehicles.update': rackFleet.updateRackVehicle,
+  'rackVehicles.bulkCreate': rackFleet.bulkCreateRackVehicles,
   'rackVehicles.delete': rackFleet.deleteRackVehicle,
   'rackJcbs.list': rackFleet.listRackJcbs,
   'rackJcbs.create': rackFleet.createRackJcb,
   'rackJcbs.update': rackFleet.updateRackJcb,
+  'rackJcbs.bulkCreate': rackFleet.bulkCreateRackJcbs,
   'rackJcbs.delete': rackFleet.deleteRackJcb,
 
   'ledgers.get': ledgers.getLedger,
@@ -205,6 +207,8 @@ export const handlers: Record<string, (payload: any) => unknown> = {
   'parts.update': parts.updatePart,
   'parts.stockIn': parts.stockIn,
   'parts.stockOut': parts.stockOut,
+  'parts.fifoQuote': parts.partFifoQuote,
+  'parts.fifoQuoteMany': parts.partFifoQuoteMany,
   'parts.movements': parts.listPartMovements,
   'parts.delete': parts.deletePart,
 

@@ -110,6 +110,26 @@ export async function updateRackVehicle(p: {
   return row
 }
 
+export interface BulkResult {
+  created: number
+  errors: { row: number; message: string }[]
+}
+
+/** Bulk-create vehicles from parsed Excel rows; per-row errors are collected, not fatal. */
+export async function bulkCreateRackVehicles(payload: { rows: Parameters<typeof createRackVehicle>[0][] }): Promise<BulkResult> {
+  const result: BulkResult = { created: 0, errors: [] }
+  const rows = payload.rows ?? []
+  for (let i = 0; i < rows.length; i++) {
+    try {
+      await createRackVehicle(rows[i])
+      result.created++
+    } catch (e) {
+      result.errors.push({ row: i + 2, message: (e as Error).message })
+    }
+  }
+  return result
+}
+
 export async function deleteRackVehicle(payload: { id: number }): Promise<{ ok: boolean }> {
   const d = getDb()
   await d.transaction(async () => {
@@ -213,6 +233,21 @@ export async function updateRackJcb(p: {
   const row = (await d.prepare(`SELECT * FROM rack_jcbs WHERE id = ?`).get(p.id)) as RackJcb
   await attachPartyPlants(d, 'rack_jcb', [row])
   return row
+}
+
+/** Bulk-create JCBs from parsed Excel rows; per-row errors are collected, not fatal. */
+export async function bulkCreateRackJcbs(payload: { rows: Parameters<typeof createRackJcb>[0][] }): Promise<BulkResult> {
+  const result: BulkResult = { created: 0, errors: [] }
+  const rows = payload.rows ?? []
+  for (let i = 0; i < rows.length; i++) {
+    try {
+      await createRackJcb(rows[i])
+      result.created++
+    } catch (e) {
+      result.errors.push({ row: i + 2, message: (e as Error).message })
+    }
+  }
+  return result
 }
 
 export async function deleteRackJcb(payload: { id: number }): Promise<{ ok: boolean }> {

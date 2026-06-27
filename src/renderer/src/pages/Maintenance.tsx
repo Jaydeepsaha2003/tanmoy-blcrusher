@@ -63,6 +63,7 @@ export function Maintenance(): React.JSX.Element {
   const { data: plants = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
   const { data: assets = [] } = useQuery({ queryKey: ['assets', plantId], queryFn: () => api.assets.list(plantId) })
   const { data: employees = [] } = useQuery({ queryKey: ['employees', plantId], queryFn: () => api.employees.list(plantId) })
+  const { data: spareParts = [] } = useQuery({ queryKey: ['spareParts', plantId], queryFn: () => api.parts.list({ plant_id: plantId }) })
 
   const machineId = machineFilter ? Number(machineFilter) : undefined
   const machineOptions = [
@@ -88,6 +89,8 @@ export function Maintenance(): React.JSX.Element {
       qc.invalidateQueries({ queryKey: ['ledger'] })
       qc.invalidateQueries({ queryKey: ['machineSheet'] })
       qc.invalidateQueries({ queryKey: ['machineLedger'] })
+      qc.invalidateQueries({ queryKey: ['spareParts'] })
+      qc.invalidateQueries({ queryKey: ['partMovements'] })
       setExpForm(null)
       toast.success('Saved.')
     },
@@ -99,6 +102,8 @@ export function Maintenance(): React.JSX.Element {
     qc.invalidateQueries({ queryKey: ['machine-expenses'] })
     qc.invalidateQueries({ queryKey: ['ledger'] })
     qc.invalidateQueries({ queryKey: ['machineSheet'] })
+    qc.invalidateQueries({ queryKey: ['spareParts'] })
+    qc.invalidateQueries({ queryKey: ['partMovements'] })
     toast.success('Deleted.')
   }
   function openNewExp(): void {
@@ -112,10 +117,47 @@ export function Maintenance(): React.JSX.Element {
       title: '',
       amount: '',
       parts: '',
+      parts_used: category === 'maintenance' ? [] : undefined,
       paid_amount: '',
       date: today(),
       remarks: ''
     })
+  }
+
+  /** Edit an expense; for maintenance, load the spare parts issued against it and back out their cost. */
+  async function openEditExp(x: PlantExpense): Promise<void> {
+    let parts_used: { part_id: number; quantity: number }[] | undefined
+    let labour = x.amount
+    if (x.category === 'maintenance') {
+      const moves = await api.parts.movements({ ref_no: x.expense_no }).catch(() => [])
+      const outs = moves.filter((m) => m.movement_type === 'stock_out')
+      parts_used = outs.map((m) => ({ part_id: m.part_id, quantity: Math.abs(m.quantity) }))
+      const partsAmt = outs.reduce((a, m) => a + (m.amount || 0), 0)
+      labour = round2(x.amount - partsAmt)
+    }
+    setExpForm({ ...x, amount: labour, paid_amount: x.paid_amount || '', parts: x.parts || '', parts_used })
+  }
+
+  // Spare-parts-used rows on a maintenance entry + their live FIFO cost.
+  const puLines: { part_id: number | string; quantity: number | string }[] = expForm?.parts_used ?? []
+  function addPart(): void { setExpForm({ ...expForm, parts_used: [...puLines, { part_id: '', quantity: '' }] }) }
+  function setPart(i: number, patch: Partial<{ part_id: number | string; quantity: number | string }>): void {
+    setExpForm({ ...expForm, parts_used: puLines.map((r, idx) => (idx === i ? { ...r, ...patch } : r)) })
+  }
+  function delPart(i: number): void { setExpForm({ ...expForm, parts_used: puLines.filter((_, idx) => idx !== i) }) }
+  const validParts = puLines
+    .filter((r) => r.part_id && Number(r.quantity) > 0)
+    .map((r) => ({ part_id: Number(r.part_id), quantity: Number(r.quantity) }))
+  const { data: partsQuote } = useQuery({
+    queryKey: ['partsFifoMany', JSON.stringify(validParts), expForm?.expense_no ?? ''],
+    queryFn: () => api.parts.fifoQuoteMany(validParts, expForm?.expense_no || undefined),
+    enabled: tab === 'maintenance' && !!expForm && validParts.length > 0
+  })
+  const partsCost = partsQuote?.total ?? 0
+  const labourCost = Number(expForm?.amount) || 0
+  const maintTotal = round2(labourCost + partsCost)
+  function partQuoteFor(part_id: number | string, quantity: number | string): { amount: number; hasCost: boolean } | undefined {
+    return partsQuote?.items.find((it) => it.part_id === Number(part_id) && it.quantity === Number(quantity))
   }
 
   /* ---------------- Operator salary (wages tagged to a machine) ---------------- */
@@ -304,7 +346,7 @@ export function Maintenance(): React.JSX.Element {
                     <TD className="tnum text-right font-semibold">{fmtMoney(x.amount)}</TD>
                     <TD><Badge variant={payBadge[x.payment_status]}>{x.payment_status}</Badge></TD>
                     <TD className="text-right">
-                      <Button variant="ghost" size="icon" onClick={() => setExpForm({ ...x, amount: x.amount, paid_amount: x.paid_amount || '', parts: x.parts || '' })}><Pencil size={15} /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => openEditExp(x)}><Pencil size={15} /></Button>
                       <Button variant="ghost" size="icon" onClick={() => removeExp(x)}><Trash2 size={15} className="text-destructive" /></Button>
                     </TD>
                   </TR>
@@ -378,8 +420,12 @@ export function Maintenance(): React.JSX.Element {
             <Field label="Date" required>
               <Input type="date" value={expForm.date} onChange={(e) => setExpForm({ ...expForm, date: e.target.value })} />
             </Field>
-            <Field label="Amount" required>
-              <Input type="number" step="0.01" value={expForm.amount} onChange={(e) => setExpForm({ ...expForm, amount: e.target.value })} />
+            <Field
+              label={tab === 'maintenance' ? 'Labour / Other Cost' : 'Amount'}
+              required={tab !== 'maintenance'}
+              hint={tab === 'maintenance' ? 'Service / labour only — parts come from stock below' : undefined}
+            >
+              <Input type="number" step="0.01" value={expForm.amount} onChange={(e) => setExpForm({ ...expForm, amount: e.target.value })} placeholder={tab === 'maintenance' ? '0.00 (optional)' : ''} />
             </Field>
             <div className="sm:col-span-2">
               <Field label={tab === 'fixed' ? 'Description' : 'Work / Title'} required hint={titleHint}>
@@ -387,10 +433,40 @@ export function Maintenance(): React.JSX.Element {
               </Field>
             </div>
             {tab === 'maintenance' && (
-              <div className="sm:col-span-2">
-                <Field label="Parts used (optional)">
-                  <Input value={expForm.parts} onChange={(e) => setExpForm({ ...expForm, parts: e.target.value })} placeholder="Filters, belts, oil…" />
-                </Field>
+              <div className="sm:col-span-2 space-y-2">
+                <div className="flex items-center gap-3">
+                  <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground/80">Spare parts used (issued from stock, FIFO-costed)</span>
+                  <span className="h-px flex-1 bg-border" />
+                </div>
+                {puLines.length > 0 && (
+                  <div className="grid grid-cols-[1fr_88px_110px_32px] gap-2 px-1 text-[11px] font-semibold uppercase text-muted-foreground">
+                    <div>Part</div><div>Qty</div><div>FIFO cost</div><div></div>
+                  </div>
+                )}
+                {puLines.map((r, i) => {
+                  const q = partQuoteFor(r.part_id, r.quantity)
+                  return (
+                    <div key={i} className="grid grid-cols-[1fr_88px_110px_32px] items-center gap-2">
+                      <SearchSelect
+                        value={r.part_id || ''}
+                        onChange={(v) => setPart(i, { part_id: Number(v) })}
+                        options={spareParts.map((s) => ({ value: s.id, label: `${s.name} — ${fmtQty(s.balance_qty)} ${s.unit} in stock` }))}
+                        placeholder="Select part…"
+                      />
+                      <Input type="number" min="0" step="0.001" value={r.quantity} onChange={(e) => setPart(i, { quantity: e.target.value })} />
+                      <div className="text-sm">
+                        {Number(r.quantity) > 0
+                          ? q
+                            ? q.hasCost ? <b>₹{fmtMoney(q.amount)}</b> : <span className="text-muted-foreground">no cost</span>
+                            : <span className="text-muted-foreground">…</span>
+                          : <span className="text-muted-foreground">—</span>}
+                      </div>
+                      <Button variant="ghost" size="icon" onClick={() => delPart(i)}><Trash2 size={15} className="text-destructive" /></Button>
+                    </div>
+                  )
+                })}
+                <Button variant="outline" size="sm" disabled={!spareParts.length} onClick={addPart}><Plus size={14} /> Add Part</Button>
+                {!spareParts.length && <p className="text-[11px] text-muted-foreground">No spare parts in stock — add them under Spare Parts Stock.</p>}
               </div>
             )}
             <Field label="Amount Paid" hint="Sets payment status automatically">
@@ -398,8 +474,8 @@ export function Maintenance(): React.JSX.Element {
             </Field>
             <Field label="Payment Status">
               <div className="flex h-9 items-center">
-                <Badge variant={payBadge[derivePaymentStatus(Number(expForm.amount) || 0, Number(expForm.paid_amount) || 0)]}>
-                  {derivePaymentStatus(Number(expForm.amount) || 0, Number(expForm.paid_amount) || 0)}
+                <Badge variant={payBadge[derivePaymentStatus(tab === 'maintenance' ? maintTotal : Number(expForm.amount) || 0, Number(expForm.paid_amount) || 0)]}>
+                  {derivePaymentStatus(tab === 'maintenance' ? maintTotal : Number(expForm.amount) || 0, Number(expForm.paid_amount) || 0)}
                 </Badge>
               </div>
             </Field>
@@ -409,6 +485,12 @@ export function Maintenance(): React.JSX.Element {
               </Field>
             </div>
           </div>
+          {tab === 'maintenance' && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/60 px-4 py-2.5 text-sm">
+              <span>Labour <b>{fmtMoney(labourCost)}</b> + Parts <b>{fmtMoney(partsCost)}</b></span>
+              <span>Total maintenance cost: <b>{fmtMoney(maintTotal)}</b></span>
+            </div>
+          )}
           <div className="mt-5 flex justify-end gap-2">
             <Button variant="outline" onClick={() => setExpForm(null)}>Cancel</Button>
             <Button
@@ -417,10 +499,14 @@ export function Maintenance(): React.JSX.Element {
                 asset_id: Number(expForm.asset_id),
                 plant_id: Number(expForm.plant_id),
                 amount: Number(expForm.amount) || 0,
+                parts_used: tab === 'maintenance' ? validParts : undefined,
+                parts: tab === 'maintenance'
+                  ? validParts.map((r) => { const sp = spareParts.find((s) => s.id === r.part_id); return `${sp?.name ?? 'Part'} ×${fmtQty(r.quantity)}` }).join(', ')
+                  : expForm.parts,
                 paid_amount: Number(expForm.paid_amount) || 0,
-                payment_status: derivePaymentStatus(Number(expForm.amount) || 0, Number(expForm.paid_amount) || 0)
+                payment_status: derivePaymentStatus(tab === 'maintenance' ? maintTotal : Number(expForm.amount) || 0, Number(expForm.paid_amount) || 0)
               })}
-              disabled={!expForm.asset_id || !expForm.plant_id || !expForm.title.trim() || !(Number(expForm.amount) > 0)}
+              disabled={!expForm.asset_id || !expForm.plant_id || !expForm.title.trim() || !((tab === 'maintenance' ? maintTotal : Number(expForm.amount)) > 0)}
             >
               Save
             </Button>

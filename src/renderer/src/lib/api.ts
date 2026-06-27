@@ -267,12 +267,16 @@ export const api = {
     list: (plant_id?: number) => call<RackVehicle[]>('rackVehicles.list', { plant_id }),
     create: (p: Partial<RackVehicle>) => call<RackVehicle>('rackVehicles.create', p),
     update: (p: Partial<RackVehicle>) => call<RackVehicle>('rackVehicles.update', p),
+    bulkCreate: (rows: Partial<RackVehicle>[]) =>
+      call<{ created: number; errors: { row: number; message: string }[] }>('rackVehicles.bulkCreate', { rows }),
     delete: (id: number) => call<{ ok: boolean }>('rackVehicles.delete', { id })
   },
   rackJcbs: {
     list: (plant_id?: number) => call<RackJcb[]>('rackJcbs.list', { plant_id }),
     create: (p: Partial<RackJcb>) => call<RackJcb>('rackJcbs.create', p),
     update: (p: Partial<RackJcb>) => call<RackJcb>('rackJcbs.update', p),
+    bulkCreate: (rows: Partial<RackJcb>[]) =>
+      call<{ created: number; errors: { row: number; message: string }[] }>('rackJcbs.bulkCreate', { rows }),
     delete: (id: number) => call<{ ok: boolean }>('rackJcbs.delete', { id })
   },
   ledgers: {
@@ -344,11 +348,14 @@ export const api = {
       part_id: number
       asset_id: number
       quantity: number
-      rate?: number | null
       date: string
       note?: string
-    }) => call<{ ok: boolean }>('parts.stockOut', p),
-    movements: (filter?: { part_id?: number; asset_id?: number; from?: string; to?: string }) =>
+    }) => call<{ ok: boolean; cost: number; hasCost: boolean; unpricedQty: number }>('parts.stockOut', p),
+    fifoQuote: (p: { part_id: number; quantity: number; exclude?: number }) =>
+      call<{ amount: number; rate: number; available: number; hasCost: boolean; unpricedQty: number }>('parts.fifoQuote', p),
+    fifoQuoteMany: (items: { part_id: number; quantity: number }[], exclude_ref?: string) =>
+      call<{ items: { part_id: number; quantity: number; amount: number; rate: number; available: number; hasCost: boolean; unpricedQty: number }[]; total: number }>('parts.fifoQuoteMany', { items, exclude_ref }),
+    movements: (filter?: { part_id?: number; asset_id?: number; ref_no?: string; from?: string; to?: string }) =>
       call<SparePartMovement[]>('parts.movements', filter ?? {}),
     delete: (id: number) => call<{ ok: boolean; error?: string }>('parts.delete', { id })
   },

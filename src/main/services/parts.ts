@@ -26,6 +26,154 @@ export async function partBalance(d: Db, partId: number): Promise<number> {
   return round3(Number(row.qty) || 0)
 }
 
+export interface PartFifoResult {
+  amount: number
+  /** Weighted unit cost over the priced quantity drawn (0 when none priced). */
+  rate: number
+  available: number
+  /** Quantity drawn from priced layers, and from unpriced/over-stock layers. */
+  pricedQty: number
+  unpricedQty: number
+}
+
+/**
+ * FIFO cost of issuing `qty` of a part: walk the inbound layers (opening + stock-in) oldest
+ * first, skip what prior stock-outs already consumed, then value the next `qty` at each layer's
+ * rate. Layers added without a rate contribute quantity but no cost — so a stock-out can come out
+ * partly or wholly "no cost". `exclude` drops a movement (when re-costing an edited one).
+ */
+export async function partFifoCost(
+  d: Db,
+  partId: number,
+  qty: number,
+  excludeMovementId?: number,
+  /** Ignore prior stock-outs tagged to this ref (so an edit re-costs as if they were reversed). */
+  excludeRef?: string
+): Promise<PartFifoResult> {
+  const q = round3(Math.abs(Number(qty) || 0))
+  const exId = excludeMovementId ? Number(excludeMovementId) : 0
+  const layers = (await d
+    .prepare(
+      `SELECT quantity, rate FROM spare_part_movements
+       WHERE part_id = ? AND quantity > 0 ${exId ? 'AND id <> ?' : ''}
+       ORDER BY date, id`
+    )
+    .all(...(exId ? [partId, exId] : [partId]))) as { quantity: number; rate: number | null }[]
+  const totalIn = layers.reduce((a, l) => a + (Number(l.quantity) || 0), 0)
+  const outClauses = ['part_id = @pid', 'quantity < 0']
+  const outParams: Record<string, unknown> = { pid: partId }
+  if (exId) { outClauses.push('id <> @exid'); outParams.exid = exId }
+  if (excludeRef) { outClauses.push('ref_no <> @ref'); outParams.ref = excludeRef }
+  const outRow = (await d
+    .prepare(`SELECT COALESCE(SUM(-quantity),0) AS q FROM spare_part_movements WHERE ${outClauses.join(' AND ')}`)
+    .get(outParams)) as { q: number }
+  const prior = round3(Number(outRow.q) || 0)
+  const available = round3(totalIn - prior)
+  if (!(q > 0)) return { amount: 0, rate: 0, available, pricedQty: 0, unpricedQty: 0 }
+  let skip = prior
+  let need = q
+  let cost = 0
+  let priced = 0
+  let unpriced = 0
+  for (const layer of layers) {
+    let avail = Number(layer.quantity) || 0
+    if (skip > 0) {
+      const s = Math.min(skip, avail)
+      skip -= s
+      avail -= s
+    }
+    if (avail <= 0 || need <= 0) continue
+    const take = Math.min(avail, need)
+    if (layer.rate != null && Number(layer.rate) > 0) {
+      cost += take * Number(layer.rate)
+      priced += take
+    } else unpriced += take
+    need -= take
+  }
+  const amount = round2(cost)
+  return {
+    amount,
+    rate: priced > 0 ? round2(amount / priced) : 0,
+    available,
+    pricedQty: round3(priced),
+    unpricedQty: round3(unpriced + Math.max(0, need))
+  }
+}
+
+export interface PartFifoQuote {
+  amount: number
+  rate: number
+  available: number
+  hasCost: boolean
+  unpricedQty: number
+}
+
+/** Live FIFO quote for one part issue (UI preview). */
+export async function partFifoQuote(payload: {
+  part_id: number
+  quantity: number
+  exclude?: number
+}): Promise<PartFifoQuote> {
+  if (!payload.part_id) return { amount: 0, rate: 0, available: 0, hasCost: false, unpricedQty: 0 }
+  const f = await partFifoCost(getDb(), Number(payload.part_id), Number(payload.quantity) || 0, payload.exclude)
+  return { amount: f.amount, rate: f.rate, available: f.available, hasCost: f.amount > 0, unpricedQty: f.unpricedQty }
+}
+
+/** FIFO quote for several part issues at once (e.g. the parts used on a maintenance entry). */
+export async function partFifoQuoteMany(payload: {
+  items: { part_id: number; quantity: number }[]
+  /** When previewing an edit, ignore the parts already issued against this ref. */
+  exclude_ref?: string
+}): Promise<{ items: (PartFifoQuote & { part_id: number; quantity: number })[]; total: number }> {
+  const d = getDb()
+  const items: (PartFifoQuote & { part_id: number; quantity: number })[] = []
+  let total = 0
+  for (const it of payload.items ?? []) {
+    const pid = Number(it.part_id)
+    const qty = Number(it.quantity) || 0
+    if (!pid || !(qty > 0)) continue
+    const f = await partFifoCost(d, pid, qty, undefined, payload.exclude_ref)
+    items.push({ part_id: pid, quantity: qty, amount: f.amount, rate: f.rate, available: f.available, hasCost: f.amount > 0, unpricedQty: f.unpricedQty })
+    total += f.amount
+  }
+  return { items, total: round2(total) }
+}
+
+/** Issue several parts from stock against a reference (e.g. a maintenance expense), FIFO-costed,
+ *  tied to a machine. Returns the total FIFO cost. Throws if any part goes short. */
+export async function issuePartsForRef(
+  d: Db,
+  opts: { asset_id: number | null; ref_no: string; date: string; note?: string; parts: { part_id: number; quantity: number }[] }
+): Promise<number> {
+  let total = 0
+  for (const it of opts.parts ?? []) {
+    const pid = Number(it.part_id)
+    const qty = round3(Math.abs(Number(it.quantity) || 0))
+    if (!pid || !(qty > 0)) continue
+    const fifo = await partFifoCost(d, pid, qty)
+    await addPartMovement(d, {
+      part_id: pid,
+      asset_id: opts.asset_id ?? null,
+      movement_type: 'stock_out',
+      ref_no: opts.ref_no,
+      quantity: -qty,
+      rate: fifo.rate > 0 ? fifo.rate : null,
+      amount: fifo.amount > 0 ? fifo.amount : null,
+      date: opts.date,
+      note: opts.note || 'Used in maintenance'
+    })
+    if ((await partBalance(d, pid)) < 0) throw new Error('Not enough stock for a part used in this maintenance.')
+    total += fifo.amount
+  }
+  return round2(total)
+}
+
+/** Remove the stock-outs previously issued against a reference (restores stock). */
+export async function clearPartsForRef(d: Db, refNo: string): Promise<void> {
+  if (!refNo) return
+  await d.prepare(`DELETE FROM spare_part_movements WHERE ref_no = ? AND movement_type='stock_out'`).run(refNo)
+}
+
 export async function addPartMovement(
   d: Db,
   input: {
@@ -35,6 +183,8 @@ export async function addPartMovement(
     ref_no?: string
     quantity: number
     rate?: number | null
+    /** Explicit line value (e.g. a FIFO-computed cost); else derived as |qty| × rate. */
+    amount?: number | null
     date: string
     note?: string
   }
@@ -42,7 +192,12 @@ export async function addPartMovement(
   const qty = round3(input.quantity)
   if (!qty) return
   const rate = rateOrNull(input.rate)
-  const amount = rate != null ? round2(Math.abs(qty) * rate) : null
+  const amount =
+    input.amount != null && (input.amount as unknown) !== ''
+      ? round2(Number(input.amount))
+      : rate != null
+        ? round2(Math.abs(qty) * rate)
+        : null
   await d
     .prepare(
       `INSERT INTO spare_part_movements
@@ -216,32 +371,36 @@ export async function stockOut(payload: {
   part_id: number
   asset_id: number
   quantity: number
-  rate?: number | null
   date: string
   note?: string
-}): Promise<{ ok: boolean }> {
+}): Promise<{ ok: boolean; cost: number; hasCost: boolean; unpricedQty: number }> {
   const d = getDb()
   const qty = round3(Math.abs(Number(payload.quantity)))
   if (!payload.asset_id) throw new Error('Select the machine or vehicle using this part.')
   if (!(qty > 0)) throw new Error('Stock-out quantity must be greater than 0.')
+  let fifo = { amount: 0, rate: 0, unpricedQty: 0 } as PartFifoResult
   await d.transaction(async () => {
+    // Value the issue FIFO from the priced stock-in layers (oldest first).
+    fifo = await partFifoCost(d, payload.part_id, qty)
     await addPartMovement(d, {
       part_id: payload.part_id,
       asset_id: payload.asset_id,
       movement_type: 'stock_out',
       quantity: -qty,
-      rate: payload.rate,
+      rate: fifo.rate > 0 ? fifo.rate : null,
+      amount: fifo.amount > 0 ? fifo.amount : null,
       date: payload.date,
       note: payload.note || 'Issued to machine / vehicle'
     })
     if ((await partBalance(d, payload.part_id)) < 0) throw new Error('Not enough stock for this part.')
   })
-  return { ok: true }
+  return { ok: true, cost: fifo.amount, hasCost: fifo.amount > 0, unpricedQty: fifo.unpricedQty }
 }
 
 export async function listPartMovements(payload: {
   part_id?: number
   asset_id?: number
+  ref_no?: string
   from?: string
   to?: string
 } = {}): Promise<SparePartMovement[]> {
@@ -249,6 +408,7 @@ export async function listPartMovements(payload: {
   const params: Record<string, unknown> = {}
   if (payload.part_id) { where.push('m.part_id=@part_id'); params.part_id = payload.part_id }
   if (payload.asset_id) { where.push('m.asset_id=@asset_id'); params.asset_id = payload.asset_id }
+  if (payload.ref_no) { where.push('m.ref_no=@ref_no'); params.ref_no = payload.ref_no }
   if (payload.from) { where.push('m.date>=@from'); params.from = payload.from }
   if (payload.to) { where.push('m.date<=@to'); params.to = payload.to }
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''
