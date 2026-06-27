@@ -170,6 +170,8 @@ export interface PurchaseInput {
   rate: number | null
   paid_amount: number
   payment_status: PaymentStatus
+  /** Challan / delivery-note no; blank → auto-generated. */
+  challan_no?: string
   date: string
   remarks: string
 }
@@ -190,14 +192,16 @@ export async function createPurchase(p: PurchaseInput): Promise<Purchase> {
   const amount = computeAmount(p.rate, p.quantity)
   const id = await d.transaction(async () => {
     const no = await nextNumber('PUR', 'purchase')
+    const challan = (p.challan_no ?? '').trim() || (await nextNumber('CHN', 'challan'))
     const info = await d
       .prepare(
         `INSERT INTO purchases
-          (purchase_no, supplier_id, plant_id, stock_location_id, material_type, purchase_mode, product_name, outsource_id, from_plant_id, linked_dispatch_id, uom, quantity, qty_cm, rate, amount, paid_amount, payment_status, date, remarks)
-         VALUES (@purchase_no,@supplier_id,@plant_id,@stock_location_id,@material_type,@purchase_mode,@product_name,@outsource_id,@from_plant_id,@linked_dispatch_id,@uom,@quantity,@qty_cm,@rate,@amount,@paid_amount,@payment_status,@date,@remarks)`
+          (purchase_no, supplier_id, plant_id, stock_location_id, material_type, purchase_mode, product_name, outsource_id, from_plant_id, linked_dispatch_id, uom, quantity, qty_cm, rate, amount, paid_amount, payment_status, challan_no, date, remarks)
+         VALUES (@purchase_no,@supplier_id,@plant_id,@stock_location_id,@material_type,@purchase_mode,@product_name,@outsource_id,@from_plant_id,@linked_dispatch_id,@uom,@quantity,@qty_cm,@rate,@amount,@paid_amount,@payment_status,@challan_no,@date,@remarks)`
       )
       .run({
         purchase_no: no,
+        challan_no: challan,
         supplier_id: p.supplier_id,
         plant_id: p.plant_id,
         stock_location_id: locId,
@@ -263,13 +267,15 @@ export async function updatePurchase(p: PurchaseInput): Promise<Purchase> {
   const qtyCm = roundQty(toCm(p.quantity, uom, await plantUomFactors(p.plant_id)))
   const amount = computeAmount(p.rate, p.quantity)
   await d.transaction(async () => {
+    const challan = (p.challan_no ?? '').trim() || old.challan_no || (await nextNumber('CHN', 'challan'))
     await d.prepare(
       `UPDATE purchases SET supplier_id=@supplier_id, plant_id=@plant_id, stock_location_id=@stock_location_id,
          material_type=@material_type, purchase_mode=@purchase_mode, product_name=@product_name, outsource_id=@outsource_id,
          uom=@uom, quantity=@quantity, qty_cm=@qty_cm, rate=@rate, amount=@amount, paid_amount=@paid_amount,
-         payment_status=@payment_status, date=@date, remarks=@remarks WHERE id=@id`
+         payment_status=@payment_status, challan_no=@challan_no, date=@date, remarks=@remarks WHERE id=@id`
     ).run({
       id: p.id,
+      challan_no: challan,
       supplier_id: p.supplier_id,
       plant_id: p.plant_id,
       stock_location_id: locId,

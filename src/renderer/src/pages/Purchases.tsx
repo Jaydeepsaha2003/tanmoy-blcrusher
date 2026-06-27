@@ -96,6 +96,7 @@ export function Purchases(): React.JSX.Element {
       rate: '',
       paid_amount: 0,
       payment_status: 'unpaid',
+      challan_no: '',
       date: today(),
       remarks: '',
       transporters: [],
@@ -181,9 +182,9 @@ export function Purchases(): React.JSX.Element {
     downloadExcel(
       'purchases',
       'Purchases',
-      ['Purchase No', 'Date', 'Mode', 'Supplier', 'Plant', 'Item', 'UOM', 'Quantity', 'Qty (m³)', 'Rate', 'Amount', 'Transport', 'Machines', 'Paid', 'Status', 'Remarks'],
+      ['Purchase No', 'Challan No', 'Date', 'Mode', 'Supplier', 'Plant', 'Item', 'UOM', 'Quantity', 'Qty (m³)', 'Rate', 'Amount', 'Transport', 'Machines', 'Paid', 'Status', 'Remarks'],
       data.map((p) => [
-        p.purchase_no, fmtDate(p.date), p.purchase_mode === 'mining' ? 'Mining' : p.material_type === 'finished' ? 'Finished' : 'Raw',
+        p.purchase_no, p.challan_no ?? '', fmtDate(p.date), p.purchase_mode === 'mining' ? 'Mining' : p.material_type === 'finished' ? 'Finished' : 'Raw',
         p.supplier_name, p.plant_name, p.material_type === 'finished' ? p.product_name : p.stock_location_name,
         exportRowUom(p), exportRowQty(p), p.qty_cm, p.rate ?? '', p.amount ?? '', p.transport_total ?? 0, p.machine_total ?? 0, p.paid_amount, p.payment_status, p.remarks ?? ''
       ])
@@ -345,6 +346,9 @@ export function Purchases(): React.JSX.Element {
                 </Field>
                 <Field label="Purchase Date" required>
                   <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+                </Field>
+                <Field label="Challan No." hint={form.id ? 'Supplier challan / delivery note' : 'Blank = auto-generate'}>
+                  <Input value={form.challan_no || ''} onChange={(e) => setForm({ ...form, challan_no: e.target.value })} placeholder="Auto-generate" />
                 </Field>
                 <Field label="Plant" required hint={plantId ? 'Active plant' : undefined}>
                   <SearchSelect

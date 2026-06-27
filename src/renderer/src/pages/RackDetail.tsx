@@ -269,6 +269,7 @@ export function RackDetail(): React.JSX.Element {
       quantity: '',
       rate: '',
       truck_no: '',
+      challan_no: '',
       date: today(),
       remarks: '',
       transporters: [],
@@ -671,7 +672,10 @@ export function RackDetail(): React.JSX.Element {
               <TBody>
                 {sales.map((s) => (
                   <TR key={s.id}>
-                    <TD className="font-mono text-xs">{s.sale_no}</TD>
+                    <TD className="font-mono text-xs">
+                      {s.sale_no}
+                      {s.challan_no && <div className="text-[10px] text-muted-foreground">Challan {s.challan_no}</div>}
+                    </TD>
                     <TD>{fmtDate(s.date)}</TD>
                     <TD className="font-medium">{s.customer_name}</TD>
                     <TD>
@@ -1020,6 +1024,10 @@ export function RackDetail(): React.JSX.Element {
             <Field label="Truck No." hint="Truck delivering to the customer">
               <Input value={saleForm.truck_no || ''} onChange={(e) =>
                 setSaleForm({ ...saleForm, truck_no: e.target.value })} placeholder="e.g. JH-01-AB-1234" />
+            </Field>
+            <Field label="Challan No." hint={saleForm.id ? 'Delivery note' : 'Blank = auto-generate'}>
+              <Input value={saleForm.challan_no || ''} onChange={(e) =>
+                setSaleForm({ ...saleForm, challan_no: e.target.value })} placeholder="Auto-generate" />
             </Field>
             <Field label="Date">
               <Input type="date" value={saleForm.date} onChange={(e) =>

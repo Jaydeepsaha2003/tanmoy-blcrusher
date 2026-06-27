@@ -856,6 +856,8 @@ export interface SaleInput {
   quantity: number
   rate: number | null
   truck_no?: string
+  /** Challan / delivery-note no; blank → auto-generated. */
+  challan_no?: string
   /** Transporter cost lines (post to the transporter ledger + the rack). */
   transporters?: RackSaleTransporterInput[]
   /** Machine-usage cost lines (post to the rack; optional vendor payable). */
@@ -887,11 +889,12 @@ export async function addSale(p: SaleInput): Promise<RackSale> {
     )
   const id = await d.transaction(async () => {
     const no = await nextNumber('SL', 'rack_sale')
+    const challan = (p.challan_no ?? '').trim() || (await nextNumber('CHN', 'challan'))
     const info = await d
       .prepare(
         `INSERT INTO rack_sales
-          (sale_no, rack_id, customer_id, product_name, uom, quantity, qty_cm, rate, amount, truck_no, date, remarks)
-         VALUES (@sale_no,@rack_id,@customer_id,@product_name,@uom,@quantity,@qty_cm,@rate,@amount,@truck_no,@date,@remarks)`
+          (sale_no, rack_id, customer_id, product_name, uom, quantity, qty_cm, rate, amount, truck_no, challan_no, date, remarks)
+         VALUES (@sale_no,@rack_id,@customer_id,@product_name,@uom,@quantity,@qty_cm,@rate,@amount,@truck_no,@challan_no,@date,@remarks)`
       )
       .run({
         sale_no: no,
@@ -904,6 +907,7 @@ export async function addSale(p: SaleInput): Promise<RackSale> {
         rate: p.rate,
         amount,
         truck_no: (p.truck_no ?? '').trim(),
+        challan_no: challan,
         date: p.date,
         remarks: p.remarks ?? ''
       })
@@ -925,10 +929,11 @@ export async function updateSale(p: SaleInput): Promise<RackSale> {
     throw new Error(
       `Not enough unloaded material at destination. Available ${p.product_name}: ${available} m³, requested: ${qtyCm} m³.`
     )
+  const challan = (p.challan_no ?? '').trim() || old.challan_no || (await nextNumber('CHN', 'challan'))
   await d.transaction(async () => {
     await d.prepare(
       `UPDATE rack_sales SET customer_id=@customer_id, product_name=@product_name, uom=@uom,
-         quantity=@quantity, qty_cm=@qty_cm, rate=@rate, amount=@amount, truck_no=@truck_no, date=@date, remarks=@remarks
+         quantity=@quantity, qty_cm=@qty_cm, rate=@rate, amount=@amount, truck_no=@truck_no, challan_no=@challan_no, date=@date, remarks=@remarks
        WHERE id=@id`
     ).run({
       id: p.id,
@@ -940,6 +945,7 @@ export async function updateSale(p: SaleInput): Promise<RackSale> {
       rate: p.rate,
       amount,
       truck_no: (p.truck_no ?? '').trim(),
+      challan_no: challan,
       date: p.date,
       remarks: p.remarks ?? ''
     })

@@ -141,6 +141,7 @@ CREATE TABLE IF NOT EXISTS purchases (
   amount            REAL,
   paid_amount       REAL NOT NULL DEFAULT 0,
   payment_status    TEXT NOT NULL DEFAULT 'unpaid',
+  challan_no        TEXT NOT NULL DEFAULT '',
   date              TEXT NOT NULL,
   remarks           TEXT NOT NULL DEFAULT '',
   created_at        TEXT NOT NULL DEFAULT (datetime('now','localtime'))
@@ -444,6 +445,7 @@ CREATE TABLE IF NOT EXISTS rack_sales (
   qty_cm       REAL NOT NULL,
   rate         REAL,
   amount       REAL,
+  challan_no   TEXT NOT NULL DEFAULT '',
   date         TEXT NOT NULL,
   remarks      TEXT NOT NULL DEFAULT '',
   created_at   TEXT NOT NULL DEFAULT (datetime('now','localtime'))

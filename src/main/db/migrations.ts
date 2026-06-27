@@ -963,6 +963,12 @@ CREATE INDEX idx_coplants_company ON company_plants(company_id)`
     // Per-plant opening balances (a plant tag on each opening row).
     id: '027_opening_plant',
     sql: `ALTER TABLE opening_balances ADD COLUMN plant_id INT`
+  },
+  {
+    // Challan no on purchases and rack sales (type or auto-generate).
+    id: '028_challan_no',
+    sql: `ALTER TABLE purchases ADD COLUMN challan_no VARCHAR(191) NOT NULL DEFAULT '';
+ALTER TABLE rack_sales ADD COLUMN challan_no VARCHAR(191) NOT NULL DEFAULT ''`
   }
 ]
 
@@ -1069,6 +1075,9 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   await addColumn('diesel_issues', 'charged', 'INTEGER NOT NULL DEFAULT 0')
   await addColumn('rack_loadings', 'diesel_charged', 'INTEGER NOT NULL DEFAULT 0')
   await addColumn('rack_unloadings', 'diesel_charged', 'INTEGER NOT NULL DEFAULT 0')
+  // Challan no on purchases and rack sales.
+  await addColumn('purchases', 'challan_no', `TEXT NOT NULL DEFAULT ''`)
+  await addColumn('rack_sales', 'challan_no', `TEXT NOT NULL DEFAULT ''`)
 }
 
 /**

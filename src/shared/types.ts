@@ -348,6 +348,8 @@ export interface Purchase {
   amount: number | null
   paid_amount: number
   payment_status: PaymentStatus
+  /** Challan / delivery-note no (typed, or auto-generated when blank). */
+  challan_no: string
   date: string
   remarks: string
   created_at: string
@@ -518,6 +520,8 @@ export interface RackSale {
   rate: number | null
   amount: number | null
   truck_no: string
+  /** Challan / delivery-note no (typed, or auto-generated when blank). */
+  challan_no: string
   date: string
   remarks: string
   created_at: string
