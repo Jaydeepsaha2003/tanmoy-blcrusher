@@ -26,6 +26,8 @@ import type {
   RackUnloading,
   RackExpense,
   RackSale,
+  RackVehicle,
+  RackJcb,
   PaymentEntry,
   LedgerStatement,
   PartyBalance,
@@ -260,6 +262,18 @@ export const api = {
     updateSale: (p: unknown) => call<RackSale>('racks.updateSale', p),
     deleteSale: (id: number) => call<{ ok: boolean }>('racks.deleteSale', { id }),
     listSales: (filter?: Record<string, unknown>) => call<RackSale[]>('racks.listSales', filter)
+  },
+  rackVehicles: {
+    list: (plant_id?: number) => call<RackVehicle[]>('rackVehicles.list', { plant_id }),
+    create: (p: Partial<RackVehicle>) => call<RackVehicle>('rackVehicles.create', p),
+    update: (p: Partial<RackVehicle>) => call<RackVehicle>('rackVehicles.update', p),
+    delete: (id: number) => call<{ ok: boolean }>('rackVehicles.delete', { id })
+  },
+  rackJcbs: {
+    list: (plant_id?: number) => call<RackJcb[]>('rackJcbs.list', { plant_id }),
+    create: (p: Partial<RackJcb>) => call<RackJcb>('rackJcbs.create', p),
+    update: (p: Partial<RackJcb>) => call<RackJcb>('rackJcbs.update', p),
+    delete: (id: number) => call<{ ok: boolean }>('rackJcbs.delete', { id })
   },
   ledgers: {
     get: (party_type: LedgerType, party_id: number, from?: string, to?: string) =>

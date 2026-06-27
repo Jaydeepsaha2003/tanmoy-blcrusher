@@ -5,7 +5,9 @@ export const PARTY_PLANT_TABLE: Record<string, { junction: string; col: string }
   customer: { junction: 'customer_plants', col: 'customer_id' },
   supplier: { junction: 'supplier_plants', col: 'supplier_id' },
   transporter: { junction: 'transporter_plants', col: 'transporter_id' },
-  company: { junction: 'company_plants', col: 'company_id' }
+  company: { junction: 'company_plants', col: 'company_id' },
+  rack_vehicle: { junction: 'rack_vehicle_plants', col: 'rack_vehicle_id' },
+  rack_jcb: { junction: 'rack_jcb_plants', col: 'rack_jcb_id' }
 }
 
 /** Resolve the requested plant set: explicit plant_ids, else the legacy single plant_id. */

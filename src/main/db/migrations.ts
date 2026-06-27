@@ -969,6 +969,49 @@ CREATE INDEX idx_coplants_company ON company_plants(company_id)`
     id: '028_challan_no',
     sql: `ALTER TABLE purchases ADD COLUMN challan_no VARCHAR(191) NOT NULL DEFAULT '';
 ALTER TABLE rack_sales ADD COLUMN challan_no VARCHAR(191) NOT NULL DEFAULT ''`
+  },
+  {
+    // Rack fleet: hired vehicles + JCB loaders, assignable to multiple plants.
+    id: '029_rack_fleet',
+    sql: `CREATE TABLE IF NOT EXISTS rack_vehicles (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  vehicle_no    VARCHAR(191) NOT NULL,
+  owner_name    VARCHAR(191) NOT NULL DEFAULT '',
+  owner_mobile  VARCHAR(64) NOT NULL DEFAULT '',
+  driver_name   VARCHAR(191) NOT NULL DEFAULT '',
+  driver_mobile VARCHAR(64) NOT NULL DEFAULT '',
+  cap_cm        DOUBLE,
+  cap_ton       DOUBLE,
+  cap_cft       DOUBLE,
+  rate_per_trip DOUBLE,
+  remarks       TEXT,
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS rack_jcbs (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  name           VARCHAR(191) NOT NULL,
+  owner_name     VARCHAR(191) NOT NULL DEFAULT '',
+  owner_mobile   VARCHAR(64) NOT NULL DEFAULT '',
+  driver_name    VARCHAR(191) NOT NULL DEFAULT '',
+  driver_mobile  VARCHAR(64) NOT NULL DEFAULT '',
+  rate_unloading DOUBLE,
+  rate_loading   DOUBLE,
+  rate_other     DOUBLE,
+  remarks        TEXT,
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS rack_vehicle_plants (
+  id              INT AUTO_INCREMENT PRIMARY KEY,
+  rack_vehicle_id INT NOT NULL,
+  plant_id        INT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS rack_jcb_plants (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  rack_jcb_id INT NOT NULL,
+  plant_id    INT NOT NULL
+);
+CREATE INDEX idx_rvplants_vehicle ON rack_vehicle_plants(rack_vehicle_id);
+CREATE INDEX idx_rjplants_jcb ON rack_jcb_plants(rack_jcb_id)`
   }
 ]
 

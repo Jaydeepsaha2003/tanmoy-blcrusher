@@ -35,6 +35,7 @@ import { Employees } from './pages/Employees'
 import { Payroll } from './pages/Payroll'
 import { Racks } from './pages/Racks'
 import { RackDetail } from './pages/RackDetail'
+import { RackFleet } from './pages/RackFleet'
 import { Ledgers } from './pages/Ledgers'
 import { Payments } from './pages/Payments'
 import { Deliveries } from './pages/Deliveries'
@@ -88,6 +89,7 @@ function AppRoutes(): React.JSX.Element {
       <Route path="/employees" element={<Guard module="payroll"><Employees /></Guard>} />
       <Route path="/payroll" element={<Guard module="payroll"><Payroll /></Guard>} />
       <Route path="/racks" element={<Guard module="racks"><Racks /></Guard>} />
+      <Route path="/rack-fleet" element={<Guard module="racks"><RackFleet /></Guard>} />
       <Route path="/racks/:id" element={<Guard module="racks"><RackDetail /></Guard>} />
       <Route path="/ledgers" element={<Guard module="ledgers"><Ledgers /></Guard>} />
       <Route path="/dispatch" element={<Guard module="dispatch"><Dispatch /></Guard>} />

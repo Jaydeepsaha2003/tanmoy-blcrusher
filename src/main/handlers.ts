@@ -15,6 +15,7 @@ import * as movements from './services/movements'
 import * as transporters from './services/transporters'
 import * as companies from './services/companies'
 import * as racks from './services/racks'
+import * as rackFleet from './services/rackFleet'
 import * as ledgers from './services/ledgers'
 import * as assets from './services/assets'
 import * as machinery from './services/machinery'
@@ -155,6 +156,15 @@ export const handlers: Record<string, (payload: any) => unknown> = {
   'racks.updateSale': racks.updateSale,
   'racks.deleteSale': racks.deleteSale,
   'racks.listSales': racks.listSales,
+
+  'rackVehicles.list': rackFleet.listRackVehicles,
+  'rackVehicles.create': rackFleet.createRackVehicle,
+  'rackVehicles.update': rackFleet.updateRackVehicle,
+  'rackVehicles.delete': rackFleet.deleteRackVehicle,
+  'rackJcbs.list': rackFleet.listRackJcbs,
+  'rackJcbs.create': rackFleet.createRackJcb,
+  'rackJcbs.update': rackFleet.updateRackJcb,
+  'rackJcbs.delete': rackFleet.deleteRackJcb,
 
   'ledgers.get': ledgers.getLedger,
   'ledgers.balances': ledgers.getPartyBalances,

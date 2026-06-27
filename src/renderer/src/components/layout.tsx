@@ -88,7 +88,10 @@ export const NAV: NavGroup[] = [
   },
   {
     heading: 'Rail Dispatch',
-    items: [{ to: '/racks', label: 'Railway Racks', icon: TrainFront, module: 'racks' }]
+    items: [
+      { to: '/racks', label: 'Railway Racks', icon: TrainFront, module: 'racks' },
+      { to: '/rack-fleet', label: 'Vehicles & JCB', icon: Truck, module: 'racks' }
+    ]
   },
   {
     heading: 'Direct Sales',

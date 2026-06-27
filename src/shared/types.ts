@@ -421,6 +421,45 @@ export interface Transporter {
   balance_amount?: number
 }
 
+/** A hired vehicle in the rack fleet (plant→yard / yard→destination), assignable to plants. */
+export interface RackVehicle {
+  id: number
+  vehicle_no: string
+  owner_name: string
+  owner_mobile: string
+  driver_name: string
+  driver_mobile: string
+  /** Per-trip capacity in each unit. */
+  cap_cm: number | null
+  cap_ton: number | null
+  cap_cft: number | null
+  rate_per_trip: number | null
+  remarks: string
+  plant_ids?: number[]
+  plant_names?: string[]
+  created_at: string
+}
+
+/** A JCB loader in the rack fleet with per-work-type rates, assignable to plants. */
+export interface RackJcb {
+  id: number
+  name: string
+  owner_name: string
+  owner_mobile: string
+  driver_name: string
+  driver_mobile: string
+  /** JCB unloading — per wagon. */
+  rate_unloading: number | null
+  /** JCB loading — per tipper load. */
+  rate_loading: number | null
+  /** Other work — per hour. */
+  rate_other: number | null
+  remarks: string
+  plant_ids?: number[]
+  plant_names?: string[]
+  created_at: string
+}
+
 export interface Rack {
   id: number
   rack_no: string
