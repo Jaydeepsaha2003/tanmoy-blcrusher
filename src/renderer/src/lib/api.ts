@@ -42,6 +42,7 @@ import type {
   MachineOverviewRow,
   PlantExpense,
   ExpenseCategoryTotal,
+  ExpenseBookRow,
   DieselPurchase,
   DieselIssue,
   DieselStock,
@@ -351,6 +352,7 @@ export const api = {
   },
   plantExpenses: {
     list: (filter?: Record<string, unknown>) => call<PlantExpense[]>('plantExpenses.list', filter),
+    book: (filter?: Record<string, unknown>) => call<ExpenseBookRow[]>('plantExpenses.book', filter),
     totals: (filter?: Record<string, unknown>) =>
       call<ExpenseCategoryTotal[]>('plantExpenses.totals', filter),
     create: (p: unknown) => call<PlantExpense>('plantExpenses.create', p),

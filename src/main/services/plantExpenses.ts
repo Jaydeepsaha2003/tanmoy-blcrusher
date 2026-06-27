@@ -1,5 +1,6 @@
-import { getDb, nextNumber } from '../db'
-import type { PlantExpense, ExpenseCategory, ExpenseCategoryTotal, PaymentStatus } from '@shared/types'
+import { getDb } from '../db'
+import { nextNumber } from '../db'
+import type { PlantExpense, ExpenseCategory, ExpenseCategoryTotal, ExpenseBookRow, PaymentStatus } from '@shared/types'
 import { properCase, derivePaymentStatus } from '@shared/types'
 
 function money(n: number): number {
@@ -78,6 +79,147 @@ export async function expenseTotals(filter: ExpenseFilter = {}): Promise<Expense
        FROM plant_expenses ${clause} GROUP BY category ORDER BY amount DESC`
     )
     .all(params)) as ExpenseCategoryTotal[]
+}
+
+const CAT_LABEL: Record<string, string> = {
+  electricity: 'Electricity',
+  maintenance: 'Maintenance',
+  fixed: 'Fixed Cost',
+  tipper_rent: 'Tipper Rent',
+  equipment_rent: 'Equipment Rent',
+  other: 'Other'
+}
+
+/**
+ * Consolidated expense book for a plant: native plant expenses PLUS raw/finished
+ * purchases, diesel purchases and wages — every outgoing in one read-only list.
+ * Pulled-in rows are still entered on their own screens (no data duplication).
+ */
+export async function expenseBook(filter: ExpenseFilter = {}): Promise<ExpenseBookRow[]> {
+  const d = getDb()
+  const pid = filter.plant_id
+  const cond = (alias: string): { sql: string; params: Record<string, unknown> } => {
+    const parts: string[] = []
+    const params: Record<string, unknown> = {}
+    if (pid) {
+      parts.push(`${alias}.plant_id = @plant_id`)
+      params.plant_id = pid
+    }
+    if (filter.from) {
+      parts.push(`${alias}.date >= @from`)
+      params.from = filter.from
+    }
+    if (filter.to) {
+      parts.push(`${alias}.date <= @to`)
+      params.to = filter.to
+    }
+    return { sql: parts.length ? `WHERE ${parts.join(' AND ')}` : '', params }
+  }
+  const rows: ExpenseBookRow[] = []
+
+  // 1) Native plant expenses (editable).
+  const e = cond('e')
+  const exp = (await d
+    .prepare(
+      `SELECT e.id, e.expense_no, e.date, e.plant_id, p.name AS plant_name, e.category, e.title,
+              e.units, e.rate, a.name AS asset_name, e.amount, e.paid_amount, e.payment_status
+       FROM plant_expenses e JOIN plants p ON p.id = e.plant_id LEFT JOIN assets a ON a.id = e.asset_id ${e.sql}`
+    )
+    .all(e.params)) as Record<string, unknown>[]
+  for (const x of exp)
+    rows.push({
+      source: 'expense',
+      source_label: 'Expense',
+      id: Number(x.id),
+      ref_no: String(x.expense_no),
+      date: String(x.date),
+      plant_id: Number(x.plant_id),
+      plant_name: x.plant_name as string,
+      category: CAT_LABEL[String(x.category)] ?? String(x.category),
+      details: (x.title as string) || (x.asset_name as string) || '-',
+      amount: money(Number(x.amount) || 0),
+      paid_amount: money(Number(x.paid_amount) || 0),
+      payment_status: x.payment_status as PaymentStatus
+    })
+
+  // 2) Purchases (raw/finished bought-in; exclude inter-plant mirror purchases).
+  const pu = cond('pu')
+  const purWhere = pu.sql ? `${pu.sql} AND pu.linked_dispatch_id IS NULL` : 'WHERE pu.linked_dispatch_id IS NULL'
+  const purchases = (await d
+    .prepare(
+      `SELECT pu.id, pu.purchase_no, pu.date, pu.plant_id, pl.name AS plant_name, pu.product_name, pu.quantity,
+              s.name AS supplier_name, pu.amount, pu.paid_amount, pu.payment_status
+       FROM purchases pu JOIN plants pl ON pl.id = pu.plant_id LEFT JOIN suppliers s ON s.id = pu.supplier_id ${purWhere}`
+    )
+    .all(pu.params)) as Record<string, unknown>[]
+  for (const x of purchases)
+    rows.push({
+      source: 'purchase',
+      source_label: 'Purchase',
+      id: 0,
+      ref_no: String(x.purchase_no),
+      date: String(x.date),
+      plant_id: Number(x.plant_id),
+      plant_name: x.plant_name as string,
+      category: 'Material Purchase',
+      details: [x.supplier_name, x.product_name, x.quantity ? `${num(Number(x.quantity))} m³` : ''].filter(Boolean).join(' · ') || '-',
+      amount: money(Number(x.amount) || 0),
+      paid_amount: money(Number(x.paid_amount) || 0),
+      payment_status: x.payment_status as PaymentStatus
+    })
+
+  // 3) Diesel purchases.
+  const dp = cond('dp')
+  const diesel = (await d
+    .prepare(
+      `SELECT dp.id, dp.purchase_no, dp.date, dp.plant_id, pl.name AS plant_name, dp.litres,
+              s.name AS supplier_name, dp.amount, dp.paid_amount, dp.payment_status
+       FROM diesel_purchases dp JOIN plants pl ON pl.id = dp.plant_id LEFT JOIN suppliers s ON s.id = dp.supplier_id ${dp.sql}`
+    )
+    .all(dp.params)) as Record<string, unknown>[]
+  for (const x of diesel)
+    rows.push({
+      source: 'diesel',
+      source_label: 'Diesel',
+      id: 0,
+      ref_no: String(x.purchase_no),
+      date: String(x.date),
+      plant_id: Number(x.plant_id),
+      plant_name: x.plant_name as string,
+      category: 'Diesel Purchase',
+      details: [x.supplier_name, x.litres ? `${num(Number(x.litres))} L` : ''].filter(Boolean).join(' · ') || '-',
+      amount: money(Number(x.amount) || 0),
+      paid_amount: money(Number(x.paid_amount) || 0),
+      payment_status: x.payment_status as PaymentStatus
+    })
+
+  // 4) Wages (payroll).
+  const w = cond('w')
+  const wages = (await d
+    .prepare(
+      `SELECT w.id, w.entry_no, w.date, w.plant_id, pl.name AS plant_name, w.period,
+              em.name AS emp_name, w.amount, w.paid_amount, w.payment_status
+       FROM wage_entries w JOIN plants pl ON pl.id = w.plant_id LEFT JOIN employees em ON em.id = w.employee_id ${w.sql}`
+    )
+    .all(w.params)) as Record<string, unknown>[]
+  for (const x of wages)
+    rows.push({
+      source: 'wages',
+      source_label: 'Wages',
+      id: 0,
+      ref_no: String(x.entry_no),
+      date: String(x.date),
+      plant_id: Number(x.plant_id),
+      plant_name: x.plant_name as string,
+      category: 'Wages',
+      details: [x.emp_name, x.period].filter(Boolean).join(' · ') || '-',
+      amount: money(Number(x.amount) || 0),
+      paid_amount: money(Number(x.paid_amount) || 0),
+      payment_status: x.payment_status as PaymentStatus
+    })
+
+  rows.sort((a, b) => (a.date === b.date ? b.ref_no.localeCompare(a.ref_no) : b.date.localeCompare(a.date)))
+  return rows
 }
 
 export interface ExpenseInput {

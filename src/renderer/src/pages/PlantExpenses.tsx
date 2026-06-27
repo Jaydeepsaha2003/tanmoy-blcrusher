@@ -55,9 +55,18 @@ export function PlantExpenses(): React.JSX.Element {
   const [catFilter, setCatFilter] = React.useState<ExpenseCategory | ''>('')
   const [from, setFrom] = React.useState('')
   const [to, setTo] = React.useState('')
+  const [view, setView] = React.useState<'expenses' | 'book'>('expenses')
 
   const filter = clean({ plant_id: plantId, category: catFilter || undefined, from: from || undefined, to: to || undefined })
   const { data = [] } = useQuery({ queryKey: ['plantExpenses', filter], queryFn: () => api.plantExpenses.list(filter) })
+  // Consolidated book: native expenses + purchases + diesel + wages for the plant.
+  const bookFilter = clean({ plant_id: plantId, from: from || undefined, to: to || undefined })
+  const { data: book = [] } = useQuery({
+    queryKey: ['plantExpenseBook', bookFilter],
+    queryFn: () => api.plantExpenses.book(bookFilter),
+    enabled: view === 'book'
+  })
+  const bookTotal = book.reduce((s, r) => s + r.amount, 0)
   const { data: totals = [] } = useQuery({
     queryKey: ['plantExpenseTotals', plantId, from, to],
     queryFn: () => api.plantExpenses.totals(clean({ plant_id: plantId, from: from || undefined, to: to || undefined }))
@@ -132,6 +141,15 @@ export function PlantExpenses(): React.JSX.Element {
   }
 
   function exportExcel(): void {
+    if (view === 'book') {
+      downloadExcel(
+        'plant-expense-book',
+        'Plant Expense Book',
+        ['Source', 'No', 'Date', 'Plant', 'Category', 'Details', 'Amount', 'Paid', 'Status'],
+        book.map((r) => [r.source_label, r.ref_no, fmtDate(r.date), r.plant_name ?? '', r.category, r.details, r.amount, r.paid_amount, r.payment_status])
+      )
+      return
+    }
     downloadExcel(
       'plant-expenses',
       'Plant Expenses',
@@ -173,7 +191,7 @@ export function PlantExpenses(): React.JSX.Element {
         description="Electricity, maintenance, rentals and other running costs of the plant"
         actions={
           <>
-            <Button variant="outline" onClick={exportExcel} disabled={!data.length}>
+            <Button variant="outline" onClick={exportExcel} disabled={view === 'book' ? !book.length : !data.length}>
               <FileSpreadsheet size={16} /> Excel
             </Button>
             <Button onClick={openNew} disabled={!plants.length}>
@@ -207,18 +225,65 @@ export function PlantExpenses(): React.JSX.Element {
         </div>
 
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <SearchSelect
-            className="w-full sm:w-52"
-            value={catFilter}
-            onChange={(v) => setCatFilter(v as ExpenseCategory | '')}
-            options={[{ value: '', label: 'All categories' }, ...CATS.map((c) => ({ value: c.value, label: c.label }))]}
-          />
+          {(['expenses', 'book'] as const).map((v) => (
+            <Button key={v} variant={view === v ? 'default' : 'outline'} size="sm" onClick={() => setView(v)}>
+              {v === 'expenses' ? 'Expenses' : 'Full Book (all outgoings)'}
+            </Button>
+          ))}
+          <span className="mx-1 h-5 w-px bg-border" />
+          {view === 'expenses' && (
+            <SearchSelect
+              className="w-full sm:w-52"
+              value={catFilter}
+              onChange={(v) => setCatFilter(v as ExpenseCategory | '')}
+              options={[{ value: '', label: 'All categories' }, ...CATS.map((c) => ({ value: c.value, label: c.label }))]}
+            />
+          )}
           <Input type="date" className="w-full sm:w-36" value={from} onChange={(e) => setFrom(e.target.value)} />
           <span className="text-muted-foreground">to</span>
           <Input type="date" className="w-full sm:w-36" value={to} onChange={(e) => setTo(e.target.value)} />
         </div>
 
-        {data.length === 0 ? (
+        {view === 'book' ? (
+          book.length === 0 ? (
+            <EmptyState message="No outgoings in this period." />
+          ) : (
+            <>
+              <div className="mb-2 text-sm text-muted-foreground">
+                {book.length} entries · Total outgoings: <span className="font-semibold text-destructive">{fmtMoney(bookTotal)}</span>
+                <span className="ml-1">— expenses, purchases, diesel and wages combined.</span>
+              </div>
+              <Table>
+                <THead>
+                  <TR>
+                    <TH>Source</TH>
+                    <TH>No</TH>
+                    <TH>Date</TH>
+                    <TH>Category</TH>
+                    <TH>Details</TH>
+                    <TH className="text-right">Amount</TH>
+                    <TH className="text-right">Paid</TH>
+                    <TH>Payment</TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {book.map((r) => (
+                    <TR key={`${r.source}-${r.ref_no}`}>
+                      <TD><Badge variant="muted">{r.source_label}</Badge></TD>
+                      <TD className="font-mono text-xs">{r.ref_no}</TD>
+                      <TD>{fmtDate(r.date)}</TD>
+                      <TD className="font-medium">{r.category}</TD>
+                      <TD className="text-muted-foreground">{r.details}</TD>
+                      <TD className="tnum text-right font-semibold">{fmtMoney(r.amount)}</TD>
+                      <TD className="tnum text-right text-muted-foreground">{fmtMoney(r.paid_amount)}</TD>
+                      <TD><Badge variant={payBadge[r.payment_status]}>{r.payment_status}</Badge></TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+            </>
+          )
+        ) : data.length === 0 ? (
           <EmptyState message="No expenses recorded yet." />
         ) : (
           <Table>

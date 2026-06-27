@@ -209,6 +209,7 @@ export const handlers: Record<string, (payload: any) => unknown> = {
   'outsource.delete': outsource.deleteOutsource,
 
   'plantExpenses.list': plantExpenses.listPlantExpenses,
+  'plantExpenses.book': plantExpenses.expenseBook,
   'plantExpenses.totals': plantExpenses.expenseTotals,
   'plantExpenses.create': plantExpenses.createPlantExpense,
   'plantExpenses.update': plantExpenses.updatePlantExpense,

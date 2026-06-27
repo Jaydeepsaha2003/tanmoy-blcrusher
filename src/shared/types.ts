@@ -967,6 +967,23 @@ export interface ExpenseCategoryTotal {
   amount: number
 }
 
+/** One line in the consolidated plant expense book (native expenses + purchases + diesel + wages). */
+export interface ExpenseBookRow {
+  source: 'expense' | 'purchase' | 'diesel' | 'wages'
+  source_label: string
+  /** Native-expense id (for edit/delete); 0 for pulled-in rows. */
+  id: number
+  ref_no: string
+  date: string
+  plant_id: number
+  plant_name?: string
+  category: string
+  details: string
+  amount: number
+  paid_amount: number
+  payment_status: PaymentStatus
+}
+
 /** One head's planned-vs-actual line in a plant budget. */
 export interface BudgetItem {
   head: string
