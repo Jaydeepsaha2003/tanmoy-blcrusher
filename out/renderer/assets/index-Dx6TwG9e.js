@@ -70312,6 +70312,21 @@ function StockLocations() {
     setForm({ plant_id: plantId ?? plants[0]?.id, opening_qty: 0, name: "", remarks: "" });
     setOpen(true);
   }
+  function setQty(v2) {
+    const qty = Number(v2) || 0;
+    const rate = Number(form.opening_rate) || 0;
+    setForm({ ...form, opening_qty: qty, ...rate > 0 ? { opening_amount: round2$4(rate * qty) } : {} });
+  }
+  function setRate(v2) {
+    const rate = Number(v2) || 0;
+    const qty = Number(form.opening_qty) || 0;
+    setForm({ ...form, opening_rate: rate, opening_amount: round2$4(rate * qty) });
+  }
+  function setAmount(v2) {
+    const amount = Number(v2) || 0;
+    const qty = Number(form.opening_qty) || 0;
+    setForm({ ...form, opening_amount: amount, opening_rate: qty > 0 ? round2$4(amount / qty) : 0 });
+  }
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       PageHeader,
@@ -70329,6 +70344,7 @@ function StockLocations() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Location" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plant" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Opening" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Opening ₹" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Purchased" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "To Production" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Balance (m³)" }),
@@ -70339,6 +70355,7 @@ function StockLocations() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: l2.name }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: l2.plant_name }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtQty(l2.opening_qty) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right text-muted-foreground", children: l2.opening_amount ? fmtMoney(l2.opening_amount) : "-" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right text-success", children: fmtQty(l2.purchased_qty) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right text-destructive", children: fmtQty(l2.consumed_qty) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right font-semibold", children: fmtQty(l2.balance_qty) }),
@@ -70382,9 +70399,13 @@ function StockLocations() {
               type: "number",
               step: "0.001",
               value: form.opening_qty ?? 0,
-              onChange: (e3) => setForm({ ...form, opening_qty: Number(e3.target.value) })
+              onChange: (e3) => setQty(e3.target.value)
             }
           ) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Rate (₹ / m³)", hint: "Optional — to value the opening stock", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.opening_rate ?? "", onChange: (e3) => setRate(e3.target.value), placeholder: "0.00" }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Amount (₹)", hint: "Rate × quantity — editable", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.opening_amount ?? "", onChange: (e3) => setAmount(e3.target.value), placeholder: "0.00" }) })
+          ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
             Input,
             {
@@ -70400,6 +70421,9 @@ function StockLocations() {
       }
     )
   ] });
+}
+function round2$4(n2) {
+  return Math.round((n2 + Number.EPSILON) * 100) / 100;
 }
 function Suppliers() {
   const qc2 = useQueryClient();
@@ -89607,7 +89631,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-CGPVN4aK.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-Ykdzumcb.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;

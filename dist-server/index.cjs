@@ -254,12 +254,14 @@ CREATE TABLE IF NOT EXISTS transport_charges (
 );
 
 CREATE TABLE IF NOT EXISTS stock_locations (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  plant_id    INTEGER NOT NULL REFERENCES plants(id),
-  name        TEXT NOT NULL,
-  opening_qty REAL NOT NULL DEFAULT 0,
-  remarks     TEXT NOT NULL DEFAULT '',
-  created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  plant_id       INTEGER NOT NULL REFERENCES plants(id),
+  name           TEXT NOT NULL,
+  opening_qty    REAL NOT NULL DEFAULT 0,
+  opening_rate   REAL NOT NULL DEFAULT 0,
+  opening_amount REAL NOT NULL DEFAULT 0,
+  remarks        TEXT NOT NULL DEFAULT '',
+  created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS suppliers (
@@ -1045,12 +1047,14 @@ CREATE TABLE IF NOT EXISTS transport_charges (
   updated_at        VARCHAR(32) NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS stock_locations (
-  id          INT AUTO_INCREMENT PRIMARY KEY,
-  plant_id    INT NOT NULL,
-  name        VARCHAR(255) NOT NULL,
-  opening_qty DOUBLE NOT NULL DEFAULT 0,
-  remarks     TEXT,
-  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  plant_id       INT NOT NULL,
+  name           VARCHAR(255) NOT NULL,
+  opening_qty    DOUBLE NOT NULL DEFAULT 0,
+  opening_rate   DOUBLE NOT NULL DEFAULT 0,
+  opening_amount DOUBLE NOT NULL DEFAULT 0,
+  remarks        TEXT,
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS suppliers (
   id         INT AUTO_INCREMENT PRIMARY KEY,
@@ -2032,6 +2036,12 @@ ALTER TABLE finished_goods_opening ADD COLUMN opening_amount DOUBLE NOT NULL DEF
   created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_tfleet_transporter ON transporter_fleet(transporter_id)`
+  },
+  {
+    // Raw-material opening stock (stock locations) can be valued: a per-m³ rate + total amount.
+    id: "035_stock_location_opening_value",
+    sql: `ALTER TABLE stock_locations ADD COLUMN opening_rate DOUBLE NOT NULL DEFAULT 0;
+ALTER TABLE stock_locations ADD COLUMN opening_amount DOUBLE NOT NULL DEFAULT 0`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -2130,6 +2140,8 @@ async function sqliteLegacyMigrate(adapter2) {
   await addColumn("dispatch_transporters", "bill_customer", "INTEGER NOT NULL DEFAULT 0");
   await addColumn("finished_goods_opening", "opening_rate", "REAL NOT NULL DEFAULT 0");
   await addColumn("finished_goods_opening", "opening_amount", "REAL NOT NULL DEFAULT 0");
+  await addColumn("stock_locations", "opening_rate", "REAL NOT NULL DEFAULT 0");
+  await addColumn("stock_locations", "opening_amount", "REAL NOT NULL DEFAULT 0");
 }
 async function importProductsFromSettings(adapter2) {
   const all = (await adapter2.exec(`SELECT id, name FROM products ORDER BY id`, void 0, null)).rows;
@@ -2939,13 +2951,22 @@ async function listStockLocations(payload = {}) {
   }
   return rows;
 }
+function openingValue(p) {
+  const qty = p.opening_qty || 0;
+  let amount = Number(p.opening_amount) || 0;
+  let rate = Number(p.opening_rate) || 0;
+  if (amount === 0 && rate > 0) amount = rate * qty;
+  if (rate === 0 && amount > 0 && qty > 0) rate = amount / qty;
+  return { rate, amount };
+}
 async function createStockLocation(p) {
   const d = getDb();
   await ensureUniqueName("stock_locations", p.name, { scopeColumn: "plant_id", scopeValue: p.plant_id, label: "A location in this plant" });
+  const { rate, amount } = openingValue(p);
   const id = await d.transaction(async () => {
     const info = await d.prepare(
-      `INSERT INTO stock_locations (plant_id, name, opening_qty, remarks) VALUES (?, ?, ?, ?)`
-    ).run(p.plant_id, properCase(p.name), p.opening_qty || 0, p.remarks ?? "");
+      `INSERT INTO stock_locations (plant_id, name, opening_qty, opening_rate, opening_amount, remarks) VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(p.plant_id, properCase(p.name), p.opening_qty || 0, rate, amount, p.remarks ?? "");
     const id2 = Number(info.lastInsertRowid);
     await setLocationOpening(d, id2, p.plant_id, p.opening_qty || 0, today());
     return id2;
@@ -2963,10 +2984,13 @@ async function ensureDefaultLocation(plantId) {
 async function updateStockLocation(p) {
   const d = getDb();
   await ensureUniqueName("stock_locations", p.name, { id: p.id, scopeColumn: "plant_id", scopeValue: p.plant_id, label: "A location in this plant" });
+  const { rate, amount } = openingValue(p);
   await d.transaction(async () => {
-    await d.prepare(`UPDATE stock_locations SET name=?, opening_qty=?, remarks=? WHERE id=?`).run(
+    await d.prepare(`UPDATE stock_locations SET name=?, opening_qty=?, opening_rate=?, opening_amount=?, remarks=? WHERE id=?`).run(
       properCase(p.name),
       p.opening_qty || 0,
+      rate,
+      amount,
       p.remarks ?? "",
       p.id
     );
