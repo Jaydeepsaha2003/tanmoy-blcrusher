@@ -22,7 +22,7 @@ import {
 import { useToast } from '@/components/toast'
 import { confirmDialog } from '@/components/confirm'
 import { usePlant } from '@/lib/plant'
-import { fmtQty } from '@/lib/utils'
+import { fmtMoney, fmtQty } from '@/lib/utils'
 
 export function StockLocations(): React.JSX.Element {
   const qc = useQueryClient()
@@ -65,6 +65,23 @@ export function StockLocations(): React.JSX.Element {
     setOpen(true)
   }
 
+  // Opening value: rate (₹/m³) and amount derive each other from the quantity.
+  function setQty(v: string): void {
+    const qty = Number(v) || 0
+    const rate = Number(form.opening_rate) || 0
+    setForm({ ...form, opening_qty: qty, ...(rate > 0 ? { opening_amount: round2(rate * qty) } : {}) })
+  }
+  function setRate(v: string): void {
+    const rate = Number(v) || 0
+    const qty = Number(form.opening_qty) || 0
+    setForm({ ...form, opening_rate: rate, opening_amount: round2(rate * qty) })
+  }
+  function setAmount(v: string): void {
+    const amount = Number(v) || 0
+    const qty = Number(form.opening_qty) || 0
+    setForm({ ...form, opening_amount: amount, opening_rate: qty > 0 ? round2(amount / qty) : 0 })
+  }
+
   return (
     <>
       <PageHeader
@@ -88,6 +105,7 @@ export function StockLocations(): React.JSX.Element {
                 <TH>Location</TH>
                 <TH>Plant</TH>
                 <TH className="text-right">Opening</TH>
+                <TH className="text-right">Opening ₹</TH>
                 <TH className="text-right">Purchased</TH>
                 <TH className="text-right">To Production</TH>
                 <TH className="text-right">Balance (m³)</TH>
@@ -101,6 +119,7 @@ export function StockLocations(): React.JSX.Element {
                   <TD className="font-medium">{l.name}</TD>
                   <TD className="text-muted-foreground">{l.plant_name}</TD>
                   <TD className="text-right">{fmtQty(l.opening_qty)}</TD>
+                  <TD className="tnum text-right text-muted-foreground">{l.opening_amount ? fmtMoney(l.opening_amount) : '-'}</TD>
                   <TD className="text-right text-success">{fmtQty(l.purchased_qty)}</TD>
                   <TD className="text-right text-destructive">{fmtQty(l.consumed_qty)}</TD>
                   <TD className="text-right font-semibold">{fmtQty(l.balance_qty)}</TD>
@@ -146,9 +165,17 @@ export function StockLocations(): React.JSX.Element {
               type="number"
               step="0.001"
               value={form.opening_qty ?? 0}
-              onChange={(e) => setForm({ ...form, opening_qty: Number(e.target.value) })}
+              onChange={(e) => setQty(e.target.value)}
             />
           </Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Rate (₹ / m³)" hint="Optional — to value the opening stock">
+              <Input type="number" step="0.01" value={form.opening_rate ?? ''} onChange={(e) => setRate(e.target.value)} placeholder="0.00" />
+            </Field>
+            <Field label="Amount (₹)" hint="Rate × quantity — editable">
+              <Input type="number" step="0.01" value={form.opening_amount ?? ''} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
+            </Field>
+          </div>
           <Field label="Remarks">
             <Input
               value={form.remarks || ''}
@@ -167,4 +194,8 @@ export function StockLocations(): React.JSX.Element {
       </Modal>
     </>
   )
+}
+
+function round2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100
 }

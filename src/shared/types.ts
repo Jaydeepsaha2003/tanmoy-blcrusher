@@ -218,6 +218,9 @@ export interface StockLocation {
   plant_name?: string
   name: string
   opening_qty: number
+  /** Optional valuation of the opening stock: per-m³ rate and total amount (0 when unset). */
+  opening_rate?: number
+  opening_amount?: number
   remarks: string
   created_at: string
   // computed

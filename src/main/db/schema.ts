@@ -95,12 +95,14 @@ CREATE TABLE IF NOT EXISTS transport_charges (
 );
 
 CREATE TABLE IF NOT EXISTS stock_locations (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  plant_id    INTEGER NOT NULL REFERENCES plants(id),
-  name        TEXT NOT NULL,
-  opening_qty REAL NOT NULL DEFAULT 0,
-  remarks     TEXT NOT NULL DEFAULT '',
-  created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  plant_id       INTEGER NOT NULL REFERENCES plants(id),
+  name           TEXT NOT NULL,
+  opening_qty    REAL NOT NULL DEFAULT 0,
+  opening_rate   REAL NOT NULL DEFAULT 0,
+  opening_amount REAL NOT NULL DEFAULT 0,
+  remarks        TEXT NOT NULL DEFAULT '',
+  created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS suppliers (

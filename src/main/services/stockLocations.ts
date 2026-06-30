@@ -37,20 +37,36 @@ export async function listStockLocations(payload: { plant_id?: number } = {}): P
   return rows
 }
 
+/** Derive the per-m³ rate and total amount from whichever the user filled (and the qty). */
+function openingValue(p: { opening_qty: number; opening_rate?: number; opening_amount?: number }): {
+  rate: number
+  amount: number
+} {
+  const qty = p.opening_qty || 0
+  let amount = Number(p.opening_amount) || 0
+  let rate = Number(p.opening_rate) || 0
+  if (amount === 0 && rate > 0) amount = rate * qty
+  if (rate === 0 && amount > 0 && qty > 0) rate = amount / qty
+  return { rate, amount }
+}
+
 export async function createStockLocation(p: {
   plant_id: number
   name: string
   opening_qty: number
+  opening_rate?: number
+  opening_amount?: number
   remarks: string
 }): Promise<StockLocation> {
   const d = getDb()
   await ensureUniqueName('stock_locations', p.name, { scopeColumn: 'plant_id', scopeValue: p.plant_id, label: 'A location in this plant' })
+  const { rate, amount } = openingValue(p)
   const id = await d.transaction(async () => {
     const info = await d
       .prepare(
-        `INSERT INTO stock_locations (plant_id, name, opening_qty, remarks) VALUES (?, ?, ?, ?)`
+        `INSERT INTO stock_locations (plant_id, name, opening_qty, opening_rate, opening_amount, remarks) VALUES (?, ?, ?, ?, ?, ?)`
       )
-      .run(p.plant_id, properCase(p.name), p.opening_qty || 0, p.remarks ?? '')
+      .run(p.plant_id, properCase(p.name), p.opening_qty || 0, rate, amount, p.remarks ?? '')
     const id = Number(info.lastInsertRowid)
     await setLocationOpening(d, id, p.plant_id, p.opening_qty || 0, today())
     return id
@@ -83,14 +99,19 @@ export async function updateStockLocation(p: {
   plant_id: number
   name: string
   opening_qty: number
+  opening_rate?: number
+  opening_amount?: number
   remarks: string
 }): Promise<StockLocation> {
   const d = getDb()
   await ensureUniqueName('stock_locations', p.name, { id: p.id, scopeColumn: 'plant_id', scopeValue: p.plant_id, label: 'A location in this plant' })
+  const { rate, amount } = openingValue(p)
   await d.transaction(async () => {
-    await d.prepare(`UPDATE stock_locations SET name=?, opening_qty=?, remarks=? WHERE id=?`).run(
+    await d.prepare(`UPDATE stock_locations SET name=?, opening_qty=?, opening_rate=?, opening_amount=?, remarks=? WHERE id=?`).run(
       properCase(p.name),
       p.opening_qty || 0,
+      rate,
+      amount,
       p.remarks ?? '',
       p.id
     )

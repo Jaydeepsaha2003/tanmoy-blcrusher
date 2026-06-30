@@ -89,12 +89,14 @@ CREATE TABLE IF NOT EXISTS transport_charges (
   updated_at        VARCHAR(32) NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS stock_locations (
-  id          INT AUTO_INCREMENT PRIMARY KEY,
-  plant_id    INT NOT NULL,
-  name        VARCHAR(255) NOT NULL,
-  opening_qty DOUBLE NOT NULL DEFAULT 0,
-  remarks     TEXT,
-  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  plant_id       INT NOT NULL,
+  name           VARCHAR(255) NOT NULL,
+  opening_qty    DOUBLE NOT NULL DEFAULT 0,
+  opening_rate   DOUBLE NOT NULL DEFAULT 0,
+  opening_amount DOUBLE NOT NULL DEFAULT 0,
+  remarks        TEXT,
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS suppliers (
   id         INT AUTO_INCREMENT PRIMARY KEY,
@@ -1082,6 +1084,12 @@ ALTER TABLE finished_goods_opening ADD COLUMN opening_amount DOUBLE NOT NULL DEF
   created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_tfleet_transporter ON transporter_fleet(transporter_id)`
+  },
+  {
+    // Raw-material opening stock (stock locations) can be valued: a per-m³ rate + total amount.
+    id: '035_stock_location_opening_value',
+    sql: `ALTER TABLE stock_locations ADD COLUMN opening_rate DOUBLE NOT NULL DEFAULT 0;
+ALTER TABLE stock_locations ADD COLUMN opening_amount DOUBLE NOT NULL DEFAULT 0`
   }
 ]
 
@@ -1204,6 +1212,9 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   // Valued opening finished-goods stock (product_plants comes from SCHEMA on the SQLite path).
   await addColumn('finished_goods_opening', 'opening_rate', 'REAL NOT NULL DEFAULT 0')
   await addColumn('finished_goods_opening', 'opening_amount', 'REAL NOT NULL DEFAULT 0')
+  // Valued raw-material opening stock (transporter_fleet comes from SCHEMA on the SQLite path).
+  await addColumn('stock_locations', 'opening_rate', 'REAL NOT NULL DEFAULT 0')
+  await addColumn('stock_locations', 'opening_amount', 'REAL NOT NULL DEFAULT 0')
 }
 
 /**
