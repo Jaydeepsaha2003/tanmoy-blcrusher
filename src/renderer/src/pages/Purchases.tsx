@@ -52,7 +52,6 @@ export function Purchases(): React.JSX.Element {
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers', plantId], queryFn: () => api.suppliers.list(plantId) })
   const [filter, setFilter] = React.useState<{ supplier_id?: number; payment_status?: string }>({})
   const { data: locations = [] } = useQuery({ queryKey: ['locations', 0], queryFn: () => api.locations.list() })
-  const { data: products = [] } = useQuery({ queryKey: ['products'], queryFn: () => api.products.list() })
   const { data: outsourceVendors = [] } = useQuery({ queryKey: ['outsource'], queryFn: () => api.outsource.list() })
   const { data: transporters = [] } = useQuery({ queryKey: ['transporters', plantId], queryFn: () => api.transporters.list(plantId) })
   const { data: assets = [] } = useQuery({ queryKey: ['assets', plantId], queryFn: () => api.assets.list(plantId) })
@@ -64,6 +63,8 @@ export function Purchases(): React.JSX.Element {
 
   const [open, setOpen] = React.useState(false)
   const [form, setForm] = React.useState<any>(null)
+  // Finished-product picker shows only the destination plant's products (plus common).
+  const { data: products = [] } = useQuery({ queryKey: ['products', form?.plant_id], queryFn: () => api.products.list(form?.plant_id) })
   // UOM the Excel export is expressed in: 'default' keeps each row's own purchase
   // unit; CM/TON/CFT converts every row to that single unit (via the plant factors).
   const [exportUom, setExportUom] = React.useState<'default' | Uom>('default')
@@ -363,7 +364,13 @@ export function Purchases(): React.JSX.Element {
                     <SearchSelect
                       value={form.product_name || ''}
                       onChange={(v) => setForm({ ...form, product_name: v })}
-                      options={products.map((pr) => ({ value: pr.name, label: pr.name }))}
+                      options={[
+                        /* Keep an already-chosen product selectable even if it isn't tagged to this plant. */
+                        ...(form.product_name && !products.some((pr) => pr.name === form.product_name)
+                          ? [{ value: form.product_name, label: form.product_name }]
+                          : []),
+                        ...products.map((pr) => ({ value: pr.name, label: pr.name }))
+                      ]}
                       placeholder="Select product…"
                     />
                   </Field>

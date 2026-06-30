@@ -32,7 +32,7 @@ export function ProductionSettings(): React.JSX.Element {
     queryFn: () => api.productionSettings.list(plantId!),
     enabled: !!plantId
   })
-  const { data: products = [] } = useQuery({ queryKey: ['products'], queryFn: () => api.products.list() })
+  const { data: products = [] } = useQuery({ queryKey: ['products', plantId], queryFn: () => api.products.list(plantId) })
 
   const [rows, setRows] = React.useState<Row[]>([])
   React.useEffect(() => {

@@ -40,7 +40,8 @@ export function Customers(): React.JSX.Element {
   const { data = [] } = useQuery({ queryKey: ['customers', plantId], queryFn: () => api.customers.list(plantId) })
   const { data: companies = [] } = useQuery({ queryKey: ['companies'], queryFn: api.companies.list })
   const { data: plants = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
-  const { data: products = [] } = useQuery({ queryKey: ['products'], queryFn: () => api.products.list() })
+  // Rate-list product picker shows only the active plant's products (plus common).
+  const { data: products = [] } = useQuery({ queryKey: ['products', plantId], queryFn: () => api.products.list(plantId) })
   const [open, setOpen] = React.useState(false)
   const [form, setForm] = React.useState<Partial<Customer>>({})
   const [ratesFor, setRatesFor] = React.useState<Customer | null>(null)

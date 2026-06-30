@@ -38,7 +38,7 @@ export function RateChart(): React.JSX.Element {
   const toast = useToast()
   const { plantId } = usePlant()
   const { data: locations = [] } = useQuery({ queryKey: ['locations', 0], queryFn: () => api.locations.list() })
-  const { data: products = [] } = useQuery({ queryKey: ['products'], queryFn: () => api.products.list() })
+  const { data: products = [] } = useQuery({ queryKey: ['products', plantId], queryFn: () => api.products.list(plantId) })
   const { data: rows = [] } = useQuery({ queryKey: ['rateChart', plantId], queryFn: () => api.rateChart.list(plantId) })
   const { data: transport = [] } = useQuery({ queryKey: ['transportCharges', plantId], queryFn: () => api.transportCharges.list(plantId) })
 

@@ -47,7 +47,6 @@ export function Dispatch(): React.JSX.Element {
     queryFn: () => api.customers.list(plantId)
   })
   const { data: outsourceVendors = [] } = useQuery({ queryKey: ['outsource'], queryFn: () => api.outsource.list() })
-  const { data: products = [] } = useQuery({ queryKey: ['products'], queryFn: () => api.products.list() })
   const { data: transporters = [] } = useQuery({ queryKey: ['transporters', plantId], queryFn: () => api.transporters.list(plantId) })
   const { data: assets = [] } = useQuery({ queryKey: ['assets', plantId], queryFn: () => api.assets.list(plantId) })
   const [filter, setFilter] = React.useState<{
@@ -66,6 +65,12 @@ export function Dispatch(): React.JSX.Element {
     queryKey: ['available', form?.plant_id],
     queryFn: () => api.finished.available(form.plant_id),
     enabled: !!form?.plant_id
+  })
+  // Outsource-sale product picker: only the chosen plant's products (plus common).
+  // It is creatable, so a brand-new product name can still be typed in.
+  const { data: products = [] } = useQuery({
+    queryKey: ['products', form?.plant_id],
+    queryFn: () => api.products.list(form?.plant_id)
   })
   const selProduct = avail.find((a) => a.product_name === form?.product_name)
 
