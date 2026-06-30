@@ -4,7 +4,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, FileSpreadsheet, Wrench, Banknote, Users } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { PlantExpense, WageEntry, PaymentStatus, ExpenseCategory } from '@shared/types'
-import { PageHeader, Page } from '@/components/layout'
 import {
   Button,
   Input,
@@ -47,7 +46,7 @@ function clean(f: Record<string, unknown>): Record<string, unknown> {
   return out
 }
 
-export function Maintenance(): React.JSX.Element {
+export function CostsPanel(): React.JSX.Element {
   const qc = useQueryClient()
   const toast = useToast()
   const { plantId } = usePlant()
@@ -260,39 +259,29 @@ export function Maintenance(): React.JSX.Element {
 
   return (
     <>
-      <PageHeader
-        title="Maintenance & Costs"
-        description="Machine-wise maintenance, fixed costs and operator salary — every entry posts to the plant P&L and the machine's ledger"
-        actions={
-          <>
-            <Button variant="outline" onClick={exportExcel} disabled={tab === 'operator' ? !wages.length : !expenses.length}>
-              <FileSpreadsheet size={16} /> Excel
-            </Button>
-            <Button
-              onClick={tab === 'operator' ? openNewWage : openNewExp}
-              disabled={!assets.length || !plants.length || (tab === 'operator' && !employees.length)}
-            >
-              <Plus size={16} /> {newLabel}
-            </Button>
-          </>
-        }
-      />
-      <Page>
-        {/* Tabs */}
-        <div className="mb-4 flex flex-wrap gap-2">
-          {TABS.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              onClick={() => setTab(key)}
-              className={
-                'inline-flex items-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors ' +
-                (tab === key ? 'border-primary bg-primary/5 text-foreground' : 'border-input text-muted-foreground hover:bg-accent')
-              }
-            >
-              <Icon size={15} /> {label}
-            </button>
-          ))}
-        </div>
+      {/* Cost sub-tabs + actions */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {TABS.map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={
+              'inline-flex items-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors ' +
+              (tab === key ? 'border-primary bg-primary/5 text-foreground' : 'border-input text-muted-foreground hover:bg-accent')
+            }
+          >
+            <Icon size={15} /> {label}
+          </button>
+        ))}
+        <span className="ml-auto flex gap-2">
+          <Button variant="outline" size="sm" onClick={exportExcel} disabled={tab === 'operator' ? !wages.length : !expenses.length}>
+            <FileSpreadsheet size={15} /> Excel
+          </Button>
+          <Button size="sm" onClick={tab === 'operator' ? openNewWage : openNewExp} disabled={!assets.length || !plants.length || (tab === 'operator' && !employees.length)}>
+            <Plus size={15} /> {newLabel}
+          </Button>
+        </span>
+      </div>
 
         {/* Summary */}
         <div className="mb-5 grid grid-cols-3 gap-3">
@@ -394,7 +383,6 @@ export function Maintenance(): React.JSX.Element {
             </Table>
           )
         )}
-      </Page>
 
       {/* Expense modal */}
       {expForm && (

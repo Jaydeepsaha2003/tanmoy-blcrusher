@@ -42,7 +42,6 @@ import {
   BellRing,
   Gauge,
   Package,
-  PackageOpen,
   IndianRupee,
   PackageCheck,
   PiggyBank,
@@ -107,8 +106,7 @@ export const NAV: NavGroup[] = [
     items: [
       { to: '/assets', label: 'Machines & Vehicles', icon: Wrench, module: 'masters' },
       { to: '/machine-logs', label: 'Logbook & Mileage', icon: Gauge, module: 'masters' },
-      { to: '/spare-parts', label: 'Spare Parts Stock', icon: PackageOpen, module: 'masters' },
-      { to: '/maintenance', label: 'Maintenance & Costs', icon: HardHat, module: 'plantExpenses' },
+      { to: '/maintenance', label: 'Maintenance & Parts', icon: HardHat, module: 'plantExpenses' },
       { to: '/diesel', label: 'Diesel', icon: Fuel, module: 'diesel' },
       { to: '/reminders', label: 'Reminders', icon: BellRing, module: 'masters' }
     ]
