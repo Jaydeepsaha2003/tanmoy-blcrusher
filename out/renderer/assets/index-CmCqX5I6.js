@@ -11400,7 +11400,8 @@ const api = {
     list: (transporter_id, kind) => call("transporterFleet.list", { transporter_id, kind }),
     create: (p2) => call("transporterFleet.create", p2),
     update: (p2) => call("transporterFleet.update", p2),
-    delete: (id2) => call("transporterFleet.delete", { id: id2 })
+    delete: (id2) => call("transporterFleet.delete", { id: id2 }),
+    listAll: (plant_id) => call("transporterFleet.listAll", { plant_id })
   },
   companies: {
     list: () => call("companies.list"),
@@ -76360,6 +76361,7 @@ function Diesel() {
   const { data: suppliers = [] } = useQuery({ queryKey: ["suppliers", plantId], queryFn: () => api.suppliers.list(plantId) });
   const { data: transporters = [] } = useQuery({ queryKey: ["transporters", plantId], queryFn: () => api.transporters.list(plantId) });
   const { data: assets = [] } = useQuery({ queryKey: ["assets", plantId], queryFn: () => api.assets.list(plantId) });
+  const { data: fleetVehicles = [] } = useQuery({ queryKey: ["fleetVehicles", plantId], queryFn: () => api.transporterFleet.listAll(plantId) });
   const { data: stock } = useQuery({ queryKey: ["dieselStock", plantId], queryFn: () => api.diesel.stock(plantId) });
   const { data: purchases = [] } = useQuery({ queryKey: ["dieselPurchases", plantId], queryFn: () => api.diesel.purchases(clean$2({ plant_id: plantId })) });
   const { data: issues = [] } = useQuery({ queryKey: ["dieselIssues", plantId], queryFn: () => api.diesel.issues(clean$2({ plant_id: plantId })) });
@@ -76417,7 +76419,25 @@ function Diesel() {
     setPForm({ supplier_id: suppliers[0]?.id, plant_id: plantId ?? plants[0]?.id, litres: "", rate: "", payment_status: "unpaid", paid_amount: "", date: today(), remarks: "" });
   }
   function openIssue() {
-    setIForm({ recipient: "asset", plant_id: plantId ?? plants[0]?.id, asset_id: null, transporter_id: null, charged: false, litres: "", date: today(), remarks: "" });
+    setIForm({ recipient: "asset", plant_id: plantId ?? plants[0]?.id, asset_id: null, transporter_id: null, vehicle_no: "", charged: false, litres: "", date: today(), remarks: "" });
+  }
+  const targetOptions = reactExports.useMemo(
+    () => [
+      { value: "", label: "— Unassigned —" },
+      ...assets.map((a2) => ({ value: `a:${a2.id}`, label: `${a2.asset_type === "vehicle" ? "🚗" : "🔧"} ${a2.name}${a2.identifier ? ` · ${a2.identifier}` : ""}` })),
+      ...transporters.map((t3) => ({ value: `t:${t3.id}`, label: `🚚 ${t3.name}` })),
+      ...fleetVehicles.map((f2) => ({ value: `tv:${f2.transporter_id}:${f2.name}`, label: `🚚 ${f2.transporter_name} · ${f2.name}${f2.kind === "jcb" ? " (JCB)" : ""}` }))
+    ],
+    [assets, transporters, fleetVehicles]
+  );
+  const targetValue = !iForm ? "" : iForm.asset_id ? `a:${iForm.asset_id}` : iForm.transporter_id ? iForm.vehicle_no ? `tv:${iForm.transporter_id}:${iForm.vehicle_no}` : `t:${iForm.transporter_id}` : "";
+  function setIssueTarget(v2) {
+    if (v2.startsWith("a:")) setIForm({ ...iForm, recipient: "asset", asset_id: Number(v2.slice(2)), transporter_id: null, vehicle_no: "" });
+    else if (v2.startsWith("tv:")) {
+      const parts = v2.split(":");
+      setIForm({ ...iForm, recipient: "transporter", transporter_id: Number(parts[1]), vehicle_no: parts.slice(2).join(":"), asset_id: null });
+    } else if (v2.startsWith("t:")) setIForm({ ...iForm, recipient: "transporter", transporter_id: Number(v2.slice(2)), vehicle_no: "", asset_id: null });
+    else setIForm({ ...iForm, recipient: "asset", asset_id: null, transporter_id: null, vehicle_no: "" });
   }
   const pAmount = pForm ? (Number(pForm.litres) || 0) * (Number(pForm.rate) || 0) : 0;
   const issueQuote = useQuery({
@@ -76531,7 +76551,7 @@ function Diesel() {
             /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: x2.editable ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => {
                 const full = issues.find((i2) => i2.id === x2.id);
-                if (full) setIForm({ ...full, recipient: full.transporter_id ? "transporter" : "asset", asset_id: full.asset_id, transporter_id: full.transporter_id ?? null, charged: !!full.charged, litres: full.litres });
+                if (full) setIForm({ ...full, recipient: full.transporter_id ? "transporter" : "asset", asset_id: full.asset_id, transporter_id: full.transporter_id ?? null, vehicle_no: full.vehicle_no ?? "", charged: !!full.charged, litres: full.litres });
               }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
               /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => {
                 const full = issues.find((i2) => i2.id === x2.id);
@@ -76585,39 +76605,13 @@ function Diesel() {
       ] })
     ] }),
     iForm && /* @__PURE__ */ jsxRuntimeExports.jsx(Modal, { open: true, onClose: () => setIForm(null), title: iForm.id ? `Edit ${iForm.issue_no}` : "Issue Diesel", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Issue To", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-wrap gap-2", children: [["asset", "Machine / Vehicle"], ["transporter", "Transporter"]].map(([key, label]) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "button",
-        {
-          type: "button",
-          onClick: () => {
-            if (iForm.recipient === key) return;
-            setIForm({ ...iForm, recipient: key, asset_id: null, transporter_id: null, rate: key === "transporter" ? iForm.rate : "" });
-          },
-          className: cn(
-            "rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors",
-            iForm.recipient === key ? "border-primary bg-primary/5 text-foreground" : "border-input text-muted-foreground hover:bg-accent"
-          ),
-          children: label
-        },
-        key
-      )) }) }),
-      iForm.recipient === "transporter" ? /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Transporter", required: true, hint: "Diesel is charged to this transporter — debits their ledger", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Issue To", required: true, hint: "Pick a machine, an own vehicle, or a transporter's vehicle — type a vehicle no. to search. A transporter vehicle is charged to that transporter.", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
         SearchSelect,
         {
-          value: iForm.transporter_id ?? "",
-          onChange: (v2) => setIForm({ ...iForm, transporter_id: v2 ? Number(v2) : null }),
-          options: transporters.map((t3) => ({ value: t3.id, label: t3.name })),
-          placeholder: "Select transporter…"
-        }
-      ) }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Machine / Vehicle", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-        SearchSelect,
-        {
-          value: iForm.asset_id ?? "",
-          onChange: (v2) => setIForm({ ...iForm, asset_id: v2 ? Number(v2) : null }),
-          options: [
-            { value: "", label: "— Unassigned —" },
-            ...assets.map((a2) => ({ value: a2.id, label: `${a2.name}${a2.identifier ? ` (${a2.identifier})` : ""}` }))
-          ]
+          value: targetValue,
+          onChange: setIssueTarget,
+          options: targetOptions,
+          placeholder: "Search machine / vehicle / transporter…"
         }
       ) }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
@@ -76652,6 +76646,7 @@ function Diesel() {
                 litres: Number(iForm.litres),
                 asset_id: toTransporter ? null : iForm.asset_id || null,
                 transporter_id: toTransporter ? iForm.transporter_id || null : null,
+                vehicle_no: toTransporter ? iForm.vehicle_no || "" : "",
                 charged: toTransporter && !!iForm.charged
               });
             },
@@ -89712,7 +89707,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-0zqjdoXa.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-CyLx7Bfi.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;

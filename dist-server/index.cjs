@@ -841,6 +841,7 @@ CREATE TABLE IF NOT EXISTS diesel_issues (
   plant_id      INTEGER NOT NULL REFERENCES plants(id),
   asset_id      INTEGER REFERENCES assets(id),
   transporter_id INTEGER REFERENCES transporters(id),
+  vehicle_no    TEXT NOT NULL DEFAULT '',
   rate          REAL,
   amount        REAL,
   charged       INTEGER NOT NULL DEFAULT 0,
@@ -2042,6 +2043,11 @@ CREATE INDEX idx_tfleet_transporter ON transporter_fleet(transporter_id)`
     id: "035_stock_location_opening_value",
     sql: `ALTER TABLE stock_locations ADD COLUMN opening_rate DOUBLE NOT NULL DEFAULT 0;
 ALTER TABLE stock_locations ADD COLUMN opening_amount DOUBLE NOT NULL DEFAULT 0`
+  },
+  {
+    // A diesel issue to a transporter can record the specific vehicle it fuelled.
+    id: "036_diesel_issue_vehicle",
+    sql: `ALTER TABLE diesel_issues ADD COLUMN vehicle_no VARCHAR(64) NOT NULL DEFAULT ''`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -2142,6 +2148,7 @@ async function sqliteLegacyMigrate(adapter2) {
   await addColumn("finished_goods_opening", "opening_amount", "REAL NOT NULL DEFAULT 0");
   await addColumn("stock_locations", "opening_rate", "REAL NOT NULL DEFAULT 0");
   await addColumn("stock_locations", "opening_amount", "REAL NOT NULL DEFAULT 0");
+  await addColumn("diesel_issues", "vehicle_no", `TEXT NOT NULL DEFAULT ''`);
 }
 async function importProductsFromSettings(adapter2) {
   const all = (await adapter2.exec(`SELECT id, name FROM products ORDER BY id`, void 0, null)).rows;
@@ -4619,6 +4626,16 @@ function round7(n) {
 }
 
 // src/main/services/transporterFleet.ts
+async function listFleetVehicles(payload = {}) {
+  const d = getDb();
+  const clause = payload.plant_id ? `WHERE ${plantScopeSql("t", "transporter")}` : "";
+  return await d.prepare(
+    `SELECT tf.*, t.name AS transporter_name
+       FROM transporter_fleet tf JOIN transporters t ON t.id = tf.transporter_id
+       ${clause}
+       ORDER BY t.name, tf.kind, tf.name`
+  ).all(payload);
+}
 function numOrNull(v) {
   const n = Number(v);
   return v == null || v === "" || isNaN(n) ? null : n;
@@ -4995,11 +5012,12 @@ async function createDieselIssue(p) {
     const fifo = await dieselFifoCost(d, Number(p.plant_id), Number(p.litres));
     const transporter_id = p.transporter_id ? Number(p.transporter_id) : null;
     const charged = transporter_id && p.charged ? 1 : 0;
+    const vehicle_no = transporter_id ? p.vehicle_no ?? "" : "";
     const no = await nextNumber("DIS", "diesel_issue");
     const info = await d.prepare(
-      `INSERT INTO diesel_issues (issue_no, plant_id, asset_id, transporter_id, litres, rate, amount, charged, date, remarks)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(no, p.plant_id, p.asset_id ?? null, transporter_id, litres(Number(p.litres)), fifo.rate, fifo.amount, charged, p.date, p.remarks ?? "");
+      `INSERT INTO diesel_issues (issue_no, plant_id, asset_id, transporter_id, vehicle_no, litres, rate, amount, charged, date, remarks)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(no, p.plant_id, p.asset_id ?? null, transporter_id, vehicle_no, litres(Number(p.litres)), fifo.rate, fifo.amount, charged, p.date, p.remarks ?? "");
     return await d.prepare(`SELECT * FROM diesel_issues WHERE id = ?`).get(info.lastInsertRowid);
   });
 }
@@ -5011,12 +5029,14 @@ async function updateDieselIssue(p) {
     const fifo = await dieselFifoCost(d, Number(p.plant_id), Number(p.litres), { src: "issue", id: p.id });
     const transporter_id = p.transporter_id ? Number(p.transporter_id) : null;
     const charged = transporter_id && p.charged ? 1 : 0;
+    const vehicle_no = transporter_id ? p.vehicle_no ?? "" : "";
     await d.prepare(
-      `UPDATE diesel_issues SET plant_id=?, asset_id=?, transporter_id=?, litres=?, rate=?, amount=?, charged=?, date=?, remarks=? WHERE id=?`
+      `UPDATE diesel_issues SET plant_id=?, asset_id=?, transporter_id=?, vehicle_no=?, litres=?, rate=?, amount=?, charged=?, date=?, remarks=? WHERE id=?`
     ).run(
       p.plant_id,
       p.asset_id ?? null,
       transporter_id,
+      vehicle_no,
       litres(Number(p.litres)),
       fifo.rate,
       fifo.amount,
@@ -5044,14 +5064,15 @@ async function listDieselIssuesAll(payload = {}) {
   const rows = [];
   const di = await d.prepare(
     `SELECT di.id, di.issue_no, di.date, di.plant_id, p.name AS plant_name, di.litres,
-              di.amount, di.charged, a.name AS asset_name, t.name AS transporter_name
+              di.amount, di.charged, di.vehicle_no, a.name AS asset_name, t.name AS transporter_name
        FROM diesel_issues di
        JOIN plants p ON p.id = di.plant_id
        LEFT JOIN assets a ON a.id = di.asset_id
        LEFT JOIN transporters t ON t.id = di.transporter_id
        WHERE 1=1 ${pid ? "AND di.plant_id = @pid" : ""}${dateWhere("di")} AND COALESCE(di.litres,0) > 0`
   ).all(params);
-  for (const x of di)
+  for (const x of di) {
+    const transporterWho = x.transporter_name ? x.vehicle_no ? `${x.transporter_name} \xB7 ${x.vehicle_no}` : x.transporter_name : null;
     rows.push({
       source: "issue",
       source_label: "Issue",
@@ -5060,13 +5081,14 @@ async function listDieselIssuesAll(payload = {}) {
       date: String(x.date),
       plant_id: Number(x.plant_id),
       plant_name: x.plant_name ?? null,
-      recipient: x.asset_name || x.transporter_name || "Unassigned",
+      recipient: x.asset_name || transporterWho || "Unassigned",
       context: "",
       litres: Number(x.litres) || 0,
       amount: x.amount == null ? null : Number(x.amount),
-      charged_to: x.charged ? x.transporter_name ?? null : null,
+      charged_to: x.charged ? transporterWho : null,
       editable: true
     });
+  }
   const rl = await d.prepare(
     `SELECT rl.id, rl.loading_no, rl.date, rl.plant_id, p.name AS plant_name, rl.diesel_litres AS litres,
               rl.diesel_amount AS amount, rl.diesel_charged, rl.vehicle_no, t.name AS transporter_name, r.rack_no
@@ -9252,6 +9274,7 @@ var handlers = {
   "transporterFleet.create": createTransporterFleet,
   "transporterFleet.update": updateTransporterFleet,
   "transporterFleet.delete": deleteTransporterFleet,
+  "transporterFleet.listAll": listFleetVehicles,
   "companies.list": listCompanies,
   "companies.create": createCompany,
   "companies.update": updateCompany,
