@@ -2790,8 +2790,19 @@ async function transferStock(p) {
 }
 async function deleteTransfer(payload) {
   const d = getDb();
-  await d.prepare(`DELETE FROM stock_movements WHERE ref_no = ? AND type = 'transfer'`).run(payload.ref_no);
-  return { ok: true };
+  const legs = await d.prepare(`SELECT DISTINCT stock_location_id FROM stock_movements WHERE ref_no = ? AND type = 'transfer'`).all(payload.ref_no);
+  try {
+    await d.transaction(async () => {
+      await d.prepare(`DELETE FROM stock_movements WHERE ref_no = ? AND type = 'transfer'`).run(payload.ref_no);
+      for (const l of legs) {
+        if (l.stock_location_id != null && await rawLocationBalance(d, l.stock_location_id) < 0)
+          throw new Error("Cannot delete: stock from this transfer has already been used at the destination.");
+      }
+    });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 }
 
 // src/main/services/names.ts
@@ -3697,9 +3708,12 @@ async function removeLinkedPurchase(id) {
 }
 async function setPurchasePayment(payload) {
   const d = getDb();
+  const row = await d.prepare(`SELECT amount FROM purchases WHERE id = ?`).get(payload.id);
+  if (!row) throw new Error("Purchase not found.");
+  const paid = Number(payload.paid_amount) || 0;
   await d.prepare(`UPDATE purchases SET paid_amount=?, payment_status=? WHERE id=?`).run(
-    payload.paid_amount || 0,
-    payload.payment_status,
+    paid,
+    derivePaymentStatus(Number(row.amount) || 0, paid),
     payload.id
   );
   return await d.prepare(`SELECT * FROM purchases WHERE id = ?`).get(payload.id);
@@ -4267,11 +4281,15 @@ async function setRate(payload) {
   const row = await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id);
   const billableQty = row.sale_quantity != null ? row.sale_quantity : row.quantity;
   const amount = computeAmount2(payload.rate, billableQty);
-  await d.prepare(`UPDATE dispatches SET rate=?, amount=? WHERE id=?`).run(payload.rate, amount, payload.id);
-  if (row.linked_purchase_id && amount != null && row.qty_cm > 0) {
-    const ratePerCm = round23(amount / row.qty_cm);
-    await d.prepare(`UPDATE purchases SET rate=?, amount=? WHERE id=?`).run(ratePerCm, amount, row.linked_purchase_id);
-  }
+  const billed = (amount ?? 0) + (row.transport_billed ? Number(row.transport_charge) || 0 : 0) + (row.other_billed ? Number(row.other_charge) || 0 : 0);
+  const status = derivePaymentStatus(billed, Number(row.paid_amount) || 0);
+  await d.transaction(async () => {
+    await d.prepare(`UPDATE dispatches SET rate=?, amount=?, payment_status=? WHERE id=?`).run(payload.rate, amount, status, payload.id);
+    if (row.linked_purchase_id && amount != null && row.qty_cm > 0) {
+      const ratePerCm = round23(amount / row.qty_cm);
+      await d.prepare(`UPDATE purchases SET rate=?, amount=? WHERE id=?`).run(ratePerCm, amount, row.linked_purchase_id);
+    }
+  });
   return await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id);
 }
 async function setDelivery(payload) {
@@ -4290,9 +4308,13 @@ async function setDispatch(payload) {
 }
 async function setPayment(payload) {
   const d = getDb();
+  const row = await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id);
+  if (!row) throw new Error("Sale not found.");
+  const billed = (row.amount ?? 0) + (row.transport_billed ? Number(row.transport_charge) || 0 : 0) + (row.other_billed ? Number(row.other_charge) || 0 : 0);
+  const paid = Number(payload.paid_amount) || 0;
   await d.prepare(`UPDATE dispatches SET paid_amount=?, payment_status=? WHERE id=?`).run(
-    Number(payload.paid_amount) || 0,
-    payload.payment_status,
+    paid,
+    derivePaymentStatus(billed, paid),
     payload.id
   );
   return await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id);
@@ -4756,6 +4778,124 @@ async function deleteDieselIssue(payload) {
   const d = getDb();
   await d.prepare(`DELETE FROM diesel_issues WHERE id = ?`).run(payload.id);
   return { ok: true };
+}
+async function listDieselIssuesAll(payload = {}) {
+  const d = getDb();
+  const pid = payload.plant_id ? Number(payload.plant_id) : 0;
+  const dateWhere = (alias) => `${payload.from ? ` AND ${alias}.date >= @from` : ""}${payload.to ? ` AND ${alias}.date <= @to` : ""}`;
+  const params = {};
+  if (pid) params.pid = pid;
+  if (payload.from) params.from = payload.from;
+  if (payload.to) params.to = payload.to;
+  const rows = [];
+  const di = await d.prepare(
+    `SELECT di.id, di.issue_no, di.date, di.plant_id, p.name AS plant_name, di.litres,
+              di.amount, di.charged, a.name AS asset_name, t.name AS transporter_name
+       FROM diesel_issues di
+       JOIN plants p ON p.id = di.plant_id
+       LEFT JOIN assets a ON a.id = di.asset_id
+       LEFT JOIN transporters t ON t.id = di.transporter_id
+       WHERE 1=1 ${pid ? "AND di.plant_id = @pid" : ""}${dateWhere("di")} AND COALESCE(di.litres,0) > 0`
+  ).all(params);
+  for (const x of di)
+    rows.push({
+      source: "issue",
+      source_label: "Issue",
+      id: Number(x.id),
+      ref_no: String(x.issue_no),
+      date: String(x.date),
+      plant_id: Number(x.plant_id),
+      plant_name: x.plant_name ?? null,
+      recipient: x.asset_name || x.transporter_name || "Unassigned",
+      context: "",
+      litres: Number(x.litres) || 0,
+      amount: x.amount == null ? null : Number(x.amount),
+      charged_to: x.charged ? x.transporter_name ?? null : null,
+      editable: true
+    });
+  const rl = await d.prepare(
+    `SELECT rl.id, rl.loading_no, rl.date, rl.plant_id, p.name AS plant_name, rl.diesel_litres AS litres,
+              rl.diesel_amount AS amount, rl.diesel_charged, rl.vehicle_no, t.name AS transporter_name, r.rack_no
+       FROM rack_loadings rl
+       JOIN plants p ON p.id = rl.plant_id
+       JOIN racks r ON r.id = rl.rack_id
+       LEFT JOIN transporters t ON t.id = rl.transporter_id
+       WHERE COALESCE(rl.diesel_litres,0) > 0 ${pid ? "AND rl.plant_id = @pid" : ""}${dateWhere("rl")}`
+  ).all(params);
+  for (const x of rl)
+    rows.push({
+      source: "rack_loading",
+      source_label: "Rack Loading",
+      id: Number(x.id),
+      ref_no: String(x.loading_no),
+      date: String(x.date),
+      plant_id: Number(x.plant_id),
+      plant_name: x.plant_name ?? null,
+      recipient: x.transporter_name || x.vehicle_no || "\u2014",
+      context: `Rack ${x.rack_no} \xB7 loading`,
+      litres: Number(x.litres) || 0,
+      amount: x.amount == null ? null : Number(x.amount),
+      charged_to: x.diesel_charged ? x.transporter_name ?? null : null,
+      editable: false
+    });
+  const ru = await d.prepare(
+    `SELECT ru.id, ru.unloading_no, ru.date, r.plant_id, p.name AS plant_name, ru.diesel_litres AS litres,
+              ru.diesel_amount AS amount, ru.diesel_charged, r.rack_no,
+              COALESCE(rv.vehicle_no, rj.name, t.name) AS carrier
+       FROM rack_unloadings ru
+       JOIN racks r ON r.id = ru.rack_id
+       LEFT JOIN plants p ON p.id = r.plant_id
+       LEFT JOIN rack_vehicles rv ON rv.id = ru.rack_vehicle_id
+       LEFT JOIN rack_jcbs rj ON rj.id = ru.rack_jcb_id
+       LEFT JOIN transporters t ON t.id = ru.transporter_id
+       WHERE COALESCE(ru.diesel_litres,0) > 0 ${pid ? "AND r.plant_id = @pid" : ""}${dateWhere("ru")}`
+  ).all(params);
+  for (const x of ru)
+    rows.push({
+      source: "rack_unloading",
+      source_label: "Rack Unloading",
+      id: Number(x.id),
+      ref_no: String(x.unloading_no),
+      date: String(x.date),
+      plant_id: x.plant_id == null ? null : Number(x.plant_id),
+      plant_name: x.plant_name ?? null,
+      recipient: x.carrier || "\u2014",
+      context: `Rack ${x.rack_no} \xB7 unloading`,
+      litres: Number(x.litres) || 0,
+      amount: x.amount == null ? null : Number(x.amount),
+      charged_to: x.diesel_charged ? x.carrier ?? null : null,
+      editable: false
+    });
+  const rst = await d.prepare(
+    `SELECT rst.id, rs.sale_no, rs.date, r.plant_id, p.name AS plant_name, rst.diesel_litres AS litres,
+              rst.diesel_amount AS amount, rst.diesel_charged, r.rack_no,
+              COALESCE(t.name, rv.vehicle_no) AS carrier
+       FROM rack_sale_transporters rst
+       JOIN rack_sales rs ON rs.id = rst.rack_sale_id
+       JOIN racks r ON r.id = rs.rack_id
+       LEFT JOIN plants p ON p.id = r.plant_id
+       LEFT JOIN transporters t ON t.id = rst.transporter_id
+       LEFT JOIN rack_vehicles rv ON rv.id = rst.rack_vehicle_id
+       WHERE COALESCE(rst.diesel_litres,0) > 0 ${pid ? "AND r.plant_id = @pid" : ""}${dateWhere("rs")}`
+  ).all(params);
+  for (const x of rst)
+    rows.push({
+      source: "rack_sale",
+      source_label: "Rack Sale",
+      id: Number(x.id),
+      ref_no: String(x.sale_no),
+      date: String(x.date),
+      plant_id: x.plant_id == null ? null : Number(x.plant_id),
+      plant_name: x.plant_name ?? null,
+      recipient: x.carrier || "\u2014",
+      context: `Rack ${x.rack_no} \xB7 sale`,
+      litres: Number(x.litres) || 0,
+      amount: x.amount == null ? null : Number(x.amount),
+      charged_to: x.diesel_charged ? x.carrier ?? null : null,
+      editable: false
+    });
+  rows.sort((a, b) => a.date === b.date ? b.ref_no.localeCompare(a.ref_no) : b.date.localeCompare(a.date));
+  return rows;
 }
 async function issuesByAsset(payload = {}) {
   const d = getDb();
@@ -5324,7 +5464,7 @@ async function writeRackSaleChildLines(d, saleId, plantId, transporters, machine
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   for (const t of transporters ?? []) {
-    const transporterId = t.transporter_id ? Number(t.transporter_id) : 0;
+    const transporterId = t.transporter_id ? Number(t.transporter_id) : null;
     const vehicleId = t.rack_vehicle_id ? Number(t.rack_vehicle_id) : null;
     if (!transporterId && !vehicleId) continue;
     const basis = t.basis === "trip" || t.basis === "uom" ? t.basis : "flat";
@@ -6373,7 +6513,7 @@ async function buildEntries(partyType, partyId, plantId) {
             + CASE WHEN transport_billed=1 THEN transport_charge ELSE 0 END
             + CASE WHEN other_billed=1 THEN other_charge ELSE 0 END) AS billed,
           paid_amount
-         FROM dispatches WHERE customer_id = ?`
+         FROM dispatches WHERE customer_id = ? AND to_plant_id IS NULL`
     ).all(partyId);
     const uomLabel = (u) => u === "CM" ? "m\xB3" : u === "TON" ? "Ton" : u === "CFT" ? "CFT" : u;
     for (const x of dispatches) {
@@ -6427,7 +6567,7 @@ async function buildEntries(partyType, partyId, plantId) {
     const purchases = await d.prepare(
       `SELECT purchase_no, date, created_at, COALESCE(amount,0) AS amount, paid_amount, quantity, uom,
                 COALESCE(material_type,'raw') AS material_type, product_name
-         FROM purchases WHERE supplier_id = ?`
+         FROM purchases WHERE supplier_id = ? AND linked_dispatch_id IS NULL`
     ).all(partyId);
     for (const x of purchases) {
       if (x.amount > 0)
@@ -6815,7 +6955,10 @@ async function getPartyBalances(payload) {
   } else {
     const table = PARTY_TABLE[payload.party_type];
     if (!table) throw new Error("Invalid party type.");
-    const clause = payload.plant_id ? `WHERE ${plantScopeSql("t", payload.party_type)}` : "";
+    const conds = [];
+    if (payload.plant_id) conds.push(plantScopeSql("t", payload.party_type));
+    if (payload.party_type === "customer" || payload.party_type === "supplier") conds.push("t.plant_ref_id IS NULL");
+    const clause = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     parties = await d.prepare(`SELECT t.id, t.name FROM ${table} t ${clause} ORDER BY t.name`).all(payload.plant_id ? { plant_id: payload.plant_id } : {});
   }
   const sign = runningSign(payload.party_type);
@@ -7897,6 +8040,23 @@ async function expenseBook(filter = {}) {
       paid_amount: money4(Number(x.paid_amount) || 0),
       payment_status: x.payment_status
     });
+  const issues = await listDieselIssuesAll({ plant_id: pid || void 0, from: filter.from, to: filter.to });
+  for (const x of issues)
+    rows.push({
+      source: "diesel_issue",
+      source_label: "Diesel Issued",
+      informational: true,
+      id: x.source === "issue" ? x.id : 0,
+      ref_no: x.ref_no,
+      date: x.date,
+      plant_id: x.plant_id ?? 0,
+      plant_name: x.plant_name ?? void 0,
+      category: "Diesel Issued",
+      details: [x.recipient, x.context, `${num(x.litres)} L`, x.charged_to ? `charged to ${x.charged_to}` : ""].filter(Boolean).join(" \xB7 "),
+      amount: money4(Number(x.amount) || 0),
+      paid_amount: 0,
+      payment_status: "paid"
+    });
   rows.sort((a, b) => a.date === b.date ? b.ref_no.localeCompare(a.ref_no) : b.date.localeCompare(a.date));
   return rows;
 }
@@ -8897,6 +9057,7 @@ var handlers = {
   "diesel.updateIssue": updateDieselIssue,
   "diesel.deleteIssue": deleteDieselIssue,
   "diesel.byAsset": issuesByAsset,
+  "diesel.issuesAll": listDieselIssuesAll,
   "diesel.fifoQuote": dieselFifoQuote,
   "payments.add": addPayment,
   "payments.list": listPayments,

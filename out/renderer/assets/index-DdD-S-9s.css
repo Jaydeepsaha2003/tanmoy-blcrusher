@@ -1098,6 +1098,9 @@ video {
 .bg-muted {
   background-color: hsl(var(--muted));
 }
+.bg-muted\/20 {
+  background-color: hsl(var(--muted) / 0.2);
+}
 .bg-muted\/30 {
   background-color: hsl(var(--muted) / 0.3);
 }
@@ -1370,6 +1373,9 @@ video {
 }
 .italic {
   font-style: italic;
+}
+.not-italic {
+  font-style: normal;
 }
 .leading-none {
   line-height: 1;
