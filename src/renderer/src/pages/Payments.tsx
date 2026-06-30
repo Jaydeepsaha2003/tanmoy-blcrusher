@@ -251,7 +251,6 @@ export function Payments(): React.JSX.Element {
             </THead>
             <TBody>
               {rows.map((r) => {
-                const settled = Math.abs(r.balance) < 0.01
                 const isReceivable = r.kind === 'receivable'
                 return (
                   <TR key={`${r.party_type}-${r.party_id}`}>
@@ -275,16 +274,6 @@ export function Payments(): React.JSX.Element {
                         ) : (
                           <Button variant="outline" size="sm" className="text-destructive" onClick={() => openForRow(r, 'out')}>
                             <ArrowUpRight size={14} /> Pay
-                          </Button>
-                        )}
-                        {!settled && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            title={isReceivable ? 'Record a payment instead' : 'Record a receipt instead'}
-                            onClick={() => openForRow(r, isReceivable ? 'out' : 'in')}
-                          >
-                            {isReceivable ? 'Pay' : 'Receive'}
                           </Button>
                         )}
                         <Button variant="ghost" size="icon" title="Open ledger" onClick={() => nav('/ledgers', { state: { type: r.party_type, id: r.party_id } })}>
