@@ -70638,7 +70638,6 @@ function Purchases() {
   const { data: suppliers = [] } = useQuery({ queryKey: ["suppliers", plantId], queryFn: () => api.suppliers.list(plantId) });
   const [filter, setFilter] = reactExports.useState({});
   const { data: locations = [] } = useQuery({ queryKey: ["locations", 0], queryFn: () => api.locations.list() });
-  const { data: products = [] } = useQuery({ queryKey: ["products"], queryFn: () => api.products.list() });
   const { data: outsourceVendors = [] } = useQuery({ queryKey: ["outsource"], queryFn: () => api.outsource.list() });
   const { data: transporters = [] } = useQuery({ queryKey: ["transporters", plantId], queryFn: () => api.transporters.list(plantId) });
   const { data: assets = [] } = useQuery({ queryKey: ["assets", plantId], queryFn: () => api.assets.list(plantId) });
@@ -70648,6 +70647,7 @@ function Purchases() {
   });
   const [open2, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState(null);
+  const { data: products = [] } = useQuery({ queryKey: ["products", form?.plant_id], queryFn: () => api.products.list(form?.plant_id) });
   const [exportUom, setExportUom] = reactExports.useState("default");
   const formLocations = locations.filter((l2) => l2.plant_id === form?.plant_id);
   plants.find((pl2) => pl2.id === form?.plant_id);
@@ -70953,7 +70953,11 @@ function Purchases() {
             {
               value: form.product_name || "",
               onChange: (v2) => setForm({ ...form, product_name: v2 }),
-              options: products.map((pr) => ({ value: pr.name, label: pr.name })),
+              options: [
+                /* Keep an already-chosen product selectable even if it isn't tagged to this plant. */
+                ...form.product_name && !products.some((pr) => pr.name === form.product_name) ? [{ value: form.product_name, label: form.product_name }] : [],
+                ...products.map((pr) => ({ value: pr.name, label: pr.name }))
+              ],
               placeholder: "Select product…"
             }
           ) }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Stock Location", className: "sm:col-span-2", hint: "Blank = plant default", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -71174,7 +71178,7 @@ function ProductionSettings() {
     queryFn: () => api.productionSettings.list(plantId),
     enabled: !!plantId
   });
-  const { data: products = [] } = useQuery({ queryKey: ["products"], queryFn: () => api.products.list() });
+  const { data: products = [] } = useQuery({ queryKey: ["products", plantId], queryFn: () => api.products.list(plantId) });
   const [rows, setRows] = reactExports.useState([]);
   reactExports.useEffect(() => {
     setRows(
@@ -71773,7 +71777,7 @@ function RateChart() {
   const toast = useToast();
   const { plantId } = usePlant();
   const { data: locations = [] } = useQuery({ queryKey: ["locations", 0], queryFn: () => api.locations.list() });
-  const { data: products = [] } = useQuery({ queryKey: ["products"], queryFn: () => api.products.list() });
+  const { data: products = [] } = useQuery({ queryKey: ["products", plantId], queryFn: () => api.products.list(plantId) });
   const { data: rows = [] } = useQuery({ queryKey: ["rateChart", plantId], queryFn: () => api.rateChart.list(plantId) });
   const { data: transport = [] } = useQuery({ queryKey: ["transportCharges", plantId], queryFn: () => api.transportCharges.list(plantId) });
   const formLocations = locations.filter((l2) => !plantId || l2.plant_id === plantId);
@@ -71960,7 +71964,7 @@ function Customers() {
   const { data = [] } = useQuery({ queryKey: ["customers", plantId], queryFn: () => api.customers.list(plantId) });
   const { data: companies = [] } = useQuery({ queryKey: ["companies"], queryFn: api.companies.list });
   const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
-  const { data: products = [] } = useQuery({ queryKey: ["products"], queryFn: () => api.products.list() });
+  const { data: products = [] } = useQuery({ queryKey: ["products", plantId], queryFn: () => api.products.list(plantId) });
   const [open2, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState({});
   const [ratesFor, setRatesFor] = reactExports.useState(null);
@@ -72327,7 +72331,6 @@ function Dispatch() {
     queryFn: () => api.customers.list(plantId)
   });
   const { data: outsourceVendors = [] } = useQuery({ queryKey: ["outsource"], queryFn: () => api.outsource.list() });
-  const { data: products = [] } = useQuery({ queryKey: ["products"], queryFn: () => api.products.list() });
   const { data: transporters = [] } = useQuery({ queryKey: ["transporters", plantId], queryFn: () => api.transporters.list(plantId) });
   const { data: assets = [] } = useQuery({ queryKey: ["assets", plantId], queryFn: () => api.assets.list(plantId) });
   const [filter, setFilter] = reactExports.useState({});
@@ -72341,6 +72344,10 @@ function Dispatch() {
     queryKey: ["available", form?.plant_id],
     queryFn: () => api.finished.available(form.plant_id),
     enabled: !!form?.plant_id
+  });
+  const { data: products = [] } = useQuery({
+    queryKey: ["products", form?.plant_id],
+    queryFn: () => api.products.list(form?.plant_id)
   });
   const selProduct = avail.find((a2) => a2.product_name === form?.product_name);
   const save = useMutation({
@@ -89449,7 +89456,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-DnzvTRX8.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-BmAsj8Tu.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
