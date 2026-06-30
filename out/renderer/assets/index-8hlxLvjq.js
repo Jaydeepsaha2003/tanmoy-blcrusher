@@ -77541,6 +77541,8 @@ function RackDetail() {
       carrier_kind: "vehicle",
       rack_vehicle_id: rackVehicles[0]?.id ?? "",
       rack_jcb_id: rackJcbs[0]?.id ?? "",
+      transporter_id: transporters[0]?.id ?? "",
+      vehicle_no: "",
       work_type: "unloading",
       product_name: first?.product_name || "",
       trips: "",
@@ -77629,8 +77631,8 @@ function RackDetail() {
   const jcbRate = (j2, wt2) => !j2 ? "" : wt2 === "loading" ? j2.rate_loading ?? "" : wt2 === "other" ? j2.rate_other ?? "" : j2.rate_unloading ?? "";
   const loadingTotal = loadingForm ? (Number(loadingForm.trips) || 0) * (Number(loadingForm.per_trip_cm) || 0) : 0;
   const loadingAmount = loadingForm && loadingForm.rate !== "" ? loadingTotal * Number(loadingForm.rate) : null;
-  const unloadIsVehicle = unloadForm?.carrier_kind === "vehicle";
-  const unloadTotal = unloadForm ? unloadIsVehicle ? (Number(unloadForm.trips) || 0) * (Number(unloadForm.per_trip_cm) || 0) : Number(unloadForm.total_cm_in) || 0 : 0;
+  const unloadTripBased = unloadForm?.carrier_kind === "vehicle" || unloadForm?.carrier_kind === "transporter";
+  const unloadTotal = unloadForm ? unloadTripBased ? (Number(unloadForm.trips) || 0) * (Number(unloadForm.per_trip_cm) || 0) : Number(unloadForm.total_cm_in) || 0 : 0;
   const unloadCount = unloadForm ? Number(unloadForm.trips) || 0 : 0;
   const unloadAmount = unloadForm && unloadForm.rate !== "" ? unloadCount * Number(unloadForm.rate) : null;
   const unloadAvailable = unloadForm ? (products.find((p2) => p2.product_name === unloadForm.product_name)?.transit_shortage_cm ?? 0) + (unloadForm.id ? unloadings.find((u2) => u2.id === unloadForm.id)?.total_cm ?? 0 : 0) : 0;
@@ -77889,9 +77891,11 @@ function RackDetail() {
                   rack_id: rackId,
                   id: u2.id,
                   unloading_no: u2.unloading_no,
-                  carrier_kind: u2.rack_jcb_id ? "jcb" : "vehicle",
+                  carrier_kind: u2.rack_jcb_id ? "jcb" : u2.transporter_id ? "transporter" : "vehicle",
                   rack_vehicle_id: u2.rack_vehicle_id ?? (rackVehicles[0]?.id ?? ""),
                   rack_jcb_id: u2.rack_jcb_id ?? (rackJcbs[0]?.id ?? ""),
+                  transporter_id: u2.transporter_id ?? (transporters[0]?.id ?? ""),
+                  vehicle_no: u2.vehicle_no ?? "",
                   work_type: u2.work_type || "unloading",
                   product_name: u2.product_name,
                   trips: u2.trips || "",
@@ -78130,6 +78134,19 @@ function RackDetail() {
                   " JCB"
                 ]
               }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              Button,
+              {
+                size: "sm",
+                variant: unloadForm.carrier_kind === "transporter" ? "default" : "outline",
+                disabled: !transporters.length,
+                onClick: () => setUnloadForm({ ...unloadForm, carrier_kind: "transporter" }),
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Truck, { size: 15 }),
+                  " Transporter"
+                ]
+              }
             )
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
@@ -78157,6 +78174,28 @@ function RackDetail() {
               ) }),
               /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "No. of Trips", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "1", value: unloadForm.trips, onChange: (e3) => setUnloadForm({ ...unloadForm, trips: e3.target.value }) }) }),
               /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Per Trip (m³)", hint: "From the vehicle's capacity (editable)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: unloadForm.per_trip_cm, onChange: (e3) => setUnloadForm({ ...unloadForm, per_trip_cm: e3.target.value }) }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Rate per Trip (₹)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: unloadForm.rate, onChange: (e3) => setUnloadForm({ ...unloadForm, rate: e3.target.value }), placeholder: "Optional" }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Total Unloaded (m³)", hint: "= trips × per trip", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: fmtQty(unloadTotal), disabled: true }) })
+            ] }) : unloadForm.carrier_kind === "transporter" ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Transporter", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                SearchSelect,
+                {
+                  value: unloadForm.transporter_id || "",
+                  onChange: (v2) => setUnloadForm({ ...unloadForm, transporter_id: Number(v2) }),
+                  options: transporters.map((t3) => ({ value: t3.id, label: t3.name })),
+                  placeholder: "Select transporter…"
+                }
+              ) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Vehicle / JCB", hint: "From this transporter's fleet (or type one)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                TransporterVehicleSelect,
+                {
+                  transporterId: unloadForm.transporter_id,
+                  value: unloadForm.vehicle_no || "",
+                  onChange: (v2) => setUnloadForm({ ...unloadForm, vehicle_no: v2 })
+                }
+              ) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "No. of Trips", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "1", value: unloadForm.trips, onChange: (e3) => setUnloadForm({ ...unloadForm, trips: e3.target.value }) }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Per Trip (m³)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: unloadForm.per_trip_cm, onChange: (e3) => setUnloadForm({ ...unloadForm, per_trip_cm: e3.target.value }) }) }),
               /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Rate per Trip (₹)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: unloadForm.rate, onChange: (e3) => setUnloadForm({ ...unloadForm, rate: e3.target.value }), placeholder: "Optional" }) }),
               /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Total Unloaded (m³)", hint: "= trips × per trip", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: fmtQty(unloadTotal), disabled: true }) })
             ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
@@ -78197,7 +78236,7 @@ function RackDetail() {
               "Charge this diesel (",
               `₹${fmtMoney(unloadDieselQuote?.amount ?? 0)}`,
               ") to the ",
-              unloadForm.carrier_kind === "jcb" ? "JCB" : "vehicle"
+              unloadForm.carrier_kind === "jcb" ? "JCB" : unloadForm.carrier_kind === "transporter" ? "transporter" : "vehicle"
             ] }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: unloadForm.date, onChange: (e3) => setUnloadForm({ ...unloadForm, date: e3.target.value }) }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: unloadForm.remarks || "", onChange: (e3) => setUnloadForm({ ...unloadForm, remarks: e3.target.value }) }) })
@@ -78228,10 +78267,10 @@ function RackDetail() {
                   rack_vehicle_id: unloadForm.carrier_kind === "vehicle" ? Number(unloadForm.rack_vehicle_id) : null,
                   rack_jcb_id: unloadForm.carrier_kind === "jcb" ? Number(unloadForm.rack_jcb_id) : null,
                   work_type: unloadForm.carrier_kind === "jcb" ? unloadForm.work_type : null,
-                  transporter_id: null,
-                  vehicle_no: unloadForm.carrier_kind === "vehicle" ? rackVehicles.find((v2) => v2.id === Number(unloadForm.rack_vehicle_id))?.vehicle_no ?? "" : rackJcbs.find((j2) => j2.id === Number(unloadForm.rack_jcb_id))?.name ?? "",
+                  transporter_id: unloadForm.carrier_kind === "transporter" ? Number(unloadForm.transporter_id) : null,
+                  vehicle_no: unloadForm.carrier_kind === "vehicle" ? rackVehicles.find((v2) => v2.id === Number(unloadForm.rack_vehicle_id))?.vehicle_no ?? "" : unloadForm.carrier_kind === "transporter" ? unloadForm.vehicle_no ?? "" : rackJcbs.find((j2) => j2.id === Number(unloadForm.rack_jcb_id))?.name ?? "",
                   trips: unloadCount,
-                  per_trip_cm: unloadForm.carrier_kind === "vehicle" ? Number(unloadForm.per_trip_cm) || 0 : 0,
+                  per_trip_cm: unloadForm.carrier_kind === "vehicle" || unloadForm.carrier_kind === "transporter" ? Number(unloadForm.per_trip_cm) || 0 : 0,
                   total_cm: unloadTotal,
                   rate: unloadForm.rate === "" ? null : Number(unloadForm.rate),
                   diesel_litres: unloadForm.diesel_litres === "" ? null : Number(unloadForm.diesel_litres),
@@ -78239,7 +78278,7 @@ function RackDetail() {
                   date: unloadForm.date,
                   remarks: unloadForm.remarks
                 }),
-                disabled: !unloadForm.product_name || (unloadForm.carrier_kind === "vehicle" ? !unloadForm.rack_vehicle_id : !unloadForm.rack_jcb_id) || !(unloadCount > 0 || unloadTotal > 0) || unloadTotal > unloadAvailable,
+                disabled: !unloadForm.product_name || (unloadForm.carrier_kind === "vehicle" ? !unloadForm.rack_vehicle_id : unloadForm.carrier_kind === "transporter" ? !unloadForm.transporter_id : !unloadForm.rack_jcb_id) || !(unloadCount > 0 || unloadTotal > 0) || unloadTotal > unloadAvailable,
                 children: "Save Unloading"
               }
             )
@@ -89673,7 +89712,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-BlHzPzNC.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-0zqjdoXa.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
