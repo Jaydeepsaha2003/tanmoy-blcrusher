@@ -11396,6 +11396,12 @@ const api = {
     update: (p2) => call("transporters.update", p2),
     delete: (id2) => call("transporters.delete", { id: id2 })
   },
+  transporterFleet: {
+    list: (transporter_id, kind) => call("transporterFleet.list", { transporter_id, kind }),
+    create: (p2) => call("transporterFleet.create", p2),
+    update: (p2) => call("transporterFleet.update", p2),
+    delete: (id2) => call("transporterFleet.delete", { id: id2 })
+  },
   companies: {
     list: () => call("companies.list"),
     create: (p2) => call("companies.create", p2),
@@ -53474,15 +53480,15 @@ function ordinal() {
   return scale;
 }
 function band() {
-  var scale = ordinal().unknown(void 0), domain = scale.domain, ordinalRange = scale.range, r0 = 0, r1 = 1, step, bandwidth, round3 = false, paddingInner = 0, paddingOuter = 0, align = 0.5;
+  var scale = ordinal().unknown(void 0), domain = scale.domain, ordinalRange = scale.range, r0 = 0, r1 = 1, step, bandwidth, round4 = false, paddingInner = 0, paddingOuter = 0, align = 0.5;
   delete scale.unknown;
   function rescale() {
     var n2 = domain().length, reverse3 = r1 < r0, start = reverse3 ? r1 : r0, stop = reverse3 ? r0 : r1;
     step = (stop - start) / Math.max(1, n2 - paddingInner + paddingOuter * 2);
-    if (round3) step = Math.floor(step);
+    if (round4) step = Math.floor(step);
     start += (stop - start - step * (n2 - paddingInner)) * align;
     bandwidth = step * (1 - paddingInner);
-    if (round3) start = Math.round(start), bandwidth = Math.round(bandwidth);
+    if (round4) start = Math.round(start), bandwidth = Math.round(bandwidth);
     var values = range$3(n2).map(function(i2) {
       return start + step * i2;
     });
@@ -53495,7 +53501,7 @@ function band() {
     return arguments.length ? ([r0, r1] = _2, r0 = +r0, r1 = +r1, rescale()) : [r0, r1];
   };
   scale.rangeRound = function(_2) {
-    return [r0, r1] = _2, r0 = +r0, r1 = +r1, round3 = true, rescale();
+    return [r0, r1] = _2, r0 = +r0, r1 = +r1, round4 = true, rescale();
   };
   scale.bandwidth = function() {
     return bandwidth;
@@ -53504,7 +53510,7 @@ function band() {
     return step;
   };
   scale.round = function(_2) {
-    return arguments.length ? (round3 = !!_2, rescale()) : round3;
+    return arguments.length ? (round4 = !!_2, rescale()) : round4;
   };
   scale.padding = function(_2) {
     return arguments.length ? (paddingInner = Math.min(1, paddingOuter = +_2), rescale()) : paddingInner;
@@ -53519,7 +53525,7 @@ function band() {
     return arguments.length ? (align = Math.max(0, Math.min(1, _2)), rescale()) : align;
   };
   scale.copy = function() {
-    return band(domain(), [r0, r1]).round(round3).paddingInner(paddingInner).paddingOuter(paddingOuter).align(align);
+    return band(domain(), [r0, r1]).round(round4).paddingInner(paddingInner).paddingOuter(paddingOuter).align(align);
   };
   return initRange.apply(rescale(), arguments);
 }
@@ -54592,10 +54598,10 @@ function unsquare(x2) {
   return Math.sign(x2) * Math.sqrt(Math.abs(x2));
 }
 function radial() {
-  var squared = continuous(), range3 = [0, 1], round3 = false, unknown;
+  var squared = continuous(), range3 = [0, 1], round4 = false, unknown;
   function scale(x2) {
     var y2 = unsquare(squared(x2));
-    return isNaN(y2) ? unknown : round3 ? Math.round(y2) : y2;
+    return isNaN(y2) ? unknown : round4 ? Math.round(y2) : y2;
   }
   scale.invert = function(y2) {
     return squared.invert(square(y2));
@@ -54610,7 +54616,7 @@ function radial() {
     return scale.range(_2).round(true);
   };
   scale.round = function(_2) {
-    return arguments.length ? (round3 = !!_2, scale) : round3;
+    return arguments.length ? (round4 = !!_2, scale) : round4;
   };
   scale.clamp = function(_2) {
     return arguments.length ? (squared.clamp(_2), scale) : squared.clamp();
@@ -54619,7 +54625,7 @@ function radial() {
     return arguments.length ? (unknown = _2, scale) : unknown;
   };
   scale.copy = function() {
-    return radial(squared.domain(), range3).round(round3).clamp(squared.clamp()).unknown(unknown);
+    return radial(squared.domain(), range3).round(round4).clamp(squared.clamp()).unknown(unknown);
   };
   initRange.apply(scale, arguments);
   return linearish(scale);
@@ -72320,7 +72326,7 @@ const vehicleLabel = {
   own: "Own Vehicle",
   rented: "Rented"
 };
-const uomLabel = (u2) => u2 === "CM" ? "m³" : u2 === "TON" ? "Ton" : "CFT";
+const uomLabel$1 = (u2) => u2 === "CM" ? "m³" : u2 === "TON" ? "Ton" : "CFT";
 function Dispatch() {
   const qc2 = useQueryClient();
   const toast = useToast();
@@ -72779,10 +72785,10 @@ function Dispatch() {
               {
                 value: form.uom,
                 onChange: (v2) => setForm({ ...form, uom: v2 }),
-                options: UOMS.map((u2) => ({ value: u2, label: uomLabel(u2) }))
+                options: UOMS.map((u2) => ({ value: u2, label: uomLabel$1(u2) }))
               }
             ) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sm:col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product", required: true, hint: isOutsource ? "Pick a product or type a new one" : selProduct ? `Available: ${fmtQty(fromCm(selProduct.balance_qty, form.uom))} ${uomLabel(form.uom)}` : void 0, children: isOutsource ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sm:col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product", required: true, hint: isOutsource ? "Pick a product or type a new one" : selProduct ? `Available: ${fmtQty(fromCm(selProduct.balance_qty, form.uom))} ${uomLabel$1(form.uom)}` : void 0, children: isOutsource ? /* @__PURE__ */ jsxRuntimeExports.jsx(
               SearchSelect,
               {
                 value: form.product_name,
@@ -72800,7 +72806,7 @@ function Dispatch() {
                 value: form.product_name,
                 onChange: (v2) => setForm({ ...form, product_name: v2 }),
                 options: [
-                  ...avail.map((a2) => ({ value: a2.product_name, label: `${a2.product_name} (${fmtQty(fromCm(a2.balance_qty, form.uom))} ${uomLabel(form.uom)})` })),
+                  ...avail.map((a2) => ({ value: a2.product_name, label: `${a2.product_name} (${fmtQty(fromCm(a2.balance_qty, form.uom))} ${uomLabel$1(form.uom)})` })),
                   ...form.id && form.product_name && !avail.some((a2) => a2.product_name === form.product_name) ? [{ value: form.product_name, label: form.product_name }] : []
                 ],
                 placeholder: "Select product…"
@@ -73318,6 +73324,7 @@ function Transporters() {
   const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
   const [open2, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState({});
+  const [fleetFor, setFleetFor] = reactExports.useState(null);
   const [q2, setQ] = reactExports.useState("");
   const [companyFilter, setCompanyFilter] = reactExports.useState("");
   const [bal, setBal] = reactExports.useState("");
@@ -73453,6 +73460,7 @@ function Transporters() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtMoney(t3.paid_amount) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right font-semibold text-destructive", children: fmtMoney(t3.balance_amount) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Vehicles & JCBs", onClick: () => setFleetFor(t3), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Truck, { size: 15 }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => {
               setForm(t3);
               setOpen(true);
@@ -73507,7 +73515,150 @@ function Transporters() {
           ] })
         ] })
       }
-    )
+    ),
+    fleetFor && /* @__PURE__ */ jsxRuntimeExports.jsx(FleetModal, { transporter: fleetFor, plants, plantId, onClose: () => setFleetFor(null) })
+  ] });
+}
+const uomLabel = (u2) => u2 === "CM" ? "m³" : u2 === "TON" ? "Ton" : "CFT";
+const round3 = (n2) => Math.round((n2 + Number.EPSILON) * 1e3) / 1e3;
+function FleetModal({
+  transporter,
+  plants,
+  plantId,
+  onClose
+}) {
+  const qc2 = useQueryClient();
+  const toast = useToast();
+  const [kind, setKind] = reactExports.useState("vehicle");
+  const [form, setForm] = reactExports.useState(null);
+  const { data: items = [] } = useQuery({
+    queryKey: ["transporterFleet", transporter.id],
+    queryFn: () => api.transporterFleet.list(transporter.id)
+  });
+  const list = items.filter((i2) => i2.kind === kind);
+  const factor = plants.find((p2) => p2.id === plantId) ?? plants[0];
+  const noun = kind === "vehicle" ? "Vehicle" : "JCB";
+  const save = useMutation({
+    mutationFn: (p2) => p2.id ? api.transporterFleet.update(p2) : api.transporterFleet.create({ ...p2, transporter_id: transporter.id, kind }),
+    onSuccess: () => {
+      qc2.invalidateQueries({ queryKey: ["transporterFleet", transporter.id] });
+      setForm(null);
+      toast.success(`${noun} saved.`);
+    },
+    onError: (e3) => toast.error(e3.message)
+  });
+  async function remove(it2) {
+    if (!await confirmDialog({ title: `Delete ${it2.kind}`, message: `Delete "${it2.name}"?` })) return;
+    await api.transporterFleet.delete(it2.id);
+    qc2.invalidateQueries({ queryKey: ["transporterFleet", transporter.id] });
+    toast.success("Deleted.");
+  }
+  function newItem() {
+    setForm({ name: "", driver_name: "", driver_mobile: "", cap_cm: "", cap_ton: "", cap_cft: "", rate_per_trip: "", rate_per_unit: "", rate_unit_uom: "CM", remarks: "" });
+  }
+  function editItem(it2) {
+    setForm({
+      ...it2,
+      cap_cm: it2.cap_cm ?? "",
+      cap_ton: it2.cap_ton ?? "",
+      cap_cft: it2.cap_cft ?? "",
+      rate_per_trip: it2.rate_per_trip ?? "",
+      rate_per_unit: it2.rate_per_unit ?? ""
+    });
+  }
+  function setCap(uom, value) {
+    if (!form) return;
+    if (value === "") {
+      setForm({ ...form, cap_cm: "", cap_ton: "", cap_cft: "" });
+      return;
+    }
+    const cm = toCm(Number(value) || 0, uom);
+    setForm({
+      ...form,
+      cap_cm: uom === "CM" ? value : round3(cm),
+      cap_ton: uom === "TON" ? value : round3(fromCm(cm, "TON")),
+      cap_cft: uom === "CFT" ? value : round3(fromCm(cm, "CFT"))
+    });
+  }
+  const rateText = (it2) => {
+    const bits = [];
+    if (it2.rate_per_trip != null) bits.push(`${fmtMoney(it2.rate_per_trip)}/trip`);
+    if (it2.rate_per_unit != null) bits.push(`${fmtMoney(it2.rate_per_unit)}/${uomLabel(it2.rate_unit_uom)}`);
+    return bits.length ? bits.join(" · ") : "-";
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { open: true, onClose, title: `Fleet — ${transporter.name}`, width: "max-w-3xl", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-4 flex gap-2 border-b pb-3", children: ["vehicle", "jcb"].map((k2) => /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: kind === k2 ? "default" : "outline", size: "sm", onClick: () => {
+      setKind(k2);
+      setForm(null);
+    }, children: k2 === "vehicle" ? "Vehicles" : "JCBs" }, k2)) }),
+    form ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: kind === "vehicle" ? "Vehicle No." : "JCB Name / No.", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: String(form.name ?? ""), onChange: (e3) => setForm({ ...form, name: e3.target.value }), placeholder: kind === "vehicle" ? "e.g. JH-01-AB-1234" : "e.g. JCB-01" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Driver Name", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: String(form.driver_name ?? ""), onChange: (e3) => setForm({ ...form, driver_name: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Driver Mobile", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: String(form.driver_mobile ?? ""), onChange: (e3) => setForm({ ...form, driver_mobile: e3.target.value }) }) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-2 text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground/80", children: "Capacity (per trip)" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-3 gap-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "m³", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: String(form.cap_cm ?? ""), onChange: (e3) => setCap("CM", e3.target.value) }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Ton", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: String(form.cap_ton ?? ""), onChange: (e3) => setCap("TON", e3.target.value) }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "CFT", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: String(form.cap_cft ?? ""), onChange: (e3) => setCap("CFT", e3.target.value) }) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs text-muted-foreground", children: [
+          "Enter any one — the other two auto-fill using ",
+          factor ? `${factor.name}'s` : "default",
+          " density (1 m³ ≈ ",
+          round3(fromCm(1, "TON")),
+          " Ton, ",
+          round3(fromCm(1, "CFT")),
+          " CFT)."
+        ] })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-2 text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground/80", children: "Rates" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-3", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Rate per Trip (₹)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: String(form.rate_per_trip ?? ""), onChange: (e3) => setForm({ ...form, rate_per_trip: e3.target.value }), placeholder: "Optional" }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Rate per Unit (₹)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: String(form.rate_per_unit ?? ""), onChange: (e3) => setForm({ ...form, rate_per_unit: e3.target.value }), placeholder: "Optional" }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Per Unit", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.rate_unit_uom ?? "CM", onChange: (v2) => setForm({ ...form, rate_unit_uom: v2 }), options: UOMS.map((u2) => ({ value: u2, label: uomLabel(u2) })) }) })
+        ] })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: String(form.remarks ?? ""), onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-between gap-2 pt-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "ghost", onClick: () => setForm(null), children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowLeft, { size: 15 }),
+          " Back"
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { onClick: () => save.mutate(form), disabled: !String(form.name ?? "").trim(), children: [
+          "Save ",
+          noun
+        ] })
+      ] })
+    ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-3 flex justify-end", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { size: "sm", onClick: newItem, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 15 }),
+        " Add ",
+        noun
+      ] }) }),
+      list.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: `No ${kind === "vehicle" ? "vehicles" : "JCBs"} added for this transporter yet.` }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: kind === "vehicle" ? "Vehicle No" : "JCB" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Driver" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Capacity (m³ / Ton / CFT)" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Rate" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: list.map((it2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: it2.name }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: [it2.driver_name, it2.driver_mobile].filter(Boolean).join(" · ") || "-" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: [it2.cap_cm, it2.cap_ton, it2.cap_cft].map((c2) => c2 == null ? "–" : fmtQty(c2)).join(" / ") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: rateText(it2) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => editItem(it2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => remove(it2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+          ] })
+        ] }, it2.id)) })
+      ] })
+    ] })
   ] });
 }
 function Companies() {
@@ -89456,7 +89607,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-BmAsj8Tu.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-CGPVN4aK.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;

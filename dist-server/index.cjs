@@ -730,6 +730,25 @@ CREATE TABLE IF NOT EXISTS rack_jcb_plants (
   plant_id    INTEGER NOT NULL REFERENCES plants(id)
 );
 
+-- A transporter's own fleet: vehicles and JCBs, with capacity in every UOM and
+-- per-trip / per-unit rates. kind = 'vehicle' | 'jcb'.
+CREATE TABLE IF NOT EXISTS transporter_fleet (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  transporter_id INTEGER NOT NULL REFERENCES transporters(id),
+  kind           TEXT NOT NULL DEFAULT 'vehicle',
+  name           TEXT NOT NULL DEFAULT '',
+  driver_name    TEXT NOT NULL DEFAULT '',
+  driver_mobile  TEXT NOT NULL DEFAULT '',
+  cap_cm         REAL,
+  cap_ton        REAL,
+  cap_cft        REAL,
+  rate_per_trip  REAL,
+  rate_per_unit  REAL,
+  rate_unit_uom  TEXT NOT NULL DEFAULT 'CM',
+  remarks        TEXT NOT NULL DEFAULT '',
+  created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS asset_plant_moves (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   asset_id      INTEGER NOT NULL REFERENCES assets(id),
@@ -915,6 +934,7 @@ CREATE INDEX IF NOT EXISTS idx_coplants_company ON company_plants(company_id);
 CREATE INDEX IF NOT EXISTS idx_pplants_product ON product_plants(product_id);
 CREATE INDEX IF NOT EXISTS idx_rvplants_vehicle ON rack_vehicle_plants(rack_vehicle_id);
 CREATE INDEX IF NOT EXISTS idx_rjplants_jcb ON rack_jcb_plants(rack_jcb_id);
+CREATE INDEX IF NOT EXISTS idx_tfleet_transporter ON transporter_fleet(transporter_id);
 CREATE INDEX IF NOT EXISTS idx_amoves_asset ON asset_plant_moves(asset_id);
 CREATE INDEX IF NOT EXISTS idx_spare_parts_plant ON spare_parts(plant_id);
 CREATE INDEX IF NOT EXISTS idx_part_moves_part ON spare_part_movements(part_id);
@@ -1990,6 +2010,28 @@ CREATE INDEX idx_pplants_product ON product_plants(product_id)`
     id: "033_finished_opening_value",
     sql: `ALTER TABLE finished_goods_opening ADD COLUMN opening_rate DOUBLE NOT NULL DEFAULT 0;
 ALTER TABLE finished_goods_opening ADD COLUMN opening_amount DOUBLE NOT NULL DEFAULT 0`
+  },
+  {
+    // Per-transporter fleet: the vehicles and JCBs a transporter owns/operates,
+    // with capacity in all UOMs and per-trip / per-unit rates.
+    id: "034_transporter_fleet",
+    sql: `CREATE TABLE IF NOT EXISTS transporter_fleet (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  transporter_id INT NOT NULL,
+  kind           VARCHAR(16) NOT NULL DEFAULT 'vehicle',
+  name           VARCHAR(191) NOT NULL DEFAULT '',
+  driver_name    VARCHAR(191) NOT NULL DEFAULT '',
+  driver_mobile  VARCHAR(64) NOT NULL DEFAULT '',
+  cap_cm         DOUBLE,
+  cap_ton        DOUBLE,
+  cap_cft        DOUBLE,
+  rate_per_trip  DOUBLE,
+  rate_per_unit  DOUBLE,
+  rate_unit_uom  VARCHAR(8) NOT NULL DEFAULT 'CM',
+  remarks        TEXT,
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_tfleet_transporter ON transporter_fleet(transporter_id)`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -4552,6 +4594,76 @@ function round7(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
+// src/main/services/transporterFleet.ts
+function numOrNull(v) {
+  const n = Number(v);
+  return v == null || v === "" || isNaN(n) ? null : n;
+}
+function uomOf(v) {
+  return v === "TON" || v === "CFT" ? v : "CM";
+}
+async function listTransporterFleet(payload) {
+  const d = getDb();
+  const where = ["transporter_id = @transporter_id"];
+  if (payload.kind) where.push("kind = @kind");
+  return await d.prepare(`SELECT * FROM transporter_fleet WHERE ${where.join(" AND ")} ORDER BY kind, name`).all(payload);
+}
+async function createTransporterFleet(p) {
+  const d = getDb();
+  if (!p.transporter_id) throw new Error("Missing transporter.");
+  const kind = p.kind === "jcb" ? "jcb" : "vehicle";
+  const name = properCase(p.name || "");
+  if (!name) throw new Error(kind === "jcb" ? "JCB name / no. is required." : "Vehicle no. is required.");
+  const info = await d.prepare(
+    `INSERT INTO transporter_fleet
+        (transporter_id, kind, name, driver_name, driver_mobile, cap_cm, cap_ton, cap_cft, rate_per_trip, rate_per_unit, rate_unit_uom, remarks)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    p.transporter_id,
+    kind,
+    name,
+    properCase(p.driver_name || ""),
+    (p.driver_mobile || "").trim(),
+    numOrNull(p.cap_cm),
+    numOrNull(p.cap_ton),
+    numOrNull(p.cap_cft),
+    numOrNull(p.rate_per_trip),
+    numOrNull(p.rate_per_unit),
+    uomOf(p.rate_unit_uom),
+    p.remarks ?? ""
+  );
+  return await d.prepare(`SELECT * FROM transporter_fleet WHERE id = ?`).get(info.lastInsertRowid);
+}
+async function updateTransporterFleet(p) {
+  const d = getDb();
+  if (!p.id) throw new Error("Missing fleet item id.");
+  const name = properCase(p.name || "");
+  if (!name) throw new Error("Name / no. is required.");
+  await d.prepare(
+    `UPDATE transporter_fleet SET
+         name=?, driver_name=?, driver_mobile=?, cap_cm=?, cap_ton=?, cap_cft=?,
+         rate_per_trip=?, rate_per_unit=?, rate_unit_uom=?, remarks=?
+       WHERE id=?`
+  ).run(
+    name,
+    properCase(p.driver_name || ""),
+    (p.driver_mobile || "").trim(),
+    numOrNull(p.cap_cm),
+    numOrNull(p.cap_ton),
+    numOrNull(p.cap_cft),
+    numOrNull(p.rate_per_trip),
+    numOrNull(p.rate_per_unit),
+    uomOf(p.rate_unit_uom),
+    p.remarks ?? "",
+    p.id
+  );
+  return await d.prepare(`SELECT * FROM transporter_fleet WHERE id = ?`).get(p.id);
+}
+async function deleteTransporterFleet(payload) {
+  await getDb().prepare(`DELETE FROM transporter_fleet WHERE id = ?`).run(payload.id);
+  return { ok: true };
+}
+
 // src/main/services/companies.ts
 var ROLE_DELETE = {
   suppliers: deleteSupplier,
@@ -5763,7 +5875,7 @@ async function listSales(filter = {}) {
 }
 
 // src/main/services/rackFleet.ts
-function numOrNull(v) {
+function numOrNull2(v) {
   const n = Number(v);
   return v == null || v === "" || isNaN(n) ? null : n;
 }
@@ -5790,10 +5902,10 @@ async function createRackVehicle(p) {
       (p.owner_mobile || "").trim(),
       properCase(p.driver_name || ""),
       (p.driver_mobile || "").trim(),
-      numOrNull(p.cap_cm),
-      numOrNull(p.cap_ton),
-      numOrNull(p.cap_cft),
-      numOrNull(p.rate_per_trip),
+      numOrNull2(p.cap_cm),
+      numOrNull2(p.cap_ton),
+      numOrNull2(p.cap_cft),
+      numOrNull2(p.rate_per_trip),
       p.remarks ?? ""
     );
     const vid = Number(info.lastInsertRowid);
@@ -5820,10 +5932,10 @@ async function updateRackVehicle(p) {
       (p.owner_mobile || "").trim(),
       properCase(p.driver_name || ""),
       (p.driver_mobile || "").trim(),
-      numOrNull(p.cap_cm),
-      numOrNull(p.cap_ton),
-      numOrNull(p.cap_cft),
-      numOrNull(p.rate_per_trip),
+      numOrNull2(p.cap_cm),
+      numOrNull2(p.cap_ton),
+      numOrNull2(p.cap_cft),
+      numOrNull2(p.rate_per_trip),
       p.remarks ?? "",
       p.id
     );
@@ -5877,9 +5989,9 @@ async function createRackJcb(p) {
       (p.owner_mobile || "").trim(),
       properCase(p.driver_name || ""),
       (p.driver_mobile || "").trim(),
-      numOrNull(p.rate_unloading),
-      numOrNull(p.rate_loading),
-      numOrNull(p.rate_other),
+      numOrNull2(p.rate_unloading),
+      numOrNull2(p.rate_loading),
+      numOrNull2(p.rate_other),
       p.remarks ?? ""
     );
     const jid = Number(info.lastInsertRowid);
@@ -5906,9 +6018,9 @@ async function updateRackJcb(p) {
       (p.owner_mobile || "").trim(),
       properCase(p.driver_name || ""),
       (p.driver_mobile || "").trim(),
-      numOrNull(p.rate_unloading),
-      numOrNull(p.rate_loading),
-      numOrNull(p.rate_other),
+      numOrNull2(p.rate_unloading),
+      numOrNull2(p.rate_loading),
+      numOrNull2(p.rate_other),
       p.remarks ?? "",
       p.id
     );
@@ -9112,6 +9224,10 @@ var handlers = {
   "transporters.create": createTransporter,
   "transporters.update": updateTransporter,
   "transporters.delete": deleteTransporter,
+  "transporterFleet.list": listTransporterFleet,
+  "transporterFleet.create": createTransporterFleet,
+  "transporterFleet.update": updateTransporterFleet,
+  "transporterFleet.delete": deleteTransporterFleet,
   "companies.list": listCompanies,
   "companies.create": createCompany,
   "companies.update": updateCompany,
