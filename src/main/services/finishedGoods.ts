@@ -40,9 +40,13 @@ export async function listFinishedGoods(filter: FinishedFilter = {}): Promise<Fi
         COALESCE(SUM(CASE WHEN m.type='purchase' ${datePurch} THEN m.change_qty ELSE 0 END),0) AS purchased_qty,
         COALESCE(SUM(CASE WHEN m.type='dispatch' ${dateDisp} THEN -m.change_qty ELSE 0 END),0) AS dispatched_qty,
         COALESCE(SUM(CASE WHEN m.type='rack_load' ${dateLoad} THEN -m.change_qty ELSE 0 END),0) AS loaded_qty,
-        COALESCE(SUM(m.change_qty),0) AS balance_qty
+        COALESCE(SUM(m.change_qty),0) AS balance_qty,
+        COALESCE(MAX(fgo.opening_rate),0) AS opening_rate,
+        COALESCE(MAX(fgo.opening_amount),0) AS opening_amount
        FROM stock_movements m
        JOIN plants p ON p.id = m.plant_id
+       LEFT JOIN finished_goods_opening fgo
+         ON fgo.plant_id = m.plant_id AND fgo.product_name = m.product_name
        WHERE ${where.join(' AND ')}
        GROUP BY m.plant_id, m.product_name
        ORDER BY p.name, m.product_name`
@@ -55,7 +59,9 @@ export async function listFinishedGoods(filter: FinishedFilter = {}): Promise<Fi
     purchased_qty: round(r.purchased_qty),
     dispatched_qty: round(r.dispatched_qty),
     loaded_qty: round(r.loaded_qty),
-    balance_qty: round(r.balance_qty)
+    balance_qty: round(r.balance_qty),
+    opening_rate: round(r.opening_rate ?? 0),
+    opening_amount: round(r.opening_amount ?? 0)
   }))
 }
 
@@ -89,22 +95,33 @@ export async function setOpening(payload: {
   plant_id: number
   product_name: string
   opening_qty: number
+  /** Optional valuation: per-m³ rate and/or total amount (one derives the other from qty). */
+  opening_rate?: number
+  opening_amount?: number
   date?: string
 }): Promise<{ ok: boolean }> {
   const d = getDb()
   const date = payload.date || new Date().toISOString().slice(0, 10)
   const product = properCase(payload.product_name)
+  const qty = payload.opening_qty || 0
+  // Accept whichever the user filled and derive the other from the quantity.
+  let amount = Number(payload.opening_amount) || 0
+  let rate = Number(payload.opening_rate) || 0
+  if (amount === 0 && rate > 0) amount = rate * qty
+  if (rate === 0 && amount > 0 && qty > 0) rate = amount / qty
   await d.transaction(async () => {
     await d.prepare(
       dbKind() === 'mysql'
-        ? `INSERT INTO finished_goods_opening (plant_id, product_name, opening_qty)
-           VALUES (?, ?, ?)
-           ON DUPLICATE KEY UPDATE opening_qty = VALUES(opening_qty)`
-        : `INSERT INTO finished_goods_opening (plant_id, product_name, opening_qty)
-           VALUES (?, ?, ?)
-           ON CONFLICT(plant_id, product_name) DO UPDATE SET opening_qty = excluded.opening_qty`
-    ).run(payload.plant_id, product, payload.opening_qty || 0)
-    await setFinishedOpening(d, payload.plant_id, product, payload.opening_qty || 0, date)
+        ? `INSERT INTO finished_goods_opening (plant_id, product_name, opening_qty, opening_rate, opening_amount)
+           VALUES (?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE opening_qty = VALUES(opening_qty),
+             opening_rate = VALUES(opening_rate), opening_amount = VALUES(opening_amount)`
+        : `INSERT INTO finished_goods_opening (plant_id, product_name, opening_qty, opening_rate, opening_amount)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(plant_id, product_name) DO UPDATE SET opening_qty = excluded.opening_qty,
+             opening_rate = excluded.opening_rate, opening_amount = excluded.opening_amount`
+    ).run(payload.plant_id, product, qty, rate, amount)
+    await setFinishedOpening(d, payload.plant_id, product, qty, date)
   })
   return { ok: true }
 }

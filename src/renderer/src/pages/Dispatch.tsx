@@ -47,7 +47,7 @@ export function Dispatch(): React.JSX.Element {
     queryFn: () => api.customers.list(plantId)
   })
   const { data: outsourceVendors = [] } = useQuery({ queryKey: ['outsource'], queryFn: () => api.outsource.list() })
-  const { data: products = [] } = useQuery({ queryKey: ['products'], queryFn: api.products.list })
+  const { data: products = [] } = useQuery({ queryKey: ['products'], queryFn: () => api.products.list() })
   const { data: transporters = [] } = useQuery({ queryKey: ['transporters', plantId], queryFn: () => api.transporters.list(plantId) })
   const { data: assets = [] } = useQuery({ queryKey: ['assets', plantId], queryFn: () => api.assets.list(plantId) })
   const [filter, setFilter] = React.useState<{

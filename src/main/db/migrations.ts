@@ -270,9 +270,11 @@ CREATE TABLE IF NOT EXISTS production_outputs (
   quantity      DOUBLE NOT NULL
 );
 CREATE TABLE IF NOT EXISTS finished_goods_opening (
-  plant_id     INT NOT NULL,
-  product_name VARCHAR(191) NOT NULL,
-  opening_qty  DOUBLE NOT NULL DEFAULT 0,
+  plant_id       INT NOT NULL,
+  product_name   VARCHAR(191) NOT NULL,
+  opening_qty    DOUBLE NOT NULL DEFAULT 0,
+  opening_rate   DOUBLE NOT NULL DEFAULT 0,
+  opening_amount DOUBLE NOT NULL DEFAULT 0,
   PRIMARY KEY (plant_id, product_name)
 );
 CREATE TABLE IF NOT EXISTS dispatches (
@@ -1042,6 +1044,22 @@ CREATE INDEX idx_rstrans_vehicle ON rack_sale_transporters(rack_vehicle_id)`
     // Direct-sale transporter lines can be billed through to the customer (pass-through transport).
     id: '031_dispatch_transporter_bill_customer',
     sql: `ALTER TABLE dispatch_transporters ADD COLUMN bill_customer INT NOT NULL DEFAULT 0`
+  },
+  {
+    // Multi-plant products: assign each product to one or more plants (empty = common to all).
+    id: '032_product_plants',
+    sql: `CREATE TABLE IF NOT EXISTS product_plants (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  product_id INT NOT NULL,
+  plant_id   INT NOT NULL
+);
+CREATE INDEX idx_pplants_product ON product_plants(product_id)`
+  },
+  {
+    // Opening finished-goods stock can be valued: a per-m³ rate and the total amount.
+    id: '033_finished_opening_value',
+    sql: `ALTER TABLE finished_goods_opening ADD COLUMN opening_rate DOUBLE NOT NULL DEFAULT 0;
+ALTER TABLE finished_goods_opening ADD COLUMN opening_amount DOUBLE NOT NULL DEFAULT 0`
   }
 ]
 
@@ -1161,6 +1179,9 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   await addColumn('rack_sale_transporters', 'diesel_charged', 'INTEGER NOT NULL DEFAULT 0')
   // Direct-sale transporter line billed through to the customer.
   await addColumn('dispatch_transporters', 'bill_customer', 'INTEGER NOT NULL DEFAULT 0')
+  // Valued opening finished-goods stock (product_plants comes from SCHEMA on the SQLite path).
+  await addColumn('finished_goods_opening', 'opening_rate', 'REAL NOT NULL DEFAULT 0')
+  await addColumn('finished_goods_opening', 'opening_amount', 'REAL NOT NULL DEFAULT 0')
 }
 
 /**

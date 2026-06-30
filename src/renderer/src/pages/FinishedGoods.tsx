@@ -22,7 +22,17 @@ import {
 } from '@/components/ui'
 import { useToast } from '@/components/toast'
 import { usePlant } from '@/lib/plant'
-import { fmtQty, downloadExcel } from '@/lib/utils'
+import { fmtMoney, fmtQty, downloadExcel } from '@/lib/utils'
+
+type OpeningForm = {
+  plant_id?: number
+  product_name: string
+  opening_qty: number | string
+  uom: Uom
+  rate: number | string
+  amount: number | string
+  editing?: boolean
+}
 
 export function FinishedGoods(): React.JSX.Element {
   const qc = useQueryClient()
@@ -43,16 +53,37 @@ export function FinishedGoods(): React.JSX.Element {
   const conv = (cm: number | null | undefined, plantId: number): number =>
     fromCm(Number(cm) || 0, viewUom, plants.find((p) => p.id === plantId))
   const [open, setOpen] = React.useState(false)
-  const [form, setForm] = React.useState<{ plant_id?: number; product_name: string; opening_qty: number | string; uom: Uom; editing?: boolean }>({ product_name: '', opening_qty: 0, uom: 'CM' })
+  const [form, setForm] = React.useState<OpeningForm>({ product_name: '', opening_qty: 0, uom: 'CM', rate: '', amount: '' })
 
   const formPlant = plants.find((p) => p.id === form.plant_id)
   const openingCm = toCm(Number(form.opening_qty) || 0, form.uom, formPlant)
+  // The opening can be valued: a rate (per entered unit) and a total amount that
+  // derive each other from the quantity. Stored as a per-m³ rate + total amount.
+  const amountTotal = Number(form.amount) || 0
+  const ratePerCm = openingCm > 0 ? round2(amountTotal / openingCm) : 0
+
+  // Keep rate ↔ amount in sync as the user types (amount = rate × qty).
+  function updateQty(v: string): void {
+    const qty = Number(v) || 0
+    const rate = Number(form.rate) || 0
+    setForm({ ...form, opening_qty: v, amount: rate > 0 ? round2(rate * qty) : form.amount })
+  }
+  function updateRate(v: string): void {
+    const rate = Number(v) || 0
+    const qty = Number(form.opening_qty) || 0
+    setForm({ ...form, rate: v, amount: round2(rate * qty) })
+  }
+  function updateAmount(v: string): void {
+    const amount = Number(v) || 0
+    const qty = Number(form.opening_qty) || 0
+    setForm({ ...form, amount: v, rate: qty > 0 ? round2(amount / qty) : 0 })
+  }
 
   const save = useMutation({
     // Opening can be entered in any UOM; it's stored as m³ (the base unit). Saving
     // the same plant + product overwrites the previous opening, so wrong entries
     // are corrected by editing the row.
-    mutationFn: () => api.finished.setOpening(form.plant_id!, form.product_name, openingCm),
+    mutationFn: () => api.finished.setOpening(form.plant_id!, form.product_name, openingCm, ratePerCm, amountTotal),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['finished'] })
       setOpen(false)
@@ -61,8 +92,11 @@ export function FinishedGoods(): React.JSX.Element {
     onError: (e: Error) => toast.error(e.message)
   })
 
-  function openEdit(f: { plant_id: number; product_name: string; opening_qty: number }): void {
-    setForm({ plant_id: f.plant_id, product_name: f.product_name, opening_qty: f.opening_qty, uom: 'CM', editing: true })
+  function openEdit(f: { plant_id: number; product_name: string; opening_qty: number; opening_rate?: number; opening_amount?: number }): void {
+    const amount = Number(f.opening_amount) || 0
+    // On edit the UOM resets to m³, so the rate shown is per-m³ (amount ÷ opening m³).
+    const rate = f.opening_qty > 0 ? round2(amount / f.opening_qty) : Number(f.opening_rate) || 0
+    setForm({ plant_id: f.plant_id, product_name: f.product_name, opening_qty: f.opening_qty, uom: 'CM', editing: true, rate: rate || '', amount: amount || '' })
     setOpen(true)
   }
 
@@ -70,11 +104,12 @@ export function FinishedGoods(): React.JSX.Element {
     downloadExcel(
       'finished-goods',
       'Finished Goods',
-      ['Plant', 'Product', `Opening (${uomLabel})`, `Produced (${uomLabel})`, `Purchased (${uomLabel})`, `Dispatched (${uomLabel})`, `To Rack (${uomLabel})`, `Balance (${uomLabel})`],
+      ['Plant', 'Product', `Opening (${uomLabel})`, `Produced (${uomLabel})`, `Purchased (${uomLabel})`, `Dispatched (${uomLabel})`, `To Rack (${uomLabel})`, `Balance (${uomLabel})`, 'Opening Value (₹)'],
       data.map((f) => [
         f.plant_name, f.product_name,
         conv(f.opening_qty, f.plant_id), conv(f.produced_qty, f.plant_id), conv(f.purchased_qty, f.plant_id),
-        conv(f.dispatched_qty, f.plant_id), conv(f.loaded_qty, f.plant_id), conv(f.balance_qty, f.plant_id)
+        conv(f.dispatched_qty, f.plant_id), conv(f.loaded_qty, f.plant_id), conv(f.balance_qty, f.plant_id),
+        f.opening_amount || 0
       ])
     )
   }
@@ -98,7 +133,7 @@ export function FinishedGoods(): React.JSX.Element {
             <Button variant="outline" onClick={exportExcel} disabled={!data.length}>
               <FileSpreadsheet size={16} /> Excel
             </Button>
-            <Button onClick={() => { setForm({ plant_id: plantId ?? plants[0]?.id, product_name: '', opening_qty: 0, uom: 'CM' }); setOpen(true) }} disabled={!plants.length}>
+            <Button onClick={() => { setForm({ plant_id: plantId ?? plants[0]?.id, product_name: '', opening_qty: 0, uom: 'CM', rate: '', amount: '' }); setOpen(true) }} disabled={!plants.length}>
               <PencilLine size={16} /> Set Opening
             </Button>
           </>
@@ -131,7 +166,8 @@ export function FinishedGoods(): React.JSX.Element {
                 <TH className="text-right">Dispatched</TH>
                 <TH className="text-right">To Rack</TH>
                 <TH className="text-right">Balance ({uomLabel})</TH>
-                <TH className="text-right">Opening</TH>
+                <TH className="text-right">Opening ₹</TH>
+                <TH className="text-right">Edit</TH>
               </TR>
             </THead>
             <TBody>
@@ -145,8 +181,9 @@ export function FinishedGoods(): React.JSX.Element {
                   <TD className="text-right text-destructive">{fmtQty(conv(f.dispatched_qty, f.plant_id))}</TD>
                   <TD className="text-right text-warning">{fmtQty(conv(f.loaded_qty, f.plant_id))}</TD>
                   <TD className="text-right font-semibold">{fmtQty(conv(f.balance_qty, f.plant_id))}</TD>
+                  <TD className="tnum text-right text-muted-foreground">{f.opening_amount ? fmtMoney(f.opening_amount) : '-'}</TD>
                   <TD className="text-right">
-                    <Button variant="ghost" size="icon" title="Edit opening stock" onClick={() => openEdit({ plant_id: f.plant_id, product_name: f.product_name, opening_qty: f.opening_qty })}>
+                    <Button variant="ghost" size="icon" title="Edit opening stock" onClick={() => openEdit({ plant_id: f.plant_id, product_name: f.product_name, opening_qty: f.opening_qty, opening_rate: f.opening_rate, opening_amount: f.opening_amount })}>
                       <Pencil size={15} />
                     </Button>
                   </TD>
@@ -179,7 +216,15 @@ export function FinishedGoods(): React.JSX.Element {
               />
             </Field>
             <Field label={`Opening Quantity (${form.uom === 'CM' ? 'm³' : form.uom})`} hint={form.uom !== 'CM' && openingCm > 0 ? `= ${fmtQty(openingCm)} m³` : 'Stored as m³'}>
-              <Input type="number" step="0.001" value={form.opening_qty} onChange={(e) => setForm({ ...form, opening_qty: e.target.value })} />
+              <Input type="number" step="0.001" value={form.opening_qty} onChange={(e) => updateQty(e.target.value)} />
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label={`Rate (₹ / ${form.uom === 'CM' ? 'm³' : form.uom})`} hint="Optional — values the opening stock">
+              <Input type="number" step="0.01" value={form.rate} onChange={(e) => updateRate(e.target.value)} placeholder="0.00" />
+            </Field>
+            <Field label="Amount (₹)" hint="Rate × quantity — editable">
+              <Input type="number" step="0.01" value={form.amount} onChange={(e) => updateAmount(e.target.value)} placeholder="0.00" />
             </Field>
           </div>
           <div className="flex justify-end gap-2 pt-2">
@@ -196,4 +241,8 @@ function cleanFilter(f: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(f)) if (v != null && v !== '') out[k] = v
   return out
+}
+
+function round2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100
 }

@@ -143,7 +143,7 @@ export const api = {
     delete: (id: number) => call<{ ok: boolean }>('transportCharges.delete', { id })
   },
   products: {
-    list: () => call<Product[]>('products.list'),
+    list: (plant_id?: number) => call<Product[]>('products.list', { plant_id }),
     create: (p: Partial<Product>) => call<Product>('products.create', p),
     update: (p: Partial<Product>) => call<Product>('products.update', p),
     delete: (id: number) => call<{ ok: boolean; error?: string }>('products.delete', { id })
@@ -190,8 +190,20 @@ export const api = {
     list: (filter?: Record<string, unknown>) => call<FinishedGood[]>('finished.list', filter),
     available: (plant_id: number) =>
       call<{ product_name: string; balance_qty: number }[]>('finished.available', { plant_id }),
-    setOpening: (plant_id: number, product_name: string, opening_qty: number) =>
-      call<{ ok: boolean }>('finished.setOpening', { plant_id, product_name, opening_qty })
+    setOpening: (
+      plant_id: number,
+      product_name: string,
+      opening_qty: number,
+      opening_rate?: number,
+      opening_amount?: number
+    ) =>
+      call<{ ok: boolean }>('finished.setOpening', {
+        plant_id,
+        product_name,
+        opening_qty,
+        opening_rate,
+        opening_amount
+      })
   },
   dispatches: {
     list: (filter?: Record<string, unknown>) => call<Dispatch[]>('dispatches.list', filter),

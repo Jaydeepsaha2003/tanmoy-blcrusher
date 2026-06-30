@@ -19,17 +19,34 @@ import {
   TR,
   TH,
   TD,
-  EmptyState
+  EmptyState,
+  PlantCheckboxes
 } from '@/components/ui'
 import { useToast } from '@/components/toast'
 import { confirmDialog } from '@/components/confirm'
+import { usePlant } from '@/lib/plant'
 
 export function Products(): React.JSX.Element {
   const qc = useQueryClient()
   const toast = useToast()
-  const { data = [] } = useQuery({ queryKey: ['products'], queryFn: () => api.products.list() })
+  const { plantId } = usePlant()
+  const { data: plants = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
+  const { data = [] } = useQuery({
+    queryKey: ['products', plantId],
+    queryFn: () => api.products.list(plantId)
+  })
   const [open, setOpen] = React.useState(false)
   const [form, setForm] = React.useState<Partial<Product>>({ status: 'active' })
+
+  const plantNames = (ids?: number[]): string =>
+    (ids ?? []).length
+      ? (ids ?? []).map((id) => plants.find((p) => p.id === id)?.name ?? '').filter(Boolean).join(', ')
+      : 'All plants'
+
+  function togglePlant(id: number): void {
+    const cur: number[] = form.plant_ids ?? []
+    setForm({ ...form, plant_ids: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] })
+  }
 
   const save = useMutation({
     mutationFn: (p: Partial<Product>) => (p.id ? api.products.update(p) : api.products.create(p)),
@@ -55,9 +72,9 @@ export function Products(): React.JSX.Element {
     <>
       <PageHeader
         title="Products"
-        description="Your finished-goods products, shared across all plants. They feed the Production Settings and Rate List dropdowns."
+        description="Your finished-goods products. Assign each to the plants it belongs to (or leave it common to all). They feed the Production Settings and Rate List dropdowns."
         actions={
-          <Button onClick={() => { setForm({ status: 'active', description: '' }); setOpen(true) }}>
+          <Button onClick={() => { setForm({ status: 'active', description: '', plant_ids: plantId ? [plantId] : [] }); setOpen(true) }}>
             <Plus size={16} /> New Product
           </Button>
         }
@@ -71,6 +88,7 @@ export function Products(): React.JSX.Element {
               <TR>
                 <TH>Product</TH>
                 <TH>Description</TH>
+                <TH>Plants</TH>
                 <TH>Status</TH>
                 <TH className="text-right">Actions</TH>
               </TR>
@@ -80,11 +98,12 @@ export function Products(): React.JSX.Element {
                 <TR key={p.id}>
                   <TD className="font-medium">{p.name}</TD>
                   <TD className="text-muted-foreground">{p.description || '-'}</TD>
+                  <TD className="text-muted-foreground">{plantNames(p.plant_ids)}</TD>
                   <TD>
                     <Badge variant={p.status === 'active' ? 'success' : 'muted'}>{p.status}</Badge>
                   </TD>
                   <TD className="text-right">
-                    <Button variant="ghost" size="icon" onClick={() => { setForm(p); setOpen(true) }}>
+                    <Button variant="ghost" size="icon" onClick={() => { setForm({ ...p, plant_ids: p.plant_ids ?? [] }); setOpen(true) }}>
                       <Pencil size={15} />
                     </Button>
                     <Button variant="ghost" size="icon" onClick={() => remove(p)}>
@@ -119,6 +138,9 @@ export function Products(): React.JSX.Element {
               onChange={(v) => setForm({ ...form, status: v as Product['status'] })}
               options={[{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }]}
             />
+          </Field>
+          <Field label="Plants" hint="Tick the plants this product belongs to — leave all unticked to make it common to every plant">
+            <PlantCheckboxes plants={plants} selected={form.plant_ids ?? []} onToggle={togglePlant} />
           </Field>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>

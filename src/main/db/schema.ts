@@ -280,9 +280,11 @@ CREATE TABLE IF NOT EXISTS spare_part_movements (
 );
 
 CREATE TABLE IF NOT EXISTS finished_goods_opening (
-  plant_id     INTEGER NOT NULL REFERENCES plants(id),
-  product_name TEXT NOT NULL,
-  opening_qty  REAL NOT NULL DEFAULT 0,
+  plant_id       INTEGER NOT NULL REFERENCES plants(id),
+  product_name   TEXT NOT NULL,
+  opening_qty    REAL NOT NULL DEFAULT 0,
+  opening_rate   REAL NOT NULL DEFAULT 0,
+  opening_amount REAL NOT NULL DEFAULT 0,
   PRIMARY KEY (plant_id, product_name)
 );
 
@@ -524,6 +526,11 @@ CREATE TABLE IF NOT EXISTS company_plants (
   company_id INTEGER NOT NULL REFERENCES companies(id),
   plant_id   INTEGER NOT NULL REFERENCES plants(id)
 );
+CREATE TABLE IF NOT EXISTS product_plants (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  product_id INTEGER NOT NULL REFERENCES products(id),
+  plant_id   INTEGER NOT NULL REFERENCES plants(id)
+);
 
 -- Railway-rack fleet: hired vehicles and JCB loaders, assignable to multiple plants.
 CREATE TABLE IF NOT EXISTS rack_vehicles (
@@ -746,6 +753,7 @@ CREATE INDEX IF NOT EXISTS idx_cplants_customer ON customer_plants(customer_id);
 CREATE INDEX IF NOT EXISTS idx_splants_supplier ON supplier_plants(supplier_id);
 CREATE INDEX IF NOT EXISTS idx_tplants_transporter ON transporter_plants(transporter_id);
 CREATE INDEX IF NOT EXISTS idx_coplants_company ON company_plants(company_id);
+CREATE INDEX IF NOT EXISTS idx_pplants_product ON product_plants(product_id);
 CREATE INDEX IF NOT EXISTS idx_rvplants_vehicle ON rack_vehicle_plants(rack_vehicle_id);
 CREATE INDEX IF NOT EXISTS idx_rjplants_jcb ON rack_jcb_plants(rack_jcb_id);
 CREATE INDEX IF NOT EXISTS idx_amoves_asset ON asset_plant_moves(asset_id);

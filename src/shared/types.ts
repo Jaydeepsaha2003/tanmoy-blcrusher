@@ -160,6 +160,9 @@ export interface Product {
   name: string
   description: string
   status: Status
+  /** Plants this product is assigned to (empty = common to all plants). */
+  plant_ids?: number[]
+  plant_names?: string[]
   created_at: string
 }
 
@@ -405,6 +408,9 @@ export interface FinishedGood {
   dispatched_qty: number
   loaded_qty: number
   balance_qty: number
+  /** Valued opening stock: per-m³ rate and total amount (0 when not set). */
+  opening_rate: number
+  opening_amount: number
 }
 
 export interface Transporter {
