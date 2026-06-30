@@ -44,6 +44,8 @@ export function Diesel(): React.JSX.Element {
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers', plantId], queryFn: () => api.suppliers.list(plantId) })
   const { data: transporters = [] } = useQuery({ queryKey: ['transporters', plantId], queryFn: () => api.transporters.list(plantId) })
   const { data: assets = [] } = useQuery({ queryKey: ['assets', plantId], queryFn: () => api.assets.list(plantId) })
+  // Every transporter's fleet vehicle/JCB, so the issue picker spans own + transporter vehicles.
+  const { data: fleetVehicles = [] } = useQuery({ queryKey: ['fleetVehicles', plantId], queryFn: () => api.transporterFleet.listAll(plantId) })
   const { data: stock } = useQuery({ queryKey: ['dieselStock', plantId], queryFn: () => api.diesel.stock(plantId) })
   const { data: purchases = [] } = useQuery({ queryKey: ['dieselPurchases', plantId], queryFn: () => api.diesel.purchases(clean({ plant_id: plantId })) })
   const { data: issues = [] } = useQuery({ queryKey: ['dieselIssues', plantId], queryFn: () => api.diesel.issues(clean({ plant_id: plantId })) })
@@ -96,7 +98,34 @@ export function Diesel(): React.JSX.Element {
     setPForm({ supplier_id: suppliers[0]?.id, plant_id: plantId ?? plants[0]?.id, litres: '', rate: '', payment_status: 'unpaid', paid_amount: '', date: today(), remarks: '' })
   }
   function openIssue(): void {
-    setIForm({ recipient: 'asset', plant_id: plantId ?? plants[0]?.id, asset_id: null, transporter_id: null, charged: false, litres: '', date: today(), remarks: '' })
+    setIForm({ recipient: 'asset', plant_id: plantId ?? plants[0]?.id, asset_id: null, transporter_id: null, vehicle_no: '', charged: false, litres: '', date: today(), remarks: '' })
+  }
+
+  // One unified target list: machines + own vehicles (assets) and every transporter's
+  // vehicles/JCBs. An asset → plant expense; a transporter vehicle → charged to that transporter.
+  const targetOptions = React.useMemo(
+    () => [
+      { value: '', label: '— Unassigned —' },
+      ...assets.map((a) => ({ value: `a:${a.id}`, label: `${a.asset_type === 'vehicle' ? '🚗' : '🔧'} ${a.name}${a.identifier ? ` · ${a.identifier}` : ''}` })),
+      ...transporters.map((t) => ({ value: `t:${t.id}`, label: `🚚 ${t.name}` })),
+      ...fleetVehicles.map((f) => ({ value: `tv:${f.transporter_id}:${f.name}`, label: `🚚 ${f.transporter_name} · ${f.name}${f.kind === 'jcb' ? ' (JCB)' : ''}` }))
+    ],
+    [assets, transporters, fleetVehicles]
+  )
+  const targetValue = !iForm
+    ? ''
+    : iForm.asset_id
+      ? `a:${iForm.asset_id}`
+      : iForm.transporter_id
+        ? iForm.vehicle_no ? `tv:${iForm.transporter_id}:${iForm.vehicle_no}` : `t:${iForm.transporter_id}`
+        : ''
+  function setIssueTarget(v: string): void {
+    if (v.startsWith('a:')) setIForm({ ...iForm, recipient: 'asset', asset_id: Number(v.slice(2)), transporter_id: null, vehicle_no: '' })
+    else if (v.startsWith('tv:')) {
+      const parts = v.split(':')
+      setIForm({ ...iForm, recipient: 'transporter', transporter_id: Number(parts[1]), vehicle_no: parts.slice(2).join(':'), asset_id: null })
+    } else if (v.startsWith('t:')) setIForm({ ...iForm, recipient: 'transporter', transporter_id: Number(v.slice(2)), vehicle_no: '', asset_id: null })
+    else setIForm({ ...iForm, recipient: 'asset', asset_id: null, transporter_id: null, vehicle_no: '' })
   }
 
   const pAmount = pForm ? (Number(pForm.litres) || 0) * (Number(pForm.rate) || 0) : 0
@@ -215,7 +244,7 @@ export function Diesel(): React.JSX.Element {
                           <>
                             <Button variant="ghost" size="icon" onClick={() => {
                               const full = issues.find((i) => i.id === x.id)
-                              if (full) setIForm({ ...full, recipient: full.transporter_id ? 'transporter' : 'asset', asset_id: full.asset_id, transporter_id: full.transporter_id ?? null, charged: !!full.charged, litres: full.litres })
+                              if (full) setIForm({ ...full, recipient: full.transporter_id ? 'transporter' : 'asset', asset_id: full.asset_id, transporter_id: full.transporter_id ?? null, vehicle_no: full.vehicle_no ?? '', charged: !!full.charged, litres: full.litres })
                             }}><Pencil size={15} /></Button>
                             <Button variant="ghost" size="icon" onClick={() => { const full = issues.find((i) => i.id === x.id); if (full) removeIssue(full) }}><Trash2 size={15} className="text-destructive" /></Button>
                           </>
@@ -308,48 +337,15 @@ export function Diesel(): React.JSX.Element {
       {iForm && (
         <Modal open onClose={() => setIForm(null)} title={iForm.id ? `Edit ${iForm.issue_no}` : 'Issue Diesel'}>
           <div className="space-y-4">
-            {/* Issue recipient */}
-            <Field label="Issue To" required>
-              <div className="flex flex-wrap gap-2">
-                {([['asset', 'Machine / Vehicle'], ['transporter', 'Transporter']] as const).map(([key, label]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => {
-                      if (iForm.recipient === key) return
-                      setIForm({ ...iForm, recipient: key, asset_id: null, transporter_id: null, rate: key === 'transporter' ? iForm.rate : '' })
-                    }}
-                    className={cn(
-                      'rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors',
-                      iForm.recipient === key ? 'border-primary bg-primary/5 text-foreground' : 'border-input text-muted-foreground hover:bg-accent'
-                    )}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+            {/* One picker: machine, own vehicle, or a transporter's vehicle/JCB. */}
+            <Field label="Issue To" required hint="Pick a machine, an own vehicle, or a transporter's vehicle — type a vehicle no. to search. A transporter vehicle is charged to that transporter.">
+              <SearchSelect
+                value={targetValue}
+                onChange={setIssueTarget}
+                options={targetOptions}
+                placeholder="Search machine / vehicle / transporter…"
+              />
             </Field>
-            {iForm.recipient === 'transporter' ? (
-              <Field label="Transporter" required hint="Diesel is charged to this transporter — debits their ledger">
-                <SearchSelect
-                  value={iForm.transporter_id ?? ''}
-                  onChange={(v) => setIForm({ ...iForm, transporter_id: v ? Number(v) : null })}
-                  options={transporters.map((t) => ({ value: t.id, label: t.name }))}
-                  placeholder="Select transporter…"
-                />
-              </Field>
-            ) : (
-              <Field label="Machine / Vehicle">
-                <SearchSelect
-                  value={iForm.asset_id ?? ''}
-                  onChange={(v) => setIForm({ ...iForm, asset_id: v ? Number(v) : null })}
-                  options={[
-                    { value: '', label: '— Unassigned —' },
-                    ...assets.map((a) => ({ value: a.id, label: `${a.name}${a.identifier ? ` (${a.identifier})` : ''}` }))
-                  ]}
-                />
-              </Field>
-            )}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Litres" required>
                 <Input type="number" step="0.01" value={iForm.litres} onChange={(e) => setIForm({ ...iForm, litres: e.target.value })} />
@@ -388,6 +384,7 @@ export function Diesel(): React.JSX.Element {
                     litres: Number(iForm.litres),
                     asset_id: toTransporter ? null : iForm.asset_id || null,
                     transporter_id: toTransporter ? iForm.transporter_id || null : null,
+                    vehicle_no: toTransporter ? (iForm.vehicle_no || '') : '',
                     charged: toTransporter && !!iForm.charged
                   })
                 }}

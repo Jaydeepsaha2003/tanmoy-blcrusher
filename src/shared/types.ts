@@ -1139,6 +1139,8 @@ export interface DieselIssue {
   /** Optional transporter the diesel is charged to (debited on their ledger). */
   transporter_id: number | null
   transporter_name?: string | null
+  /** The transporter vehicle that was fuelled (when issued to a transporter vehicle). */
+  vehicle_no?: string
   /** FIFO unit cost and total cost of the issued litres. */
   rate: number | null
   amount: number | null

@@ -245,7 +245,9 @@ export const api = {
       call<TransporterFleetItem>('transporterFleet.create', p),
     update: (p: Partial<TransporterFleetItem>) =>
       call<TransporterFleetItem>('transporterFleet.update', p),
-    delete: (id: number) => call<{ ok: boolean }>('transporterFleet.delete', { id })
+    delete: (id: number) => call<{ ok: boolean }>('transporterFleet.delete', { id }),
+    listAll: (plant_id?: number) =>
+      call<(TransporterFleetItem & { transporter_name: string })[]>('transporterFleet.listAll', { plant_id })
   },
   companies: {
     list: () => call<Company[]>('companies.list'),

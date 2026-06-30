@@ -1,6 +1,27 @@
 import { getDb } from '../db'
 import type { TransporterFleetItem, Uom } from '@shared/types'
 import { properCase } from '@shared/types'
+import { plantScopeSql } from './partyPlants'
+
+/**
+ * Every transporter's fleet item (vehicle + JCB) with its transporter name, for
+ * pickers that span all transporters (e.g. diesel issue). Optionally scoped to
+ * the transporters visible at a plant.
+ */
+export async function listFleetVehicles(
+  payload: { plant_id?: number } = {}
+): Promise<(TransporterFleetItem & { transporter_name: string })[]> {
+  const d = getDb()
+  const clause = payload.plant_id ? `WHERE ${plantScopeSql('t', 'transporter')}` : ''
+  return (await d
+    .prepare(
+      `SELECT tf.*, t.name AS transporter_name
+       FROM transporter_fleet tf JOIN transporters t ON t.id = tf.transporter_id
+       ${clause}
+       ORDER BY t.name, tf.kind, tf.name`
+    )
+    .all(payload)) as (TransporterFleetItem & { transporter_name: string })[]
+}
 
 function numOrNull(v: unknown): number | null {
   const n = Number(v)

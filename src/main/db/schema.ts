@@ -682,6 +682,7 @@ CREATE TABLE IF NOT EXISTS diesel_issues (
   plant_id      INTEGER NOT NULL REFERENCES plants(id),
   asset_id      INTEGER REFERENCES assets(id),
   transporter_id INTEGER REFERENCES transporters(id),
+  vehicle_no    TEXT NOT NULL DEFAULT '',
   rate          REAL,
   amount        REAL,
   charged       INTEGER NOT NULL DEFAULT 0,

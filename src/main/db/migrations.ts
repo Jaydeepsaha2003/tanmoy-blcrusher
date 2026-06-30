@@ -1090,6 +1090,11 @@ CREATE INDEX idx_tfleet_transporter ON transporter_fleet(transporter_id)`
     id: '035_stock_location_opening_value',
     sql: `ALTER TABLE stock_locations ADD COLUMN opening_rate DOUBLE NOT NULL DEFAULT 0;
 ALTER TABLE stock_locations ADD COLUMN opening_amount DOUBLE NOT NULL DEFAULT 0`
+  },
+  {
+    // A diesel issue to a transporter can record the specific vehicle it fuelled.
+    id: '036_diesel_issue_vehicle',
+    sql: `ALTER TABLE diesel_issues ADD COLUMN vehicle_no VARCHAR(64) NOT NULL DEFAULT ''`
   }
 ]
 
@@ -1215,6 +1220,8 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   // Valued raw-material opening stock (transporter_fleet comes from SCHEMA on the SQLite path).
   await addColumn('stock_locations', 'opening_rate', 'REAL NOT NULL DEFAULT 0')
   await addColumn('stock_locations', 'opening_amount', 'REAL NOT NULL DEFAULT 0')
+  // Diesel issue can name the transporter vehicle it fuelled.
+  await addColumn('diesel_issues', 'vehicle_no', `TEXT NOT NULL DEFAULT ''`)
 }
 
 /**

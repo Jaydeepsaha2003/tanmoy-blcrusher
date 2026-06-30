@@ -131,6 +131,7 @@ export const handlers: Record<string, (payload: any) => unknown> = {
   'transporterFleet.create': transporterFleet.createTransporterFleet,
   'transporterFleet.update': transporterFleet.updateTransporterFleet,
   'transporterFleet.delete': transporterFleet.deleteTransporterFleet,
+  'transporterFleet.listAll': transporterFleet.listFleetVehicles,
 
   'companies.list': companies.listCompanies,
   'companies.create': companies.createCompany,

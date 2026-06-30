@@ -294,6 +294,8 @@ export interface DieselIssueInput {
   plant_id: number
   asset_id: number | null
   transporter_id?: number | null
+  /** When fuelling a transporter's vehicle, the specific vehicle no. (informational). */
+  vehicle_no?: string
   /** Tick to debit the FIFO diesel cost to the transporter's ledger. */
   charged?: boolean | number
   litres: number
@@ -309,13 +311,14 @@ export async function createDieselIssue(p: DieselIssueInput): Promise<DieselIssu
     const fifo = await dieselFifoCost(d, Number(p.plant_id), Number(p.litres))
     const transporter_id = p.transporter_id ? Number(p.transporter_id) : null
     const charged = transporter_id && p.charged ? 1 : 0
+    const vehicle_no = transporter_id ? (p.vehicle_no ?? '') : ''
     const no = await nextNumber('DIS', 'diesel_issue')
     const info = await d
       .prepare(
-        `INSERT INTO diesel_issues (issue_no, plant_id, asset_id, transporter_id, litres, rate, amount, charged, date, remarks)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO diesel_issues (issue_no, plant_id, asset_id, transporter_id, vehicle_no, litres, rate, amount, charged, date, remarks)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(no, p.plant_id, p.asset_id ?? null, transporter_id, litres(Number(p.litres)), fifo.rate, fifo.amount, charged, p.date, p.remarks ?? '')
+      .run(no, p.plant_id, p.asset_id ?? null, transporter_id, vehicle_no, litres(Number(p.litres)), fifo.rate, fifo.amount, charged, p.date, p.remarks ?? '')
     return (await d.prepare(`SELECT * FROM diesel_issues WHERE id = ?`).get(info.lastInsertRowid)) as DieselIssue
   })
 }
@@ -328,12 +331,14 @@ export async function updateDieselIssue(p: DieselIssueInput): Promise<DieselIssu
     const fifo = await dieselFifoCost(d, Number(p.plant_id), Number(p.litres), { src: 'issue', id: p.id! })
     const transporter_id = p.transporter_id ? Number(p.transporter_id) : null
     const charged = transporter_id && p.charged ? 1 : 0
+    const vehicle_no = transporter_id ? (p.vehicle_no ?? '') : ''
     await d.prepare(
-      `UPDATE diesel_issues SET plant_id=?, asset_id=?, transporter_id=?, litres=?, rate=?, amount=?, charged=?, date=?, remarks=? WHERE id=?`
+      `UPDATE diesel_issues SET plant_id=?, asset_id=?, transporter_id=?, vehicle_no=?, litres=?, rate=?, amount=?, charged=?, date=?, remarks=? WHERE id=?`
     ).run(
       p.plant_id,
       p.asset_id ?? null,
       transporter_id,
+      vehicle_no,
       litres(Number(p.litres)),
       fifo.rate,
       fifo.amount,
@@ -373,7 +378,7 @@ export async function listDieselIssuesAll(payload: { plant_id?: number; from?: s
   const di = (await d
     .prepare(
       `SELECT di.id, di.issue_no, di.date, di.plant_id, p.name AS plant_name, di.litres,
-              di.amount, di.charged, a.name AS asset_name, t.name AS transporter_name
+              di.amount, di.charged, di.vehicle_no, a.name AS asset_name, t.name AS transporter_name
        FROM diesel_issues di
        JOIN plants p ON p.id = di.plant_id
        LEFT JOIN assets a ON a.id = di.asset_id
@@ -381,14 +386,20 @@ export async function listDieselIssuesAll(payload: { plant_id?: number; from?: s
        WHERE 1=1 ${pid ? 'AND di.plant_id = @pid' : ''}${dateWhere('di')} AND COALESCE(di.litres,0) > 0`
     )
     .all(params)) as Record<string, unknown>[]
-  for (const x of di)
+  for (const x of di) {
+    const transporterWho = x.transporter_name
+      ? x.vehicle_no
+        ? `${x.transporter_name} · ${x.vehicle_no}`
+        : (x.transporter_name as string)
+      : null
     rows.push({
       source: 'issue', source_label: 'Issue', id: Number(x.id), ref_no: String(x.issue_no), date: String(x.date),
       plant_id: Number(x.plant_id), plant_name: (x.plant_name as string) ?? null,
-      recipient: (x.asset_name as string) || (x.transporter_name as string) || 'Unassigned',
+      recipient: (x.asset_name as string) || transporterWho || 'Unassigned',
       context: '', litres: Number(x.litres) || 0, amount: x.amount == null ? null : Number(x.amount),
-      charged_to: x.charged ? ((x.transporter_name as string) ?? null) : null, editable: true
+      charged_to: x.charged ? transporterWho : null, editable: true
     })
+  }
 
   // 2) Rack loadings (diesel drawn at the loading plant; charged to the loading transporter).
   const rl = (await d
