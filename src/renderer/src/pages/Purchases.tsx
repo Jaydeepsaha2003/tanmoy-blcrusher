@@ -2,6 +2,7 @@ import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, FileSpreadsheet, Mountain, Boxes, Pickaxe, X } from 'lucide-react'
 import { api } from '@/lib/api'
+import { TransporterVehicleSelect } from '@/components/vehicleSelect'
 import type { Purchase, PaymentStatus, MachineBasis, Uom } from '@shared/types'
 import { PageHeader, Page } from '@/components/layout'
 import {
@@ -436,7 +437,7 @@ export function Purchases(): React.JSX.Element {
                             options={transporters.map((tr) => ({ value: tr.id, label: tr.name }))}
                             placeholder="Transporter…"
                           />
-                          <Input value={t.vehicle_no} onChange={(e) => setTransporter(i, { vehicle_no: e.target.value })} placeholder="JH01AB1234" />
+                          <TransporterVehicleSelect transporterId={t.transporter_id} value={t.vehicle_no} onChange={(v) => setTransporter(i, { vehicle_no: v })} />
                           <SearchSelect
                             value={t.basis || 'flat'}
                             onChange={(v) => setTransporter(i, { basis: v })}

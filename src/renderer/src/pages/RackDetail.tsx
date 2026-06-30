@@ -16,6 +16,7 @@ import {
   X
 } from 'lucide-react'
 import { api } from '@/lib/api'
+import { TransporterVehicleSelect } from '@/components/vehicleSelect'
 import type { RackLoading, RackUnloading, RackExpense, RackSale, RackStatus, Uom, JcbWorkType } from '@shared/types'
 import { toCm, fromCm, UOMS } from '@shared/types'
 import { PageHeader, Page } from '@/components/layout'
@@ -830,9 +831,12 @@ export function RackDetail(): React.JSX.Element {
                 options={transporters.map((t) => ({ value: t.id, label: t.name }))}
               />
             </Field>
-            <Field label="Vehicle No.">
-              <Input value={loadingForm.vehicle_no || ''} onChange={(e) =>
-                setLoadingForm({ ...loadingForm, vehicle_no: e.target.value })} placeholder="e.g. JH-01-AB-1234" />
+            <Field label="Vehicle No." hint={loadingForm.transporter_id ? "From this transporter's fleet (or type one)" : undefined}>
+              <TransporterVehicleSelect
+                transporterId={loadingForm.transporter_id}
+                value={loadingForm.vehicle_no || ''}
+                onChange={(v) => setLoadingForm({ ...loadingForm, vehicle_no: v })}
+              />
             </Field>
             <Field label="No. of Trips">
               <Input type="number" step="1" value={loadingForm.trips} onChange={(e) =>
@@ -1166,7 +1170,8 @@ export function RackDetail(): React.JSX.Element {
               {sTLines.map((t: any, i: number) => {
                 const computed = t.basis === 'trip' || t.basis === 'uom'
                 return (
-                  <div key={i} className="grid grid-cols-[1.3fr_84px_56px_70px_84px_64px_28px] items-center gap-2">
+                  <div key={i} className="space-y-1">
+                    <div className="grid grid-cols-[1.3fr_84px_56px_70px_84px_64px_28px] items-center gap-2">
                     <SearchSelect
                       value={t.carrier || ''}
                       onChange={(v) => setSaleCarrier(i, v)}
@@ -1190,6 +1195,13 @@ export function RackDetail(): React.JSX.Element {
                     <Input type="number" step="0.01" value={t.diesel_litres ?? ''} placeholder="0"
                       onChange={(e) => setSaleTransporter(i, { diesel_litres: e.target.value })} />
                     <Button variant="ghost" size="icon" onClick={() => delSaleTransporter(i)}><X size={15} className="text-destructive" /></Button>
+                    </div>
+                    {String(t.carrier || '').startsWith('t:') && (
+                      <div className="flex items-center gap-2 pl-1">
+                        <span className="whitespace-nowrap text-[11px] text-muted-foreground">Vehicle:</span>
+                        <TransporterVehicleSelect className="w-56" transporterId={Number(String(t.carrier).slice(2))} value={t.vehicle_no || ''} onChange={(v) => setSaleTransporter(i, { vehicle_no: v })} />
+                      </div>
+                    )}
                   </div>
                 )
               })}
