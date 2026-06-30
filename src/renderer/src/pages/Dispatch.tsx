@@ -524,14 +524,14 @@ export function Dispatch(): React.JSX.Element {
             <Section title="Quantity & Rate">
               <div className={cn('grid grid-cols-2 gap-4', isOutsource ? 'sm:grid-cols-4' : 'sm:grid-cols-3')}>
                 <Field
-                  label={`Actual Qty (${form.uom})`}
+                  label={`Dispatch Qty (${form.uom})`}
                   required={!isOutsource}
                   hint={isOutsource ? 'Optional — no stock moves' : qtyCm > 0 ? `${fmtQty(qtyCm)} m³ off stock` : 'Dispatched from plant'}
                 >
                   <Input type="number" step="0.001" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} placeholder={isOutsource ? 'Optional' : ''} />
                 </Field>
                 <Field
-                  label={`Sale Qty (${form.uom})`}
+                  label={`Customer Rec Qty (${form.uom})`}
                   hint={
                     isOutsource
                       ? 'Quantity sold to the customer'
