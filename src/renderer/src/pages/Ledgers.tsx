@@ -140,8 +140,8 @@ export function Ledgers(): React.JSX.Element {
   const { data: branding } = useQuery({ queryKey: ['branding'], queryFn: () => api.rates.getBranding() })
   const { data: plants = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
   const { data: ledger } = useQuery({
-    queryKey: ['ledger', partyType, partyId, from, to],
-    queryFn: () => api.ledgers.get(partyType, partyId!, from || undefined, to || undefined),
+    queryKey: ['ledger', partyType, partyId, from, to, plantId],
+    queryFn: () => api.ledgers.get(partyType, partyId!, from || undefined, to || undefined, plantId),
     enabled: !!partyId
   })
 

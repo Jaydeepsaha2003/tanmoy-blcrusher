@@ -226,17 +226,23 @@ interface RawEntry {
 /** Party ledgers that support a manual opening balance. */
 const OPENING_TYPES: LedgerType[] = ['customer', 'supplier', 'transporter', 'outsource', 'plant']
 
-/** Synthetic 'Opening Balance' entries (one per plant row) for a party — the full ledger
- *  shows every plant's opening; the combined balance is their sum. */
-async function openingEntries(partyType: LedgerType, partyId: number): Promise<RawEntry[]> {
+/** Synthetic 'Opening Balance' entries for a party. With no plant scope the full ledger shows
+ *  every plant's opening (one line each); when a plant is active only that plant's rows (plus
+ *  common, plant-unassigned ones) count — an opening tagged to plant A never leaks into plant B.
+ *  A plant's own P&L opening (party_type='plant') is never filtered by the active plant. */
+async function openingEntries(partyType: LedgerType, partyId: number, plantId?: number): Promise<RawEntry[]> {
   if (!OPENING_TYPES.includes(partyType)) return []
+  const scopeByPlant = !!plantId && partyType !== 'plant'
+  const params: Record<string, unknown> = { party_type: partyType, party_id: partyId }
+  if (scopeByPlant) params.plant_id = plantId
   const rows = (await getDb()
     .prepare(
       `SELECT ob.amount, ob.direction, ob.as_of_date, p.name AS plant_name
        FROM opening_balances ob LEFT JOIN plants p ON p.id = ob.plant_id
-       WHERE ob.party_type = ? AND ob.party_id = ?`
+       WHERE ob.party_type = @party_type AND ob.party_id = @party_id
+       ${scopeByPlant ? 'AND (ob.plant_id = @plant_id OR ob.plant_id IS NULL)' : ''}`
     )
-    .all(partyType, partyId)) as { amount: number; direction: string; as_of_date: string; plant_name: string | null }[]
+    .all(params)) as { amount: number; direction: string; as_of_date: string; plant_name: string | null }[]
   return rows
     .filter((r) => r.amount > 0)
     .map((r) => ({
@@ -249,11 +255,11 @@ async function openingEntries(partyType: LedgerType, partyId: number): Promise<R
     }))
 }
 
-async function buildEntries(partyType: LedgerType, partyId: number): Promise<RawEntry[]> {
+async function buildEntries(partyType: LedgerType, partyId: number, plantId?: number): Promise<RawEntry[]> {
   const d = getDb()
   const entries: RawEntry[] = []
-  // Seed the manual opening balances, one per plant (carry-forward computed by getLedger).
-  entries.push(...(await openingEntries(partyType, partyId)))
+  // Seed the manual opening balances (scoped to the active plant when one is given).
+  entries.push(...(await openingEntries(partyType, partyId, plantId)))
 
   if (partyType === 'rack') {
     const loadings = (await d
@@ -403,7 +409,7 @@ async function buildEntries(partyType: LedgerType, partyId: number): Promise<Raw
       outsource: 'Outsource'
     }
     for (const link of await companyLinks(partyId)) {
-      for (const e of await buildEntries(link.type, link.id))
+      for (const e of await buildEntries(link.type, link.id, plantId))
         entries.push({ ...e, particulars: `[${roleLabel[link.type]}] ${e.particulars}` })
     }
     entries.sort((a, b) =>
@@ -1444,11 +1450,14 @@ function runningSign(partyType: LedgerType): 1 | -1 {
 export async function getLedger(payload: {
   party_type: LedgerType
   party_id: number
+  /** Active plant: scopes opening balances to that plant (+ common) so a plant-tagged
+   *  opening never shows under another plant. Omit for the combined, all-plants account. */
+  plant_id?: number
   from?: string
   to?: string
 }): Promise<LedgerStatement> {
   const name = await partyName(payload.party_type, payload.party_id)
-  const all = await buildEntries(payload.party_type, payload.party_id)
+  const all = await buildEntries(payload.party_type, payload.party_id, payload.plant_id)
   const sign = runningSign(payload.party_type)
 
   let opening = 0
@@ -1620,7 +1629,7 @@ export async function getPartyBalances(payload: {
   const sign = runningSign(payload.party_type)
   const result: PartyBalance[] = []
   for (const p of parties) {
-    const entries = await buildEntries(payload.party_type, p.id)
+    const entries = await buildEntries(payload.party_type, p.id, payload.plant_id)
     const totalDebit = entries.reduce((a, e) => a + e.debit, 0)
     const totalCredit = entries.reduce((a, e) => a + e.credit, 0)
     result.push({

@@ -280,8 +280,8 @@ export const api = {
     delete: (id: number) => call<{ ok: boolean }>('rackJcbs.delete', { id })
   },
   ledgers: {
-    get: (party_type: LedgerType, party_id: number, from?: string, to?: string) =>
-      call<LedgerStatement>('ledgers.get', { party_type, party_id, from, to }),
+    get: (party_type: LedgerType, party_id: number, from?: string, to?: string, plant_id?: number) =>
+      call<LedgerStatement>('ledgers.get', { party_type, party_id, from, to, plant_id }),
     balances: (party_type: LedgerType, plant_id?: number) =>
       call<PartyBalance[]>('ledgers.balances', { party_type, plant_id }),
     allDues: (plant_id?: number) => call<DueRow[]>('ledgers.allDues', { plant_id }),
