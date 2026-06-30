@@ -1,5 +1,5 @@
 import { getDb, nextNumber, type Db } from '../db'
-import type { DieselPurchase, DieselIssue, DieselStock, PaymentStatus } from '@shared/types'
+import type { DieselPurchase, DieselIssue, DieselIssueLine, DieselStock, PaymentStatus } from '@shared/types'
 import { derivePaymentStatus } from '@shared/types'
 
 function money(n: number): number {
@@ -350,6 +350,117 @@ export async function deleteDieselIssue(payload: { id: number }): Promise<{ ok: 
   const d = getDb()
   await d.prepare(`DELETE FROM diesel_issues WHERE id = ?`).run(payload.id)
   return { ok: true }
+}
+
+/**
+ * Every diesel issuance, unified across sources: direct issues PLUS the diesel consumed on
+ * rack loadings, unloadings and sale-transport. So "wherever diesel is issued" it shows as an
+ * issue entry (Diesel page) and can be surfaced in Plant Expenses. Plant-scoped; only litres > 0.
+ */
+export async function listDieselIssuesAll(payload: { plant_id?: number; from?: string; to?: string } = {}): Promise<DieselIssueLine[]> {
+  const d = getDb()
+  const pid = payload.plant_id ? Number(payload.plant_id) : 0
+  const dateWhere = (alias: string): string =>
+    `${payload.from ? ` AND ${alias}.date >= @from` : ''}${payload.to ? ` AND ${alias}.date <= @to` : ''}`
+  const params: Record<string, unknown> = {}
+  if (pid) params.pid = pid
+  if (payload.from) params.from = payload.from
+  if (payload.to) params.to = payload.to
+
+  const rows: DieselIssueLine[] = []
+
+  // 1) Direct diesel issues (the only editable source).
+  const di = (await d
+    .prepare(
+      `SELECT di.id, di.issue_no, di.date, di.plant_id, p.name AS plant_name, di.litres,
+              di.amount, di.charged, a.name AS asset_name, t.name AS transporter_name
+       FROM diesel_issues di
+       JOIN plants p ON p.id = di.plant_id
+       LEFT JOIN assets a ON a.id = di.asset_id
+       LEFT JOIN transporters t ON t.id = di.transporter_id
+       WHERE 1=1 ${pid ? 'AND di.plant_id = @pid' : ''}${dateWhere('di')} AND COALESCE(di.litres,0) > 0`
+    )
+    .all(params)) as Record<string, unknown>[]
+  for (const x of di)
+    rows.push({
+      source: 'issue', source_label: 'Issue', id: Number(x.id), ref_no: String(x.issue_no), date: String(x.date),
+      plant_id: Number(x.plant_id), plant_name: (x.plant_name as string) ?? null,
+      recipient: (x.asset_name as string) || (x.transporter_name as string) || 'Unassigned',
+      context: '', litres: Number(x.litres) || 0, amount: x.amount == null ? null : Number(x.amount),
+      charged_to: x.charged ? ((x.transporter_name as string) ?? null) : null, editable: true
+    })
+
+  // 2) Rack loadings (diesel drawn at the loading plant; charged to the loading transporter).
+  const rl = (await d
+    .prepare(
+      `SELECT rl.id, rl.loading_no, rl.date, rl.plant_id, p.name AS plant_name, rl.diesel_litres AS litres,
+              rl.diesel_amount AS amount, rl.diesel_charged, rl.vehicle_no, t.name AS transporter_name, r.rack_no
+       FROM rack_loadings rl
+       JOIN plants p ON p.id = rl.plant_id
+       JOIN racks r ON r.id = rl.rack_id
+       LEFT JOIN transporters t ON t.id = rl.transporter_id
+       WHERE COALESCE(rl.diesel_litres,0) > 0 ${pid ? 'AND rl.plant_id = @pid' : ''}${dateWhere('rl')}`
+    )
+    .all(params)) as Record<string, unknown>[]
+  for (const x of rl)
+    rows.push({
+      source: 'rack_loading', source_label: 'Rack Loading', id: Number(x.id), ref_no: String(x.loading_no), date: String(x.date),
+      plant_id: Number(x.plant_id), plant_name: (x.plant_name as string) ?? null,
+      recipient: (x.transporter_name as string) || (x.vehicle_no as string) || '—',
+      context: `Rack ${x.rack_no} · loading`, litres: Number(x.litres) || 0, amount: x.amount == null ? null : Number(x.amount),
+      charged_to: x.diesel_charged ? ((x.transporter_name as string) ?? null) : null, editable: false
+    })
+
+  // 3) Rack unloadings (diesel from the rack's source plant; charged to the JCB / tipper).
+  const ru = (await d
+    .prepare(
+      `SELECT ru.id, ru.unloading_no, ru.date, r.plant_id, p.name AS plant_name, ru.diesel_litres AS litres,
+              ru.diesel_amount AS amount, ru.diesel_charged, r.rack_no,
+              COALESCE(rv.vehicle_no, rj.name, t.name) AS carrier
+       FROM rack_unloadings ru
+       JOIN racks r ON r.id = ru.rack_id
+       LEFT JOIN plants p ON p.id = r.plant_id
+       LEFT JOIN rack_vehicles rv ON rv.id = ru.rack_vehicle_id
+       LEFT JOIN rack_jcbs rj ON rj.id = ru.rack_jcb_id
+       LEFT JOIN transporters t ON t.id = ru.transporter_id
+       WHERE COALESCE(ru.diesel_litres,0) > 0 ${pid ? 'AND r.plant_id = @pid' : ''}${dateWhere('ru')}`
+    )
+    .all(params)) as Record<string, unknown>[]
+  for (const x of ru)
+    rows.push({
+      source: 'rack_unloading', source_label: 'Rack Unloading', id: Number(x.id), ref_no: String(x.unloading_no), date: String(x.date),
+      plant_id: x.plant_id == null ? null : Number(x.plant_id), plant_name: (x.plant_name as string) ?? null,
+      recipient: (x.carrier as string) || '—', context: `Rack ${x.rack_no} · unloading`,
+      litres: Number(x.litres) || 0, amount: x.amount == null ? null : Number(x.amount),
+      charged_to: x.diesel_charged ? ((x.carrier as string) ?? null) : null, editable: false
+    })
+
+  // 4) Rack sale transport (diesel from the rack's source plant; charged to the carrier).
+  const rst = (await d
+    .prepare(
+      `SELECT rst.id, rs.sale_no, rs.date, r.plant_id, p.name AS plant_name, rst.diesel_litres AS litres,
+              rst.diesel_amount AS amount, rst.diesel_charged, r.rack_no,
+              COALESCE(t.name, rv.vehicle_no) AS carrier
+       FROM rack_sale_transporters rst
+       JOIN rack_sales rs ON rs.id = rst.rack_sale_id
+       JOIN racks r ON r.id = rs.rack_id
+       LEFT JOIN plants p ON p.id = r.plant_id
+       LEFT JOIN transporters t ON t.id = rst.transporter_id
+       LEFT JOIN rack_vehicles rv ON rv.id = rst.rack_vehicle_id
+       WHERE COALESCE(rst.diesel_litres,0) > 0 ${pid ? 'AND r.plant_id = @pid' : ''}${dateWhere('rs')}`
+    )
+    .all(params)) as Record<string, unknown>[]
+  for (const x of rst)
+    rows.push({
+      source: 'rack_sale', source_label: 'Rack Sale', id: Number(x.id), ref_no: String(x.sale_no), date: String(x.date),
+      plant_id: x.plant_id == null ? null : Number(x.plant_id), plant_name: (x.plant_name as string) ?? null,
+      recipient: (x.carrier as string) || '—', context: `Rack ${x.rack_no} · sale`,
+      litres: Number(x.litres) || 0, amount: x.amount == null ? null : Number(x.amount),
+      charged_to: x.diesel_charged ? ((x.carrier as string) ?? null) : null, editable: false
+    })
+
+  rows.sort((a, b) => (a.date === b.date ? b.ref_no.localeCompare(a.ref_no) : b.date.localeCompare(a.date)))
+  return rows
 }
 
 /** Total litres issued per asset (for the consumption summary). */

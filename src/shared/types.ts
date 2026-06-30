@@ -1042,10 +1042,13 @@ export interface ExpenseCategoryTotal {
   amount: number
 }
 
-/** One line in the consolidated plant expense book (native expenses + purchases + diesel + wages). */
+/** One line in the consolidated plant expense book (native expenses + purchases + diesel + wages
+ *  + informational diesel-issue consumption lines). */
 export interface ExpenseBookRow {
-  source: 'expense' | 'purchase' | 'diesel' | 'wages'
+  source: 'expense' | 'purchase' | 'diesel' | 'wages' | 'diesel_issue'
   source_label: string
+  /** Informational rows (e.g. diesel consumption) are shown but NOT added to the outgoings total. */
+  informational?: boolean
   /** Native-expense id (for edit/delete); 0 for pulled-in rows. */
   id: number
   ref_no: string
@@ -1119,6 +1122,30 @@ export interface DieselStock {
   purchased: number
   issued: number
   balance: number
+}
+
+/** One diesel issuance from ANY source — a direct issue or diesel consumed on a rack
+ *  loading / unloading / sale transport — unified for the Diesel page & Plant Expenses. */
+export interface DieselIssueLine {
+  source: 'issue' | 'rack_loading' | 'rack_unloading' | 'rack_sale'
+  source_label: string
+  /** Real row id; for source 'issue' the issue can be edited/deleted here. */
+  id: number
+  ref_no: string
+  date: string
+  plant_id: number | null
+  plant_name: string | null
+  /** Who consumed it (machine / vehicle / JCB / transporter / Unassigned). */
+  recipient: string
+  /** Extra context, e.g. "Rack RK-001 · unloading". */
+  context: string
+  litres: number
+  /** FIFO cost of the issued litres. */
+  amount: number | null
+  /** Party the cost is charged to (transporter / vehicle / JCB), if charged. */
+  charged_to: string | null
+  /** Only direct issues are editable from the Diesel page. */
+  editable: boolean
 }
 
 export type WageType = 'monthly' | 'daily'

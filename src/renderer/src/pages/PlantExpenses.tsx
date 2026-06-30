@@ -66,7 +66,9 @@ export function PlantExpenses(): React.JSX.Element {
     queryFn: () => api.plantExpenses.book(bookFilter),
     enabled: view === 'book'
   })
-  const bookTotal = book.reduce((s, r) => s + r.amount, 0)
+  // Informational rows (diesel consumption) are shown but excluded from the outgoings total.
+  const bookTotal = book.reduce((s, r) => s + (r.informational ? 0 : r.amount), 0)
+  const dieselIssuedTotal = book.reduce((s, r) => s + (r.informational ? r.amount : 0), 0)
   const { data: totals = [] } = useQuery({
     queryKey: ['plantExpenseTotals', plantId, from, to],
     queryFn: () => api.plantExpenses.totals(clean({ plant_id: plantId, from: from || undefined, to: to || undefined }))
@@ -252,6 +254,9 @@ export function PlantExpenses(): React.JSX.Element {
               <div className="mb-2 text-sm text-muted-foreground">
                 {book.length} entries · Total outgoings: <span className="font-semibold text-destructive">{fmtMoney(bookTotal)}</span>
                 <span className="ml-1">— expenses, purchases, diesel and wages combined.</span>
+                {dieselIssuedTotal > 0 && (
+                  <span className="ml-1">Diesel issued (consumption, shown separately, not in total): <span className="font-semibold">{fmtMoney(dieselIssuedTotal)}</span>.</span>
+                )}
               </div>
               <Table>
                 <THead>
@@ -268,15 +273,17 @@ export function PlantExpenses(): React.JSX.Element {
                 </THead>
                 <TBody>
                   {book.map((r) => (
-                    <TR key={`${r.source}-${r.ref_no}`}>
+                    <TR key={`${r.source}-${r.ref_no}`} className={r.informational ? 'bg-muted/20' : ''}>
                       <TD><Badge variant="muted">{r.source_label}</Badge></TD>
                       <TD className="font-mono text-xs">{r.ref_no}</TD>
                       <TD>{fmtDate(r.date)}</TD>
                       <TD className="font-medium">{r.category}</TD>
                       <TD className="text-muted-foreground">{r.details}</TD>
-                      <TD className="tnum text-right font-semibold">{fmtMoney(r.amount)}</TD>
-                      <TD className="tnum text-right text-muted-foreground">{fmtMoney(r.paid_amount)}</TD>
-                      <TD><Badge variant={payBadge[r.payment_status]}>{r.payment_status}</Badge></TD>
+                      <TD className={`tnum text-right ${r.informational ? 'italic text-muted-foreground' : 'font-semibold'}`}>
+                        {fmtMoney(r.amount)}{r.informational && <span className="ml-1 text-[10px] not-italic">(consumed)</span>}
+                      </TD>
+                      <TD className="tnum text-right text-muted-foreground">{r.informational ? '-' : fmtMoney(r.paid_amount)}</TD>
+                      <TD>{r.informational ? <span className="text-[11px] text-muted-foreground">—</span> : <Badge variant={payBadge[r.payment_status]}>{r.payment_status}</Badge>}</TD>
                     </TR>
                   ))}
                 </TBody>

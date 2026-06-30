@@ -853,7 +853,8 @@ async function writeRackSaleChildLines(
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   for (const t of transporters ?? []) {
-    const transporterId = t.transporter_id ? Number(t.transporter_id) : 0
+    // NULL (not 0) when the carrier is a fleet vehicle — 0 would violate the SQLite FK on transporter_id.
+    const transporterId = t.transporter_id ? Number(t.transporter_id) : null
     const vehicleId = t.rack_vehicle_id ? Number(t.rack_vehicle_id) : null
     if (!transporterId && !vehicleId) continue
     const basis: PurchaseTransportBasis = t.basis === 'trip' || t.basis === 'uom' ? t.basis : 'flat'

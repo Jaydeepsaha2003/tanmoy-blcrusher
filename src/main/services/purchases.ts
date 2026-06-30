@@ -385,12 +385,16 @@ export async function removeLinkedPurchase(id: number): Promise<void> {
 export async function setPurchasePayment(payload: {
   id: number
   paid_amount: number
-  payment_status: PaymentStatus
+  payment_status?: PaymentStatus
 }): Promise<Purchase> {
   const d = getDb()
+  const row = (await d.prepare(`SELECT amount FROM purchases WHERE id = ?`).get(payload.id)) as { amount: number | null } | undefined
+  if (!row) throw new Error('Purchase not found.')
+  // Derive status from amount paid vs the bill — never trust the client-sent status.
+  const paid = Number(payload.paid_amount) || 0
   await d.prepare(`UPDATE purchases SET paid_amount=?, payment_status=? WHERE id=?`).run(
-    payload.paid_amount || 0,
-    payload.payment_status,
+    paid,
+    derivePaymentStatus(Number(row.amount) || 0, paid),
     payload.id
   )
   return (await d.prepare(`SELECT * FROM purchases WHERE id = ?`).get(payload.id)) as Purchase

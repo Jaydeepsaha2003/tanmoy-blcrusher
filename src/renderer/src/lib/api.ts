@@ -47,6 +47,7 @@ import type {
   ExpenseBookRow,
   DieselPurchase,
   DieselIssue,
+  DieselIssueLine,
   DieselStock,
   Employee,
   WageEntry,
@@ -216,7 +217,7 @@ export const api = {
       note?: string
     }) => call<{ ok: boolean }>('movements.transfer', p),
     deleteTransfer: (ref_no: string) =>
-      call<{ ok: boolean }>('movements.deleteTransfer', { ref_no })
+      call<{ ok: boolean; error?: string }>('movements.deleteTransfer', { ref_no })
   },
   transporters: {
     list: (plant_id?: number) => call<Transporter[]>('transporters.list', { plant_id }),
@@ -389,6 +390,7 @@ export const api = {
     deletePurchase: (id: number) =>
       call<{ ok: boolean; error?: string }>('diesel.deletePurchase', { id }),
     issues: (filter?: Record<string, unknown>) => call<DieselIssue[]>('diesel.issues', filter),
+    issuesAll: (filter?: Record<string, unknown>) => call<DieselIssueLine[]>('diesel.issuesAll', filter),
     createIssue: (p: unknown) => call<DieselIssue>('diesel.createIssue', p),
     updateIssue: (p: unknown) => call<DieselIssue>('diesel.updateIssue', p),
     deleteIssue: (id: number) => call<{ ok: boolean }>('diesel.deleteIssue', { id }),

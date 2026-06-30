@@ -255,8 +255,22 @@ export async function transferStock(p: TransferInput): Promise<{ ok: boolean }> 
   return { ok: true }
 }
 
-export async function deleteTransfer(payload: { ref_no: string }): Promise<{ ok: boolean }> {
+export async function deleteTransfer(payload: { ref_no: string }): Promise<{ ok: boolean; error?: string }> {
   const d = getDb()
-  await d.prepare(`DELETE FROM stock_movements WHERE ref_no = ? AND type = 'transfer'`).run(payload.ref_no)
-  return { ok: true }
+  const legs = (await d
+    .prepare(`SELECT DISTINCT stock_location_id FROM stock_movements WHERE ref_no = ? AND type = 'transfer'`)
+    .all(payload.ref_no)) as { stock_location_id: number | null }[]
+  try {
+    await d.transaction(async () => {
+      await d.prepare(`DELETE FROM stock_movements WHERE ref_no = ? AND type = 'transfer'`).run(payload.ref_no)
+      // Removing the inbound leg can't leave the destination (or source) negative.
+      for (const l of legs) {
+        if (l.stock_location_id != null && (await rawLocationBalance(d, l.stock_location_id)) < 0)
+          throw new Error('Cannot delete: stock from this transfer has already been used at the destination.')
+      }
+    })
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: (e as Error).message }
+  }
 }

@@ -2,7 +2,7 @@ import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, FileSpreadsheet, Fuel, FlaskConical, Gauge } from 'lucide-react'
 import { api } from '@/lib/api'
-import type { DieselPurchase, DieselIssue, PaymentStatus } from '@shared/types'
+import type { DieselPurchase, DieselIssue, DieselIssueLine, PaymentStatus } from '@shared/types'
 import { PageHeader, Page } from '@/components/layout'
 import {
   Button,
@@ -47,6 +47,8 @@ export function Diesel(): React.JSX.Element {
   const { data: stock } = useQuery({ queryKey: ['dieselStock', plantId], queryFn: () => api.diesel.stock(plantId) })
   const { data: purchases = [] } = useQuery({ queryKey: ['dieselPurchases', plantId], queryFn: () => api.diesel.purchases(clean({ plant_id: plantId })) })
   const { data: issues = [] } = useQuery({ queryKey: ['dieselIssues', plantId], queryFn: () => api.diesel.issues(clean({ plant_id: plantId })) })
+  // Every diesel issuance, unified across direct issues + rack loading/unloading/sale transport.
+  const { data: issuesAll = [] } = useQuery({ queryKey: ['dieselIssuesAll', plantId], queryFn: () => api.diesel.issuesAll(clean({ plant_id: plantId })) })
   const { data: byAsset = [] } = useQuery({ queryKey: ['dieselByAsset', plantId], queryFn: () => api.diesel.byAsset(plantId) })
 
   const [pForm, setPForm] = React.useState<any>(null)
@@ -56,7 +58,9 @@ export function Diesel(): React.JSX.Element {
     qc.invalidateQueries({ queryKey: ['dieselStock'] })
     qc.invalidateQueries({ queryKey: ['dieselPurchases'] })
     qc.invalidateQueries({ queryKey: ['dieselIssues'] })
+    qc.invalidateQueries({ queryKey: ['dieselIssuesAll'] })
     qc.invalidateQueries({ queryKey: ['dieselByAsset'] })
+    qc.invalidateQueries({ queryKey: ['plantExpenseBook'] })
     qc.invalidateQueries({ queryKey: ['ledger'] })
     qc.invalidateQueries({ queryKey: ['ledger-balances'] })
     qc.invalidateQueries({ queryKey: ['allDues'] })
@@ -113,8 +117,8 @@ export function Diesel(): React.JSX.Element {
   function exportExcel(): void {
     if (tab === 'issues') {
       downloadExcel('diesel-issues', 'Diesel Issues',
-        ['Issue No', 'Date', 'Machine/Vehicle', 'Litres', 'Diesel Cost (FIFO)', 'Charged To', 'Charged', 'Remarks'],
-        issues.map((x) => [x.issue_no, fmtDate(x.date), x.asset_name ?? 'Unassigned', x.litres, x.amount ?? '', x.charged ? (x.transporter_name ?? '') : '', x.charged ? 'Yes' : 'No', x.remarks]))
+        ['No', 'Date', 'Source', 'Recipient', 'Context', 'Litres', 'Cost (FIFO)', 'Charged To'],
+        issuesAll.map((x) => [x.ref_no, fmtDate(x.date), x.source_label, x.recipient, x.context, x.litres, x.amount ?? '', x.charged_to ?? '']))
     } else {
       downloadExcel('diesel-purchases', 'Diesel Purchases',
         ['Purchase No', 'Date', 'Creditor', 'Plant', 'Litres', 'Rate', 'Amount', 'Paid', 'Status'],
@@ -129,7 +133,7 @@ export function Diesel(): React.JSX.Element {
         description="Daily diesel purchases (creditor ledger), litre stock, and issuing to a machine, vehicle or transporter"
         actions={
           <>
-            <Button variant="outline" onClick={exportExcel} disabled={tab === 'issues' ? !issues.length : !purchases.length}>
+            <Button variant="outline" onClick={exportExcel} disabled={tab === 'issues' ? !issuesAll.length : !purchases.length}>
               <FileSpreadsheet size={16} /> Excel
             </Button>
             {tab !== 'by_machine' && (
@@ -183,29 +187,47 @@ export function Diesel(): React.JSX.Element {
         )}
 
         {tab === 'issues' && (
-          issues.length === 0 ? <EmptyState message="No diesel issued yet." /> : (
-            <Table>
-              <THead><TR>
-                <TH>No</TH><TH>Date</TH><TH>Machine / Vehicle</TH><TH className="text-right">Litres</TH><TH>Charged To</TH><TH className="text-right">Charge</TH><TH>Remarks</TH><TH className="text-right">Actions</TH>
-              </TR></THead>
-              <TBody>
-                {issues.map((x) => (
-                  <TR key={x.id}>
-                    <TD className="font-mono text-xs">{x.issue_no}</TD>
-                    <TD>{fmtDate(x.date)}</TD>
-                    <TD className="font-medium">{x.asset_name ?? 'Unassigned'}</TD>
-                    <TD className="tnum text-right font-semibold">{fmtQty(x.litres)}</TD>
-                    <TD>{x.charged ? x.transporter_name : '-'}</TD>
-                    <TD className="tnum text-right">{x.charged && x.amount != null ? `₹${fmtMoney(x.amount)}` : '-'}</TD>
-                    <TD className="text-muted-foreground">{x.remarks || '-'}</TD>
-                    <TD className="text-right">
-                      <Button variant="ghost" size="icon" onClick={() => setIForm({ ...x, recipient: x.transporter_id ? 'transporter' : 'asset', asset_id: x.asset_id, transporter_id: x.transporter_id ?? null, charged: !!x.charged, litres: x.litres })}><Pencil size={15} /></Button>
-                      <Button variant="ghost" size="icon" onClick={() => removeIssue(x)}><Trash2 size={15} className="text-destructive" /></Button>
-                    </TD>
-                  </TR>
-                ))}
-              </TBody>
-            </Table>
+          issuesAll.length === 0 ? <EmptyState message="No diesel issued yet — from here, a rack loading/unloading, or a rack sale." /> : (
+            <>
+              <div className="mb-2 text-xs text-muted-foreground">
+                Every diesel issuance — direct issues plus diesel consumed on rack loading, unloading and sale transport.
+                Rack rows are edited on their own rack.
+              </div>
+              <Table>
+                <THead><TR>
+                  <TH>No</TH><TH>Date</TH><TH>Source</TH><TH>Recipient</TH><TH className="text-right">Litres</TH><TH>Charged To</TH><TH className="text-right">Cost (FIFO)</TH><TH className="text-right">Actions</TH>
+                </TR></THead>
+                <TBody>
+                  {issuesAll.map((x) => (
+                    <TR key={`${x.source}-${x.id}`}>
+                      <TD className="font-mono text-xs">{x.ref_no}</TD>
+                      <TD className="whitespace-nowrap">{fmtDate(x.date)}</TD>
+                      <TD><Badge variant={x.source === 'issue' ? 'default' : 'muted'}>{x.source_label}</Badge></TD>
+                      <TD>
+                        <div className="font-medium">{x.recipient}</div>
+                        {x.context && <div className="text-[11px] text-muted-foreground">{x.context}</div>}
+                      </TD>
+                      <TD className="tnum text-right font-semibold">{fmtQty(x.litres)}</TD>
+                      <TD className="text-muted-foreground">{x.charged_to ?? '-'}</TD>
+                      <TD className="tnum text-right">{x.amount != null ? `₹${fmtMoney(x.amount)}` : '-'}</TD>
+                      <TD className="text-right">
+                        {x.editable ? (
+                          <>
+                            <Button variant="ghost" size="icon" onClick={() => {
+                              const full = issues.find((i) => i.id === x.id)
+                              if (full) setIForm({ ...full, recipient: full.transporter_id ? 'transporter' : 'asset', asset_id: full.asset_id, transporter_id: full.transporter_id ?? null, charged: !!full.charged, litres: full.litres })
+                            }}><Pencil size={15} /></Button>
+                            <Button variant="ghost" size="icon" onClick={() => { const full = issues.find((i) => i.id === x.id); if (full) removeIssue(full) }}><Trash2 size={15} className="text-destructive" /></Button>
+                          </>
+                        ) : (
+                          <span className="text-[11px] text-muted-foreground">on rack</span>
+                        )}
+                      </TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+            </>
           )
         )}
 

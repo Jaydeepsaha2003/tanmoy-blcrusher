@@ -487,12 +487,20 @@ export async function setRate(payload: { id: number; rate: number }): Promise<Di
   // Bill the sale quantity when it has been entered, else the actual quantity.
   const billableQty = row.sale_quantity != null ? row.sale_quantity : row.quantity
   const amount = computeAmount(payload.rate, billableQty)
-  await d.prepare(`UPDATE dispatches SET rate=?, amount=? WHERE id=?`).run(payload.rate, amount, payload.id)
-  // Keep the mirror purchase's cost in sync when a rate is set on an inter-plant sale.
-  if (row.linked_purchase_id && amount != null && row.qty_cm > 0) {
-    const ratePerCm = round2(amount / row.qty_cm)
-    await d.prepare(`UPDATE purchases SET rate=?, amount=? WHERE id=?`).run(ratePerCm, amount, row.linked_purchase_id)
-  }
+  // Re-derive payment status against the new billed total (goods + any billed charges).
+  const billed =
+    (amount ?? 0) +
+    (row.transport_billed ? Number(row.transport_charge) || 0 : 0) +
+    (row.other_billed ? Number(row.other_charge) || 0 : 0)
+  const status = derivePaymentStatus(billed, Number(row.paid_amount) || 0)
+  await d.transaction(async () => {
+    await d.prepare(`UPDATE dispatches SET rate=?, amount=?, payment_status=? WHERE id=?`).run(payload.rate, amount, status, payload.id)
+    // Keep the mirror purchase's cost in sync when a rate is set on an inter-plant sale.
+    if (row.linked_purchase_id && amount != null && row.qty_cm > 0) {
+      const ratePerCm = round2(amount / row.qty_cm)
+      await d.prepare(`UPDATE purchases SET rate=?, amount=? WHERE id=?`).run(ratePerCm, amount, row.linked_purchase_id)
+    }
+  })
   return (await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id)) as Dispatch
 }
 
@@ -521,12 +529,20 @@ export async function setDispatch(payload: {
 export async function setPayment(payload: {
   id: number
   paid_amount: number
-  payment_status: PaymentStatus
+  payment_status?: PaymentStatus
 }): Promise<Dispatch> {
   const d = getDb()
+  const row = (await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id)) as Dispatch | undefined
+  if (!row) throw new Error('Sale not found.')
+  // Always derive status from the amount paid vs the billed total — never trust the client.
+  const billed =
+    (row.amount ?? 0) +
+    (row.transport_billed ? Number(row.transport_charge) || 0 : 0) +
+    (row.other_billed ? Number(row.other_charge) || 0 : 0)
+  const paid = Number(payload.paid_amount) || 0
   await d.prepare(`UPDATE dispatches SET paid_amount=?, payment_status=? WHERE id=?`).run(
-    Number(payload.paid_amount) || 0,
-    payload.payment_status,
+    paid,
+    derivePaymentStatus(billed, paid),
     payload.id
   )
   return (await d.prepare(`SELECT * FROM dispatches WHERE id = ?`).get(payload.id)) as Dispatch

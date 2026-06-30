@@ -83,9 +83,11 @@ export function Movements(): React.JSX.Element {
       message: `Delete transfer ${m.ref_no}? Both locations will be adjusted back.`
     })
     if (!ok) return
-    await api.movements.deleteTransfer(m.ref_no)
-    refresh()
-    toast.success('Transfer deleted.')
+    const res = await api.movements.deleteTransfer(m.ref_no)
+    if (res.ok) {
+      refresh()
+      toast.success('Transfer deleted.')
+    } else toast.error(res.error || 'Could not delete transfer.')
   }
 
   function set(k: string, v: unknown): void {

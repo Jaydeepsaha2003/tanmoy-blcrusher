@@ -999,7 +999,7 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
             + CASE WHEN transport_billed=1 THEN transport_charge ELSE 0 END
             + CASE WHEN other_billed=1 THEN other_charge ELSE 0 END) AS billed,
           paid_amount
-         FROM dispatches WHERE customer_id = ?`
+         FROM dispatches WHERE customer_id = ? AND to_plant_id IS NULL`
       )
       .all(partyId)) as {
       dispatch_no: string
@@ -1083,7 +1083,7 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
       .prepare(
         `SELECT purchase_no, date, created_at, COALESCE(amount,0) AS amount, paid_amount, quantity, uom,
                 COALESCE(material_type,'raw') AS material_type, product_name
-         FROM purchases WHERE supplier_id = ?`
+         FROM purchases WHERE supplier_id = ? AND linked_dispatch_id IS NULL`
       )
       .all(partyId)) as {
       purchase_no: string
@@ -1618,7 +1618,11 @@ export async function getPartyBalances(payload: {
     const table = PARTY_TABLE[payload.party_type as PartyType]
     if (!table) throw new Error('Invalid party type.')
     // Plant filter returns common parties (no plants assigned) plus those assigned to it.
-    const clause = payload.plant_id ? `WHERE ${plantScopeSql('t', payload.party_type as string)}` : ''
+    const conds: string[] = []
+    if (payload.plant_id) conds.push(plantScopeSql('t', payload.party_type as string))
+    // Hide internal inter-plant stand-ins (customers/suppliers created for transfers).
+    if (payload.party_type === 'customer' || payload.party_type === 'supplier') conds.push('t.plant_ref_id IS NULL')
+    const clause = conds.length ? `WHERE ${conds.join(' AND ')}` : ''
     parties = (await d
       .prepare(`SELECT t.id, t.name FROM ${table} t ${clause} ORDER BY t.name`)
       .all(payload.plant_id ? { plant_id: payload.plant_id } : {})) as {

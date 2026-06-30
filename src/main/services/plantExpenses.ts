@@ -3,6 +3,7 @@ import { nextNumber } from '../db'
 import type { PlantExpense, ExpenseCategory, ExpenseCategoryTotal, ExpenseBookRow, PaymentStatus } from '@shared/types'
 import { properCase, derivePaymentStatus } from '@shared/types'
 import { issuePartsForRef, clearPartsForRef } from './parts'
+import { listDieselIssuesAll } from './diesel'
 
 function money(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100
@@ -217,6 +218,29 @@ export async function expenseBook(filter: ExpenseFilter = {}): Promise<ExpenseBo
       amount: money(Number(x.amount) || 0),
       paid_amount: money(Number(x.paid_amount) || 0),
       payment_status: x.payment_status as PaymentStatus
+    })
+
+  // 5) Diesel ISSUES (consumption) — every issuance incl. rack loading/unloading/sale transport.
+  // Informational only: shown so the plant sees its diesel consumption, but NOT added to the
+  // outgoings total (the diesel PURCHASE above is the booked cost — counting both would double).
+  const issues = await listDieselIssuesAll({ plant_id: pid || undefined, from: filter.from, to: filter.to })
+  for (const x of issues)
+    rows.push({
+      source: 'diesel_issue',
+      source_label: 'Diesel Issued',
+      informational: true,
+      id: x.source === 'issue' ? x.id : 0,
+      ref_no: x.ref_no,
+      date: x.date,
+      plant_id: x.plant_id ?? 0,
+      plant_name: x.plant_name ?? undefined,
+      category: 'Diesel Issued',
+      details: [x.recipient, x.context, `${num(x.litres)} L`, x.charged_to ? `charged to ${x.charged_to}` : '']
+        .filter(Boolean)
+        .join(' · '),
+      amount: money(Number(x.amount) || 0),
+      paid_amount: 0,
+      payment_status: 'paid'
     })
 
   rows.sort((a, b) => (a.date === b.date ? b.ref_no.localeCompare(a.ref_no) : b.date.localeCompare(a.date)))
