@@ -182,15 +182,18 @@ export async function machineBalanceSheet(payload: {
     max_close: number | null
   }
 
-  // Diesel issued (fallback fuel source).
+  // Diesel issued (fallback fuel source) + its FIFO cost. Each issue stores its own FIFO amount;
+  // only legacy rows with no stored amount fall back to the global average rate.
+  const rate = await avgDieselRate()
   const di = dateClause('di')
-  const dieselLitres = (
-    (await d
-      .prepare(
-        `SELECT COALESCE(SUM(litres),0) AS q FROM diesel_issues di WHERE di.asset_id = @asset_id${di.sql}`
-      )
-      .get({ asset_id: payload.asset_id, ...di.params })) as { q: number }
-  ).q
+  const dieselRow = (await d
+    .prepare(
+      `SELECT COALESCE(SUM(litres),0) AS litres,
+              COALESCE(SUM(COALESCE(amount, litres * @avg)),0) AS cost
+       FROM diesel_issues di WHERE di.asset_id = @asset_id${di.sql}`
+    )
+    .get({ asset_id: payload.asset_id, avg: rate, ...di.params })) as { litres: number; cost: number }
+  const dieselLitres = round3(dieselRow.litres)
 
   // Fuel: prefer logbook entries when present, else fall back to diesel.
   let fuel = 0
@@ -204,10 +207,8 @@ export async function machineBalanceSheet(payload: {
   }
 
   const usage = round3(logAgg.usage_qty)
-  const rate = await avgDieselRate()
-  // Fuel COST is the diesel actually issued to this machine (× avg rate) — this matches the
-  // machine ledger. The logbook `fuel`/`fuelSource` above drives only the consumption check.
-  const dieselCost = money(dieselLitres * rate)
+  // Fuel COST is the FIFO cost of the diesel actually issued to this machine (matches the ledger).
+  const dieselCost = money(dieselRow.cost)
 
   // Costs from plant expenses + wages (date-filtered).
   const pe = dateClause('pe')

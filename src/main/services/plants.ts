@@ -91,8 +91,14 @@ export async function deletePlant(payload: { id: number }): Promise<{ ok: boolea
   if (used.c > 0) {
     return { ok: false, error: 'Cannot delete: this plant has stock movements / transactions.' }
   }
-  await d.prepare(`DELETE FROM production_settings WHERE plant_id = ?`).run(payload.id)
-  await d.prepare(`DELETE FROM stock_locations WHERE plant_id = ?`).run(payload.id)
-  await d.prepare(`DELETE FROM plants WHERE id = ?`).run(payload.id)
+  await d.transaction(async () => {
+    await d.prepare(`DELETE FROM production_settings WHERE plant_id = ?`).run(payload.id)
+    await d.prepare(`DELETE FROM stock_locations WHERE plant_id = ?`).run(payload.id)
+    // Drop the plant's multi-plant junction rows so they don't dangle on the freed id.
+    for (const t of ['customer_plants', 'supplier_plants', 'transporter_plants', 'company_plants', 'asset_plants', 'rack_vehicle_plants', 'rack_jcb_plants']) {
+      await d.prepare(`DELETE FROM ${t} WHERE plant_id = ?`).run(payload.id)
+    }
+    await d.prepare(`DELETE FROM plants WHERE id = ?`).run(payload.id)
+  })
   return { ok: true }
 }

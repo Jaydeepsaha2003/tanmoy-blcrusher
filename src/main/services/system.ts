@@ -23,29 +23,56 @@ async function delSetting(key: string): Promise<void> {
   await getDb().prepare('DELETE FROM settings WHERE `key` = ?').run(key)
 }
 
+// Every business table (keeps users, settings, sessions and the activity log).
+// Ordered children-first; FK enforcement is also disabled during the wipe so a
+// missing/extra edge can't leave orphaned detail rows (file blobs, line items, junctions).
 const DATA_TABLES = [
   'spare_part_movements',
   'production_outputs',
-  'productions',
-  'rack_sales',
-  'rack_expenses',
-  'rack_unloadings',
+  'purchase_transporters',
+  'purchase_machines',
+  'dispatch_transporters',
+  'dispatch_machines',
+  'rack_sale_transporters',
+  'rack_sale_machines',
   'rack_loadings',
+  'rack_unloadings',
+  'rack_expenses',
+  'rack_sales',
+  'machine_logs',
+  'asset_documents',
+  'asset_plant_moves',
+  'asset_plants',
+  'customer_plants',
+  'supplier_plants',
+  'transporter_plants',
+  'company_plants',
+  'rack_vehicle_plants',
+  'rack_jcb_plants',
+  'customer_rates',
+  'rate_chart',
+  'transport_charges',
+  'opening_balances',
+  'budgets',
+  'wage_entries',
+  'diesel_issues',
+  'diesel_purchases',
+  'plant_expenses',
+  'finished_goods_opening',
+  'production_settings',
+  'productions',
   'stock_movements',
   'dispatches',
   'purchases',
   'payments',
-  'finished_goods_opening',
-  'production_settings',
-  'wage_entries',
-  'employees',
-  'diesel_issues',
-  'diesel_purchases',
-  'plant_expenses',
   'spare_parts',
-  'assets',
-  'stock_locations',
   'racks',
+  'rack_vehicles',
+  'rack_jcbs',
+  'assets',
+  'employees',
+  'stock_locations',
+  'products',
   'expense_types',
   'businesses',
   'outsource',
@@ -57,13 +84,20 @@ const DATA_TABLES = [
   'counters'
 ]
 
-/** Clear all business data (keeps users, settings, sessions). Internal. */
+/** Clear all business data (keeps users, settings, sessions, activity log). Internal. */
 async function clearAllData(): Promise<void> {
   const d = getDb()
-  await d.transaction(async () => {
-    for (const t of DATA_TABLES) await d.prepare(`DELETE FROM ${t}`).run()
-  })
-  if (dbKind() === 'sqlite') await getDb().run('VACUUM')
+  const sqlite = dbKind() === 'sqlite'
+  // PRAGMA must toggle outside any transaction; MySQL has no FK constraints so it's a no-op there.
+  if (sqlite) await d.run('PRAGMA foreign_keys = OFF')
+  try {
+    await d.transaction(async () => {
+      for (const t of DATA_TABLES) await d.prepare(`DELETE FROM ${t}`).run()
+    })
+  } finally {
+    if (sqlite) await d.run('PRAGMA foreign_keys = ON')
+  }
+  if (sqlite) await d.run('VACUUM')
 }
 
 /** Admin requests deletion; scheduled for 3 days later (verifies their password). */

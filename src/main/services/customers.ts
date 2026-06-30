@@ -110,7 +110,16 @@ export async function deleteCustomer(payload: { id: number }): Promise<{ ok: boo
   if (used.c > 0 || rackUsed.c > 0) {
     return { ok: false, error: 'Cannot delete: this customer has sales/dispatch records.' }
   }
+  const paid = (await d
+    .prepare(`SELECT COUNT(*) AS c FROM payments WHERE party_type = ? AND party_id = ?`)
+    .get('customer', payload.id)) as { c: number }
+  if (paid.c > 0) {
+    return { ok: false, error: 'Cannot delete: this customer has payment records.' }
+  }
   await d.transaction(async () => {
+    // Clean up the customer's own config rows so nothing dangles on the freed id.
+    await d.prepare(`DELETE FROM customer_rates WHERE customer_id = ?`).run(payload.id)
+    await d.prepare(`DELETE FROM opening_balances WHERE party_type = ? AND party_id = ?`).run('customer', payload.id)
     await d.prepare(`DELETE FROM customer_plants WHERE customer_id = ?`).run(payload.id)
     await d.prepare(`DELETE FROM customers WHERE id = ?`).run(payload.id)
   })

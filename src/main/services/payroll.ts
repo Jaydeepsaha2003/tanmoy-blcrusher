@@ -5,7 +5,8 @@ import { getWorkdaySettings } from './system'
 import { ensureUniqueName } from './names'
 
 function money(n: number): number {
-  return Math.round((n + Number.EPSILON) * 100) / 100
+  const v = Number(n)
+  return Number.isFinite(v) ? Math.round((v + Number.EPSILON) * 100) / 100 : 0
 }
 
 /** Working days in a YYYY-MM month, excluding the configured weekly-off weekdays. */
@@ -194,10 +195,12 @@ async function resolve(p: WageInput): Promise<Record<string, unknown>> {
   if (!p.period) throw new Error('Pay period is required.')
   const workingDays = await workingDaysIn(p.period)
   const daysWorked = Number(p.days_worked) || 0
+  // A monthly salary is capped at the full month — paid days never exceed the month's working
+  // days (overtime is billed separately), so a data-entry slip can't pay more than the salary.
   const earned =
     emp.wage_type === 'monthly'
       ? workingDays > 0
-        ? money((emp.monthly_salary / workingDays) * daysWorked)
+        ? money((emp.monthly_salary / workingDays) * Math.min(daysWorked, workingDays))
         : 0
       : money(emp.daily_wage * daysWorked)
   const otHours = Number(p.ot_hours) || 0

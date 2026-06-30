@@ -758,7 +758,7 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
     const avg = avgRow.l > 0 ? avgRow.a / avgRow.l : 0
     const diesel = (await d
       .prepare(
-        `SELECT di.issue_no, di.date, di.created_at, di.litres, a.name AS asset
+        `SELECT di.issue_no, di.date, di.created_at, di.litres, di.amount, a.name AS asset
          FROM diesel_issues di JOIN assets a ON a.id = di.asset_id WHERE di.asset_id IN (${inC})`
       )
       .all(...assetIds)) as {
@@ -766,18 +766,22 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
       date: string
       created_at: string
       litres: number
+      amount: number | null
       asset: string
     }[]
-    for (const x of diesel)
-      if (x.litres > 0 && avg > 0)
+    for (const x of diesel) {
+      // Use the issue's stored FIFO cost; legacy rows with no amount fall back to the avg rate.
+      const cost = x.amount != null ? Number(x.amount) : roundMoney(x.litres * avg)
+      if (x.litres > 0 && cost > 0)
         entries.push({
           date: x.date,
           created_at: x.created_at,
           particulars: `Diesel ${x.litres} L — ${x.asset}`,
           ref: x.issue_no,
-          debit: roundMoney(x.litres * avg),
+          debit: roundMoney(cost),
           credit: 0
         })
+    }
     entries.sort((a, b) =>
       a.date === b.date ? a.created_at.localeCompare(b.created_at) : a.date.localeCompare(b.date)
     )
@@ -848,18 +852,21 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
       .get()) as { a: number; l: number }
     const avg = avgRow.l > 0 ? avgRow.a / avgRow.l : 0
     const diesel = (await d
-      .prepare(`SELECT issue_no, date, created_at, litres FROM diesel_issues WHERE asset_id = ?`)
-      .all(partyId)) as { issue_no: string; date: string; created_at: string; litres: number }[]
-    for (const x of diesel)
-      if (x.litres > 0 && avg > 0)
+      .prepare(`SELECT issue_no, date, created_at, litres, amount FROM diesel_issues WHERE asset_id = ?`)
+      .all(partyId)) as { issue_no: string; date: string; created_at: string; litres: number; amount: number | null }[]
+    for (const x of diesel) {
+      // Use the issue's stored FIFO cost; legacy rows with no amount fall back to the avg rate.
+      const cost = x.amount != null ? Number(x.amount) : roundMoney(x.litres * avg)
+      if (x.litres > 0 && cost > 0)
         entries.push({
           date: x.date,
           created_at: x.created_at,
           particulars: `Diesel ${x.litres} L`,
           ref: x.issue_no,
-          debit: roundMoney(x.litres * avg),
+          debit: roundMoney(cost),
           credit: 0
         })
+    }
     entries.sort((a, b) =>
       a.date === b.date ? a.created_at.localeCompare(b.created_at) : a.date.localeCompare(b.date)
     )
@@ -1748,7 +1755,8 @@ export async function deleteOpeningBalance(payload: {
  * for the Payment Status screen. Customers are receivable; suppliers/transporters payable.
  */
 export async function getAllDues(payload: { plant_id?: number } = {}): Promise<DueRow[]> {
-  const types: PartyType[] = ['customer', 'supplier', 'transporter', 'outsource']
+  // Fleet vehicles/JCBs are payable heads too (unloading + sale-transport bills).
+  const types: LedgerType[] = ['customer', 'supplier', 'transporter', 'outsource', 'rack_vehicle', 'rack_jcb']
   const rows: DueRow[] = []
   for (const t of types) {
     const balances = await getPartyBalances({ party_type: t, plant_id: payload.plant_id })

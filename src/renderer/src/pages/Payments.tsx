@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Wallet, BookOpen, FileSpreadsheet, HandCoins } from 'lucide-react'
 import { api } from '@/lib/api'
-import type { PartyType, DueRow, PaymentDirection } from '@shared/types'
+import type { LedgerType, DueRow, PaymentDirection } from '@shared/types'
 import { PageHeader, Page } from '@/components/layout'
 import {
   Button,
@@ -27,18 +27,31 @@ import { useToast } from '@/components/toast'
 import { usePlant } from '@/lib/plant'
 import { fmtMoney, today, downloadExcel } from '@/lib/utils'
 
-const typeLabel: Record<PartyType, string> = {
+const typeLabel: Partial<Record<LedgerType, string>> = {
   customer: 'Customer',
   supplier: 'Supplier',
   transporter: 'Transporter',
-  outsource: 'Outsource'
+  outsource: 'Outsource',
+  rack_vehicle: 'Vehicle',
+  rack_jcb: 'JCB'
 }
-const typeBadge: Record<PartyType, 'default' | 'warning' | 'muted'> = {
+const labelOf = (t: LedgerType): string => typeLabel[t] ?? t
+const typeBadge: Partial<Record<LedgerType, 'default' | 'warning' | 'muted'>> = {
   customer: 'default',
   supplier: 'warning',
   transporter: 'muted',
-  outsource: 'muted'
+  outsource: 'muted',
+  rack_vehicle: 'muted',
+  rack_jcb: 'muted'
 }
+const PAY_TYPES: { value: LedgerType; label: string }[] = [
+  { value: 'supplier', label: 'Supplier' },
+  { value: 'customer', label: 'Customer' },
+  { value: 'transporter', label: 'Transporter' },
+  { value: 'outsource', label: 'Outsource' },
+  { value: 'rack_vehicle', label: 'Vehicle' },
+  { value: 'rack_jcb', label: 'JCB' }
+]
 
 export function Payments(): React.JSX.Element {
   const qc = useQueryClient()
@@ -54,10 +67,18 @@ export function Payments(): React.JSX.Element {
   const { data: customers = [] } = useQuery({ queryKey: ['customers', 'all'], queryFn: () => api.customers.list() })
   const { data: transporters = [] } = useQuery({ queryKey: ['transporters', 'all'], queryFn: () => api.transporters.list() })
   const { data: outsource = [] } = useQuery({ queryKey: ['outsource', 'all'], queryFn: () => api.outsource.list() })
-  const partyList = (t: PartyType): { id: number; name: string; head?: string }[] =>
-    t === 'customer' ? customers : t === 'supplier' ? suppliers : t === 'transporter' ? transporters : outsource
+  const { data: rackVehicles = [] } = useQuery({ queryKey: ['rackVehicles', 'all'], queryFn: () => api.rackVehicles.list() })
+  const { data: rackJcbs = [] } = useQuery({ queryKey: ['rackJcbs', 'all'], queryFn: () => api.rackJcbs.list() })
+  const partyList = (t: LedgerType): { id: number; name: string; head?: string }[] =>
+    t === 'customer' ? customers
+      : t === 'supplier' ? suppliers
+        : t === 'transporter' ? transporters
+          : t === 'outsource' ? outsource
+            : t === 'rack_vehicle' ? rackVehicles.map((v) => ({ id: v.id, name: v.vehicle_no }))
+              : t === 'rack_jcb' ? rackJcbs.map((j) => ({ id: j.id, name: j.name }))
+                : []
 
-  const [typeFilter, setTypeFilter] = React.useState<PartyType | ''>('')
+  const [typeFilter, setTypeFilter] = React.useState<LedgerType | ''>('')
   const [statusFilter, setStatusFilter] = React.useState<'' | 'outstanding' | 'settled'>('')
   const [payForm, setPayForm] = React.useState<any>(null)
 
@@ -107,7 +128,7 @@ export function Payments(): React.JSX.Element {
   function openAdvance(): void {
     setPayForm({
       pick: true,
-      party_type: 'supplier' as PartyType,
+      party_type: 'supplier' as LedgerType,
       party_id: 0,
       party_name: '',
       direction: 'out' as PaymentDirection,
@@ -125,7 +146,7 @@ export function Payments(): React.JSX.Element {
       'Payment Status',
       ['Party', 'Type', 'Debit', 'Credit', 'Balance', 'Direction', 'Status'],
       rows.map((r) => [
-        r.name, typeLabel[r.party_type as PartyType], r.total_debit, r.total_credit, Math.abs(r.balance),
+        r.name, labelOf(r.party_type), r.total_debit, r.total_credit, Math.abs(r.balance),
         r.balance > 0 ? (r.kind === 'receivable' ? 'Receivable' : 'Payable') : r.balance < 0 ? 'Advance' : '—',
         Math.abs(r.balance) < 0.01 ? 'Settled' : 'Outstanding'
       ])
@@ -189,14 +210,8 @@ export function Payments(): React.JSX.Element {
           <SearchSelect
             className="w-44"
             value={typeFilter}
-            onChange={(v) => setTypeFilter(v as PartyType | '')}
-            options={[
-              { value: '', label: 'All parties' },
-              { value: 'customer', label: 'Customers' },
-              { value: 'supplier', label: 'Suppliers' },
-              { value: 'transporter', label: 'Transporters' },
-              { value: 'outsource', label: 'Outsource' }
-            ]}
+            onChange={(v) => setTypeFilter(v as LedgerType | '')}
+            options={[{ value: '', label: 'All parties' }, ...PAY_TYPES.map((t) => ({ value: t.value, label: t.label }))]}
           />
           <SearchSelect
             className="w-44"
@@ -229,7 +244,7 @@ export function Payments(): React.JSX.Element {
               {rows.map((r) => (
                 <TR key={`${r.party_type}-${r.party_id}`}>
                   <TD className="font-medium">{r.name}</TD>
-                  <TD><Badge variant={typeBadge[r.party_type as PartyType]}>{typeLabel[r.party_type as PartyType]}</Badge></TD>
+                  <TD><Badge variant={typeBadge[r.party_type] ?? 'muted'}>{labelOf(r.party_type)}</Badge></TD>
                   <TD className="text-right">{fmtMoney(r.total_debit)}</TD>
                   <TD className="text-right">{fmtMoney(r.total_credit)}</TD>
                   <TD className={`text-right font-semibold ${r.kind === 'receivable' ? 'text-primary' : 'text-destructive'}`}>
@@ -269,14 +284,9 @@ export function Payments(): React.JSX.Element {
                   <SearchSelect
                     value={payForm.party_type}
                     onChange={(v) =>
-                      setPayForm({ ...payForm, party_type: v as PartyType, party_id: 0, party_name: '' })
+                      setPayForm({ ...payForm, party_type: v as LedgerType, party_id: 0, party_name: '' })
                     }
-                    options={[
-                      { value: 'supplier', label: 'Supplier' },
-                      { value: 'customer', label: 'Customer' },
-                      { value: 'transporter', label: 'Transporter' },
-                      { value: 'outsource', label: 'Outsource' }
-                    ]}
+                    options={PAY_TYPES.map((t) => ({ value: t.value, label: t.label }))}
                   />
                 </Field>
                 <Field label="Party">
@@ -291,7 +301,7 @@ export function Payments(): React.JSX.Element {
                       value: p.id,
                       label: `${p.name}${p.head ? ` — ${p.head}` : ''}`
                     }))}
-                    placeholder={`Select ${typeLabel[payForm.party_type as PartyType]}…`}
+                    placeholder={`Select ${labelOf(payForm.party_type)}…`}
                   />
                 </Field>
               </div>

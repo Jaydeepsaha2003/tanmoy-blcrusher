@@ -163,15 +163,18 @@ export async function getDashboard(payload: { plant_id?: number } = {}): Promise
   //   • Net         — Receivable − Payable (computed in the UI)
   // The plant filter scopes the party list exactly like the Ledgers page.
   const scope = pid ? { plant_id: pid } : {}
-  const [custBal, supBal, transBal, outBal] = await Promise.all([
+  const [custBal, supBal, transBal, outBal, vehBal, jcbBal] = await Promise.all([
     getPartyBalances({ party_type: 'customer', ...scope }),
     getPartyBalances({ party_type: 'supplier', ...scope }),
     getPartyBalances({ party_type: 'transporter', ...scope }),
-    getPartyBalances({ party_type: 'outsource', ...scope })
+    getPartyBalances({ party_type: 'outsource', ...scope }),
+    getPartyBalances({ party_type: 'rack_vehicle', ...scope }),
+    getPartyBalances({ party_type: 'rack_jcb', ...scope })
   ])
   const sumBal = (arr: { balance: number }[]): number => arr.reduce((s, b) => s + b.balance, 0)
   const billReceivable = money({ q: sumBal(custBal) })
-  const billsPayable = money({ q: sumBal(supBal) + sumBal(transBal) + sumBal(outBal) })
+  // Payable = suppliers + transporters + outsource + fleet vehicles + JCBs.
+  const billsPayable = money({ q: sumBal(supBal) + sumBal(transBal) + sumBal(outBal) + sumBal(vehBal) + sumBal(jcbBal) })
   // Opening Balance is shown as an information-only card; it is already counted
   // inside Receivable / Payable above, so the UI must NOT add it to Net again.
   // Each opening row is attributed to its own plant_id; for a single plant we count

@@ -44,6 +44,7 @@ const ENTITY_LABEL: Record<string, string> = {
 
 const SPECIFIC: Record<string, string> = {
   'auth.login': 'Signed in',
+  'auth.loginFailed': 'Failed sign-in attempt',
   'auth.logout': 'Signed out',
   'auth.changePassword': 'Changed own password',
   'racks.addLoading': 'Added rack loading',

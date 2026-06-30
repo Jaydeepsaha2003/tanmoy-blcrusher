@@ -110,7 +110,20 @@ export async function deleteSupplier(payload: { id: number }): Promise<{ ok: boo
   if (used.c > 0) {
     return { ok: false, error: 'Cannot delete: this supplier has purchase records.' }
   }
+  const dieselUsed = (await d
+    .prepare(`SELECT COUNT(*) AS c FROM diesel_purchases WHERE supplier_id = ?`)
+    .get(payload.id)) as { c: number }
+  if (dieselUsed.c > 0) {
+    return { ok: false, error: 'Cannot delete: this supplier has diesel purchase records.' }
+  }
+  const paid = (await d
+    .prepare(`SELECT COUNT(*) AS c FROM payments WHERE party_type = ? AND party_id = ?`)
+    .get('supplier', payload.id)) as { c: number }
+  if (paid.c > 0) {
+    return { ok: false, error: 'Cannot delete: this supplier has payment records.' }
+  }
   await d.transaction(async () => {
+    await d.prepare(`DELETE FROM opening_balances WHERE party_type = ? AND party_id = ?`).run('supplier', payload.id)
     await d.prepare(`DELETE FROM supplier_plants WHERE supplier_id = ?`).run(payload.id)
     await d.prepare(`DELETE FROM suppliers WHERE id = ?`).run(payload.id)
   })

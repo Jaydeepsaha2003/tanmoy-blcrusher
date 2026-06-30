@@ -49,6 +49,8 @@ const PREFIX_MODULE: Record<string, ModuleKey> = {
   assets: 'masters',
   machinery: 'masters',
   parts: 'masters',
+  rackVehicles: 'racks',
+  rackJcbs: 'racks',
   purchases: 'purchases',
   productionSettings: 'production',
   productions: 'production',
@@ -99,11 +101,17 @@ const WRITE_VERBS = [
   'wipe',
   'remove',
   'request',
-  'cancel'
+  'cancel',
+  'bulk'
 ]
+
+// Exact-match writes whose action verb isn't covered above (and where a prefix match
+// would wrongly catch a read — e.g. 'move' must not also flag the read 'assets.moves').
+const WRITE_METHODS = new Set(['assets.move'])
 
 /** True if a method mutates data (used for view-vs-edit gating and auditing). */
 export function isWriteMethod(method: string): boolean {
+  if (WRITE_METHODS.has(method)) return true
   const action = method.split('.')[1] ?? ''
   return WRITE_VERBS.some((v) => action === v || action.startsWith(v))
 }

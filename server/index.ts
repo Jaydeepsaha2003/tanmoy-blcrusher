@@ -90,7 +90,11 @@ app.post('/api/call', async (req, res) => {
     if (method === 'auth.login') {
       const creds = (payload ?? {}) as { username?: string; password?: string }
       const user = await authenticate(creds.username || '', creds.password || '')
-      if (!user) return res.json({ result: { ok: false } })
+      if (!user) {
+        // Record failed attempts (username only — never the password) for security review.
+        await logActivity({ method: 'auth.loginFailed', payload: { username: creds.username || '' }, ip })
+        return res.json({ result: { ok: false } })
+      }
       setSessionCookie(res, await createSession(user.id))
       await logActivity({ method: 'auth.login', user, ip })
       return res.json({ result: { ok: true, user } })
