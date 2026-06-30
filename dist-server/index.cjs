@@ -2376,6 +2376,8 @@ var PREFIX_MODULE = {
   assets: "masters",
   machinery: "masters",
   parts: "masters",
+  rackVehicles: "racks",
+  rackJcbs: "racks",
   purchases: "purchases",
   productionSettings: "production",
   productions: "production",
@@ -2423,9 +2425,12 @@ var WRITE_VERBS = [
   "wipe",
   "remove",
   "request",
-  "cancel"
+  "cancel",
+  "bulk"
 ];
+var WRITE_METHODS = /* @__PURE__ */ new Set(["assets.move"]);
 function isWriteMethod(method) {
+  if (WRITE_METHODS.has(method)) return true;
   const action = method.split(".")[1] ?? "";
   return WRITE_VERBS.some((v) => action === v || action.startsWith(v));
 }
@@ -2964,9 +2969,14 @@ async function deletePlant(payload) {
   if (used.c > 0) {
     return { ok: false, error: "Cannot delete: this plant has stock movements / transactions." };
   }
-  await d.prepare(`DELETE FROM production_settings WHERE plant_id = ?`).run(payload.id);
-  await d.prepare(`DELETE FROM stock_locations WHERE plant_id = ?`).run(payload.id);
-  await d.prepare(`DELETE FROM plants WHERE id = ?`).run(payload.id);
+  await d.transaction(async () => {
+    await d.prepare(`DELETE FROM production_settings WHERE plant_id = ?`).run(payload.id);
+    await d.prepare(`DELETE FROM stock_locations WHERE plant_id = ?`).run(payload.id);
+    for (const t of ["customer_plants", "supplier_plants", "transporter_plants", "company_plants", "asset_plants", "rack_vehicle_plants", "rack_jcb_plants"]) {
+      await d.prepare(`DELETE FROM ${t} WHERE plant_id = ?`).run(payload.id);
+    }
+    await d.prepare(`DELETE FROM plants WHERE id = ?`).run(payload.id);
+  });
   return { ok: true };
 }
 
@@ -3097,7 +3107,16 @@ async function deleteSupplier(payload) {
   if (used.c > 0) {
     return { ok: false, error: "Cannot delete: this supplier has purchase records." };
   }
+  const dieselUsed = await d.prepare(`SELECT COUNT(*) AS c FROM diesel_purchases WHERE supplier_id = ?`).get(payload.id);
+  if (dieselUsed.c > 0) {
+    return { ok: false, error: "Cannot delete: this supplier has diesel purchase records." };
+  }
+  const paid = await d.prepare(`SELECT COUNT(*) AS c FROM payments WHERE party_type = ? AND party_id = ?`).get("supplier", payload.id);
+  if (paid.c > 0) {
+    return { ok: false, error: "Cannot delete: this supplier has payment records." };
+  }
   await d.transaction(async () => {
+    await d.prepare(`DELETE FROM opening_balances WHERE party_type = ? AND party_id = ?`).run("supplier", payload.id);
     await d.prepare(`DELETE FROM supplier_plants WHERE supplier_id = ?`).run(payload.id);
     await d.prepare(`DELETE FROM suppliers WHERE id = ?`).run(payload.id);
   });
@@ -3181,7 +3200,13 @@ async function deleteCustomer(payload) {
   if (used.c > 0 || rackUsed.c > 0) {
     return { ok: false, error: "Cannot delete: this customer has sales/dispatch records." };
   }
+  const paid = await d.prepare(`SELECT COUNT(*) AS c FROM payments WHERE party_type = ? AND party_id = ?`).get("customer", payload.id);
+  if (paid.c > 0) {
+    return { ok: false, error: "Cannot delete: this customer has payment records." };
+  }
   await d.transaction(async () => {
+    await d.prepare(`DELETE FROM customer_rates WHERE customer_id = ?`).run(payload.id);
+    await d.prepare(`DELETE FROM opening_balances WHERE party_type = ? AND party_id = ?`).run("customer", payload.id);
     await d.prepare(`DELETE FROM customer_plants WHERE customer_id = ?`).run(payload.id);
     await d.prepare(`DELETE FROM customers WHERE id = ?`).run(payload.id);
   });
@@ -4453,13 +4478,28 @@ var ROLE_DELETE = {
   customers: deleteCustomer,
   transporters: deleteTransporter
 };
-async function syncRole(d, companyId, table, flag, name, contact, address) {
+var ROLE_PTYPE = {
+  suppliers: "supplier",
+  customers: "customer",
+  transporters: "transporter"
+};
+async function ensureRoleParty(d, table, companyId, name, contact, address, plants) {
+  const exist = await d.prepare(`SELECT id, company_id FROM ${table} WHERE name = ?`).get(name);
+  if (exist) {
+    if (exist.company_id == null) {
+      await d.prepare(`UPDATE ${table} SET company_id = ? WHERE id = ?`).run(companyId, exist.id);
+      await writePartyPlants(d, ROLE_PTYPE[table], exist.id, plants);
+    }
+    return;
+  }
+  const r = await d.prepare(`INSERT INTO ${table} (name, contact, address, remarks, company_id, plant_id) VALUES (?, ?, ?, '', ?, ?)`).run(name, contact, address, companyId, plants[0] ?? null);
+  await writePartyPlants(d, ROLE_PTYPE[table], Number(r.lastInsertRowid), plants);
+}
+async function syncRole(d, companyId, table, flag, name, contact, address, plants) {
   if (flag === void 0) return;
   const existing = await d.prepare(`SELECT id FROM ${table} WHERE company_id = ?`).all(companyId);
   if (flag) {
-    if (existing.length === 0) {
-      await d.prepare(`INSERT INTO ${table} (name, contact, address, remarks, company_id) VALUES (?, ?, ?, '', ?)`).run(name, contact, address, companyId);
-    }
+    if (existing.length === 0) await ensureRoleParty(d, table, companyId, name, contact, address, plants);
   } else {
     for (const e of existing) await ROLE_DELETE[table]({ id: e.id });
   }
@@ -4492,13 +4532,9 @@ async function createCompany(p) {
     const info = await d.prepare(`INSERT INTO companies (name, contact, address, remarks) VALUES (?, ?, ?, ?)`).run(name, contact, address, p.remarks ?? "");
     const companyId = Number(info.lastInsertRowid);
     await writePartyPlants(d, "company", companyId, plants);
-    const mk = async (table, ptype) => {
-      const r = await d.prepare(`INSERT INTO ${table} (name, contact, address, remarks, company_id, plant_id) VALUES (?, ?, ?, '', ?, ?)`).run(name, contact, address, companyId, plants[0] ?? null);
-      await writePartyPlants(d, ptype, Number(r.lastInsertRowid), plants);
-    };
-    if (p.as_supplier !== false) await mk("suppliers", "supplier");
-    if (p.as_customer !== false) await mk("customers", "customer");
-    if (p.as_transporter !== false) await mk("transporters", "transporter");
+    if (p.as_supplier !== false) await ensureRoleParty(d, "suppliers", companyId, name, contact, address, plants);
+    if (p.as_customer !== false) await ensureRoleParty(d, "customers", companyId, name, contact, address, plants);
+    if (p.as_transporter !== false) await ensureRoleParty(d, "transporters", companyId, name, contact, address, plants);
     return companyId;
   });
   const row = await d.prepare(`SELECT * FROM companies WHERE id = ?`).get(id);
@@ -4513,17 +4549,19 @@ async function updateCompany(p) {
   const contact = p.contact ?? "";
   const address = p.address ?? "";
   const plants = plantIdSet(p);
-  await d.prepare(`UPDATE companies SET name=?, contact=?, address=?, remarks=? WHERE id=?`).run(
-    name,
-    contact,
-    address,
-    p.remarks ?? "",
-    p.id
-  );
-  await writePartyPlants(d, "company", p.id, plants);
-  await syncRole(d, p.id, "suppliers", p.as_supplier, name, contact, address);
-  await syncRole(d, p.id, "customers", p.as_customer, name, contact, address);
-  await syncRole(d, p.id, "transporters", p.as_transporter, name, contact, address);
+  await d.transaction(async () => {
+    await d.prepare(`UPDATE companies SET name=?, contact=?, address=?, remarks=? WHERE id=?`).run(
+      name,
+      contact,
+      address,
+      p.remarks ?? "",
+      p.id
+    );
+    await writePartyPlants(d, "company", p.id, plants);
+    await syncRole(d, p.id, "suppliers", p.as_supplier, name, contact, address, plants);
+    await syncRole(d, p.id, "customers", p.as_customer, name, contact, address, plants);
+    await syncRole(d, p.id, "transporters", p.as_transporter, name, contact, address, plants);
+  });
   const row = await d.prepare(`SELECT * FROM companies WHERE id = ?`).get(p.id);
   await attachPartyPlants(d, "company", [row]);
   return row;
@@ -6325,19 +6363,21 @@ async function buildEntries(partyType, partyId, plantId) {
     ).get();
     const avg = avgRow.l > 0 ? avgRow.a / avgRow.l : 0;
     const diesel = await d.prepare(
-      `SELECT di.issue_no, di.date, di.created_at, di.litres, a.name AS asset
+      `SELECT di.issue_no, di.date, di.created_at, di.litres, di.amount, a.name AS asset
          FROM diesel_issues di JOIN assets a ON a.id = di.asset_id WHERE di.asset_id IN (${inC})`
     ).all(...assetIds);
-    for (const x of diesel)
-      if (x.litres > 0 && avg > 0)
+    for (const x of diesel) {
+      const cost = x.amount != null ? Number(x.amount) : roundMoney2(x.litres * avg);
+      if (x.litres > 0 && cost > 0)
         entries.push({
           date: x.date,
           created_at: x.created_at,
           particulars: `Diesel ${x.litres} L \u2014 ${x.asset}`,
           ref: x.issue_no,
-          debit: roundMoney2(x.litres * avg),
+          debit: roundMoney2(cost),
           credit: 0
         });
+    }
     entries.sort(
       (a, b) => a.date === b.date ? a.created_at.localeCompare(b.created_at) : a.date.localeCompare(b.date)
     );
@@ -6396,17 +6436,19 @@ async function buildEntries(partyType, partyId, plantId) {
         });
     const avgRow = await d.prepare(`SELECT COALESCE(SUM(amount),0) AS a, COALESCE(SUM(litres),0) AS l FROM diesel_purchases WHERE amount IS NOT NULL`).get();
     const avg = avgRow.l > 0 ? avgRow.a / avgRow.l : 0;
-    const diesel = await d.prepare(`SELECT issue_no, date, created_at, litres FROM diesel_issues WHERE asset_id = ?`).all(partyId);
-    for (const x of diesel)
-      if (x.litres > 0 && avg > 0)
+    const diesel = await d.prepare(`SELECT issue_no, date, created_at, litres, amount FROM diesel_issues WHERE asset_id = ?`).all(partyId);
+    for (const x of diesel) {
+      const cost = x.amount != null ? Number(x.amount) : roundMoney2(x.litres * avg);
+      if (x.litres > 0 && cost > 0)
         entries.push({
           date: x.date,
           created_at: x.created_at,
           particulars: `Diesel ${x.litres} L`,
           ref: x.issue_no,
-          debit: roundMoney2(x.litres * avg),
+          debit: roundMoney2(cost),
           credit: 0
         });
+    }
     entries.sort(
       (a, b) => a.date === b.date ? a.created_at.localeCompare(b.created_at) : a.date.localeCompare(b.date)
     );
@@ -7028,7 +7070,7 @@ async function deleteOpeningBalance(payload) {
   return { ok: true };
 }
 async function getAllDues(payload = {}) {
-  const types = ["customer", "supplier", "transporter", "outsource"];
+  const types = ["customer", "supplier", "transporter", "outsource", "rack_vehicle", "rack_jcb"];
   const rows = [];
   for (const t of types) {
     const balances = await getPartyBalances({ party_type: t, plant_id: payload.plant_id });
@@ -7321,10 +7363,14 @@ async function machineBalanceSheet(payload) {
               MIN(opening_meter) AS min_open, MAX(closing_meter) AS max_close
        FROM machine_logs ml WHERE ml.asset_id = @asset_id${dl.sql}`
   ).get({ asset_id: payload.asset_id, ...dl.params });
+  const rate = await avgDieselRate();
   const di = dateClause("di");
-  const dieselLitres = (await d.prepare(
-    `SELECT COALESCE(SUM(litres),0) AS q FROM diesel_issues di WHERE di.asset_id = @asset_id${di.sql}`
-  ).get({ asset_id: payload.asset_id, ...di.params })).q;
+  const dieselRow = await d.prepare(
+    `SELECT COALESCE(SUM(litres),0) AS litres,
+              COALESCE(SUM(COALESCE(amount, litres * @avg)),0) AS cost
+       FROM diesel_issues di WHERE di.asset_id = @asset_id${di.sql}`
+  ).get({ asset_id: payload.asset_id, avg: rate, ...di.params });
+  const dieselLitres = round32(dieselRow.litres);
   let fuel = 0;
   let fuelSource = "none";
   if (logAgg.fuel_rows > 0) {
@@ -7335,8 +7381,7 @@ async function machineBalanceSheet(payload) {
     fuelSource = "diesel";
   }
   const usage = round32(logAgg.usage_qty);
-  const rate = await avgDieselRate();
-  const dieselCost = money3(dieselLitres * rate);
+  const dieselCost = money3(dieselRow.cost);
   const pe = dateClause("pe");
   const exp = await d.prepare(
     `SELECT
@@ -8311,26 +8356,50 @@ async function delSetting(key) {
 var DATA_TABLES = [
   "spare_part_movements",
   "production_outputs",
-  "productions",
-  "rack_sales",
-  "rack_expenses",
-  "rack_unloadings",
+  "purchase_transporters",
+  "purchase_machines",
+  "dispatch_transporters",
+  "dispatch_machines",
+  "rack_sale_transporters",
+  "rack_sale_machines",
   "rack_loadings",
+  "rack_unloadings",
+  "rack_expenses",
+  "rack_sales",
+  "machine_logs",
+  "asset_documents",
+  "asset_plant_moves",
+  "asset_plants",
+  "customer_plants",
+  "supplier_plants",
+  "transporter_plants",
+  "company_plants",
+  "rack_vehicle_plants",
+  "rack_jcb_plants",
+  "customer_rates",
+  "rate_chart",
+  "transport_charges",
+  "opening_balances",
+  "budgets",
+  "wage_entries",
+  "diesel_issues",
+  "diesel_purchases",
+  "plant_expenses",
+  "finished_goods_opening",
+  "production_settings",
+  "productions",
   "stock_movements",
   "dispatches",
   "purchases",
   "payments",
-  "finished_goods_opening",
-  "production_settings",
-  "wage_entries",
-  "employees",
-  "diesel_issues",
-  "diesel_purchases",
-  "plant_expenses",
   "spare_parts",
-  "assets",
-  "stock_locations",
   "racks",
+  "rack_vehicles",
+  "rack_jcbs",
+  "assets",
+  "employees",
+  "stock_locations",
+  "products",
   "expense_types",
   "businesses",
   "outsource",
@@ -8343,10 +8412,16 @@ var DATA_TABLES = [
 ];
 async function clearAllData() {
   const d = getDb();
-  await d.transaction(async () => {
-    for (const t of DATA_TABLES) await d.prepare(`DELETE FROM ${t}`).run();
-  });
-  if (dbKind() === "sqlite") await getDb().run("VACUUM");
+  const sqlite = dbKind() === "sqlite";
+  if (sqlite) await d.run("PRAGMA foreign_keys = OFF");
+  try {
+    await d.transaction(async () => {
+      for (const t of DATA_TABLES) await d.prepare(`DELETE FROM ${t}`).run();
+    });
+  } finally {
+    if (sqlite) await d.run("PRAGMA foreign_keys = ON");
+  }
+  if (sqlite) await d.run("VACUUM");
 }
 async function requestDataDeletion(payload) {
   const me = getCurrentUser();
@@ -8402,7 +8477,8 @@ async function setWorkdaySettings(payload) {
 
 // src/main/services/payroll.ts
 function money6(n) {
-  return Math.round((n + Number.EPSILON) * 100) / 100;
+  const v = Number(n);
+  return Number.isFinite(v) ? Math.round((v + Number.EPSILON) * 100) / 100 : 0;
 }
 async function workingDaysIn(period) {
   const [y, m] = period.split("-").map(Number);
@@ -8519,7 +8595,7 @@ async function resolve2(p) {
   if (!p.period) throw new Error("Pay period is required.");
   const workingDays = await workingDaysIn(p.period);
   const daysWorked = Number(p.days_worked) || 0;
-  const earned = emp.wage_type === "monthly" ? workingDays > 0 ? money6(emp.monthly_salary / workingDays * daysWorked) : 0 : money6(emp.daily_wage * daysWorked);
+  const earned = emp.wage_type === "monthly" ? workingDays > 0 ? money6(emp.monthly_salary / workingDays * Math.min(daysWorked, workingDays)) : 0 : money6(emp.daily_wage * daysWorked);
   const otHours = Number(p.ot_hours) || 0;
   const otRate = p.ot_rate == null || p.ot_rate === "" ? emp.ot_rate : Number(p.ot_rate);
   const otAmount = money6(otHours * otRate);
@@ -8619,6 +8695,7 @@ var ENTITY_LABEL = {
 };
 var SPECIFIC = {
   "auth.login": "Signed in",
+  "auth.loginFailed": "Failed sign-in attempt",
   "auth.logout": "Signed out",
   "auth.changePassword": "Changed own password",
   "racks.addLoading": "Added rack loading",
@@ -8818,15 +8895,17 @@ async function getDashboard(payload = {}) {
     `SELECT month, SUM(amount) AS amount FROM (${monthlySrc}) AS t GROUP BY month ORDER BY month DESC LIMIT 6`
   ).all()).map((r) => ({ month: r.month, amount: money7({ q: r.amount }) })).reverse();
   const scope = pid ? { plant_id: pid } : {};
-  const [custBal, supBal, transBal, outBal] = await Promise.all([
+  const [custBal, supBal, transBal, outBal, vehBal, jcbBal] = await Promise.all([
     getPartyBalances({ party_type: "customer", ...scope }),
     getPartyBalances({ party_type: "supplier", ...scope }),
     getPartyBalances({ party_type: "transporter", ...scope }),
-    getPartyBalances({ party_type: "outsource", ...scope })
+    getPartyBalances({ party_type: "outsource", ...scope }),
+    getPartyBalances({ party_type: "rack_vehicle", ...scope }),
+    getPartyBalances({ party_type: "rack_jcb", ...scope })
   ]);
   const sumBal = (arr) => arr.reduce((s, b) => s + b.balance, 0);
   const billReceivable = money7({ q: sumBal(custBal) });
-  const billsPayable = money7({ q: sumBal(supBal) + sumBal(transBal) + sumBal(outBal) });
+  const billsPayable = money7({ q: sumBal(supBal) + sumBal(transBal) + sumBal(outBal) + sumBal(vehBal) + sumBal(jcbBal) });
   const obAnd = pid ? ` AND ob.plant_id = ${pid}` : "";
   const openingBalance = money7(
     await d.prepare(
@@ -9165,7 +9244,10 @@ app2.post("/api/call", async (req, res) => {
     if (method === "auth.login") {
       const creds = payload ?? {};
       const user2 = await authenticate(creds.username || "", creds.password || "");
-      if (!user2) return res.json({ result: { ok: false } });
+      if (!user2) {
+        await logActivity({ method: "auth.loginFailed", payload: { username: creds.username || "" }, ip });
+        return res.json({ result: { ok: false } });
+      }
       setSessionCookie(res, await createSession(user2.id));
       await logActivity({ method: "auth.login", user: user2, ip });
       return res.json({ result: { ok: true, user: user2 } });

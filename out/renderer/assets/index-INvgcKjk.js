@@ -89355,7 +89355,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-C3j_14Py.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-86wbtU_P.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
@@ -92585,14 +92585,27 @@ const typeLabel$1 = {
   customer: "Customer",
   supplier: "Supplier",
   transporter: "Transporter",
-  outsource: "Outsource"
+  outsource: "Outsource",
+  rack_vehicle: "Vehicle",
+  rack_jcb: "JCB"
 };
+const labelOf = (t3) => typeLabel$1[t3] ?? t3;
 const typeBadge$1 = {
   customer: "default",
   supplier: "warning",
   transporter: "muted",
-  outsource: "muted"
+  outsource: "muted",
+  rack_vehicle: "muted",
+  rack_jcb: "muted"
 };
+const PAY_TYPES = [
+  { value: "supplier", label: "Supplier" },
+  { value: "customer", label: "Customer" },
+  { value: "transporter", label: "Transporter" },
+  { value: "outsource", label: "Outsource" },
+  { value: "rack_vehicle", label: "Vehicle" },
+  { value: "rack_jcb", label: "JCB" }
+];
 function Payments() {
   const qc2 = useQueryClient();
   const toast = useToast();
@@ -92606,7 +92619,9 @@ function Payments() {
   const { data: customers = [] } = useQuery({ queryKey: ["customers", "all"], queryFn: () => api.customers.list() });
   const { data: transporters = [] } = useQuery({ queryKey: ["transporters", "all"], queryFn: () => api.transporters.list() });
   const { data: outsource = [] } = useQuery({ queryKey: ["outsource", "all"], queryFn: () => api.outsource.list() });
-  const partyList = (t3) => t3 === "customer" ? customers : t3 === "supplier" ? suppliers : t3 === "transporter" ? transporters : outsource;
+  const { data: rackVehicles = [] } = useQuery({ queryKey: ["rackVehicles", "all"], queryFn: () => api.rackVehicles.list() });
+  const { data: rackJcbs = [] } = useQuery({ queryKey: ["rackJcbs", "all"], queryFn: () => api.rackJcbs.list() });
+  const partyList = (t3) => t3 === "customer" ? customers : t3 === "supplier" ? suppliers : t3 === "transporter" ? transporters : t3 === "outsource" ? outsource : t3 === "rack_vehicle" ? rackVehicles.map((v2) => ({ id: v2.id, name: v2.vehicle_no })) : t3 === "rack_jcb" ? rackJcbs.map((j2) => ({ id: j2.id, name: j2.name })) : [];
   const [typeFilter, setTypeFilter] = reactExports.useState("");
   const [statusFilter, setStatusFilter] = reactExports.useState("");
   const [payForm, setPayForm] = reactExports.useState(null);
@@ -92665,7 +92680,7 @@ function Payments() {
       ["Party", "Type", "Debit", "Credit", "Balance", "Direction", "Status"],
       rows.map((r2) => [
         r2.name,
-        typeLabel$1[r2.party_type],
+        labelOf(r2.party_type),
         r2.total_debit,
         r2.total_credit,
         Math.abs(r2.balance),
@@ -92728,13 +92743,7 @@ function Payments() {
             className: "w-44",
             value: typeFilter,
             onChange: (v2) => setTypeFilter(v2),
-            options: [
-              { value: "", label: "All parties" },
-              { value: "customer", label: "Customers" },
-              { value: "supplier", label: "Suppliers" },
-              { value: "transporter", label: "Transporters" },
-              { value: "outsource", label: "Outsource" }
-            ]
+            options: [{ value: "", label: "All parties" }, ...PAY_TYPES.map((t3) => ({ value: t3.value, label: t3.label }))]
           }
         ),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -92763,7 +92772,7 @@ function Payments() {
         ] }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: rows.map((r2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: r2.name }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: typeBadge$1[r2.party_type], children: typeLabel$1[r2.party_type] }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: typeBadge$1[r2.party_type] ?? "muted", children: labelOf(r2.party_type) }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtMoney(r2.total_debit) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtMoney(r2.total_credit) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: `text-right font-semibold ${r2.kind === "receivable" ? "text-primary" : "text-destructive"}`, children: [
@@ -92795,12 +92804,7 @@ function Payments() {
               {
                 value: payForm.party_type,
                 onChange: (v2) => setPayForm({ ...payForm, party_type: v2, party_id: 0, party_name: "" }),
-                options: [
-                  { value: "supplier", label: "Supplier" },
-                  { value: "customer", label: "Customer" },
-                  { value: "transporter", label: "Transporter" },
-                  { value: "outsource", label: "Outsource" }
-                ]
+                options: PAY_TYPES.map((t3) => ({ value: t3.value, label: t3.label }))
               }
             ) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Party", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -92816,7 +92820,7 @@ function Payments() {
                   value: p2.id,
                   label: `${p2.name}${p2.head ? ` — ${p2.head}` : ""}`
                 })),
-                placeholder: `Select ${typeLabel$1[payForm.party_type]}…`
+                placeholder: `Select ${labelOf(payForm.party_type)}…`
               }
             ) })
           ] }),
