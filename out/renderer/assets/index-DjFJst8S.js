@@ -89759,7 +89759,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-DjvWQMBt.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-CVRKDUAK.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
@@ -93192,7 +93192,6 @@ function Payments() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
         ] }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: rows.map((r2) => {
-          const settled = Math.abs(r2.balance) < 0.01;
           const isReceivable = r2.kind === "receivable";
           return /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: r2.name }),
@@ -93212,16 +93211,6 @@ function Payments() {
                 /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowUpRight, { size: 14 }),
                 " Pay"
               ] }),
-              !settled && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                Button,
-                {
-                  variant: "ghost",
-                  size: "sm",
-                  title: isReceivable ? "Record a payment instead" : "Record a receipt instead",
-                  onClick: () => openForRow(r2, isReceivable ? "out" : "in"),
-                  children: isReceivable ? "Pay" : "Receive"
-                }
-              ),
               /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Open ledger", onClick: () => nav("/ledgers", { state: { type: r2.party_type, id: r2.party_id } }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(BookOpen, { size: 15 }) })
             ] }) })
           ] }, `${r2.party_type}-${r2.party_id}`);
