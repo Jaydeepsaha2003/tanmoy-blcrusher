@@ -72752,7 +72752,7 @@ function Dispatch() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             Field,
             {
-              label: `Actual Qty (${form.uom})`,
+              label: `Dispatch Qty (${form.uom})`,
               required: !isOutsource,
               hint: isOutsource ? "Optional — no stock moves" : qtyCm > 0 ? `${fmtQty(qtyCm)} m³ off stock` : "Dispatched from plant",
               children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.quantity, onChange: (e3) => setForm({ ...form, quantity: e3.target.value }), placeholder: isOutsource ? "Optional" : "" })
@@ -72761,7 +72761,7 @@ function Dispatch() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             Field,
             {
-              label: `Sale Qty (${form.uom})`,
+              label: `Customer Rec Qty (${form.uom})`,
               hint: isOutsource ? "Quantity sold to the customer" : saleQty != null ? shortageQty > 0 ? `Shortage ${fmtQty(shortageQty)} ${form.uom}` : shortageQty < 0 ? `Excess ${fmtQty(-shortageQty)} ${form.uom}` : "No shortage" : "Add later — bills actual until set",
               children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.sale_quantity, onChange: (e3) => setForm({ ...form, sale_quantity: e3.target.value }), placeholder: isOutsource ? "" : "Optional" })
             }
@@ -89355,7 +89355,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-DvCLOT2u.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-C3j_14Py.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
