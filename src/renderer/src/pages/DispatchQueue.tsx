@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { usePersistentState } from '@/lib/persistentState'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { PackageCheck, Undo2 } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -19,7 +20,7 @@ export function DispatchQueue(): React.JSX.Element {
   const qc = useQueryClient()
   const toast = useToast()
   const { plantId } = usePlant()
-  const [view, setView] = React.useState<'pending' | 'dispatched' | 'all'>('pending')
+  const [view, setView] = usePersistentState<'pending' | 'dispatched' | 'all'>('view', 'pending')
 
   const filter =
     view === 'all'

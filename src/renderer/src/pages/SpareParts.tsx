@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { usePersistentState } from '@/lib/persistentState'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDownToLine, ArrowUpFromLine, FileSpreadsheet, PackagePlus, Pencil, Plus, Trash2 } from 'lucide-react'
 import type { SparePart, SparePartType } from '@shared/types'
@@ -27,7 +28,7 @@ export function PartsStockPanel(): React.JSX.Element {
   const qc = useQueryClient()
   const toast = useToast()
   const [type, setType] = React.useState<SparePartType | ''>('')
-  const [q, setQ] = React.useState('')
+  const [q, setQ] = usePersistentState('q', '')
   const [form, setForm] = React.useState<any>(null)
   const [stockMove, setStockMove] = React.useState<any>(null)
   const [selected, setSelected] = React.useState<number | undefined>()

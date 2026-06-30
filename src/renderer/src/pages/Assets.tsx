@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { usePersistentState } from '@/lib/persistentState'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, FileSpreadsheet, Gauge, ArrowLeftRight, AlertTriangle } from 'lucide-react'
@@ -40,8 +41,8 @@ export function Assets(): React.JSX.Element {
   const [open, setOpen] = React.useState(false)
   const [form, setForm] = React.useState<any>({})
   const [moveForm, setMoveForm] = React.useState<any>(null)
-  const [typeFilter, setTypeFilter] = React.useState<'all' | 'machine' | 'vehicle'>('all')
-  const [q, setQ] = React.useState('')
+  const [typeFilter, setTypeFilter] = usePersistentState<'all' | 'machine' | 'vehicle'>('typeFilter', 'all')
+  const [q, setQ] = usePersistentState('q', '')
 
   const rows = React.useMemo(() => {
     const term = q.trim().toLowerCase()

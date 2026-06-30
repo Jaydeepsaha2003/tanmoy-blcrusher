@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { usePersistentState } from '@/lib/persistentState'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, ArrowRight, FileSpreadsheet } from 'lucide-react'
@@ -45,7 +46,7 @@ export function Racks(): React.JSX.Element {
   const nav = useNavigate()
   const { plantId } = usePlant()
   const { data: plants = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
-  const [filter, setFilter] = React.useState<{ status?: string }>({})
+  const [filter, setFilter] = usePersistentState<{ status?: string }>('filter', {})
   const { data = [] } = useQuery({
     queryKey: ['racks', filter],
     queryFn: () => api.racks.list(filter.status ? { status: filter.status } : {})

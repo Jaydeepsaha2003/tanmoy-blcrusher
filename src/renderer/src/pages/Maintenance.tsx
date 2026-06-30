@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { usePersistentState } from '@/lib/persistentState'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, FileSpreadsheet, Wrench, Banknote, Users } from 'lucide-react'
@@ -53,7 +54,7 @@ export function CostsPanel(): React.JSX.Element {
   const [params] = useSearchParams()
   const machineParam = params.get('machine')
 
-  const [tab, setTab] = React.useState<Tab>('maintenance')
+  const [tab, setTab] = usePersistentState<Tab>('tab', 'maintenance')
   const [machineFilter, setMachineFilter] = React.useState<string>(machineParam ?? '')
   const [from, setFrom] = React.useState('')
   const [to, setTo] = React.useState('')

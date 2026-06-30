@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { usePersistentState } from '@/lib/persistentState'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, FileSpreadsheet, FileDown, Upload, Truck, Forklift } from 'lucide-react'
 import * as XLSX from 'xlsx'
@@ -28,8 +29,8 @@ export function RackFleet(): React.JSX.Element {
   const qc = useQueryClient()
   const toast = useToast()
   const { plantId } = usePlant()
-  const [tab, setTab] = React.useState<'vehicles' | 'jcb'>('vehicles')
-  const [q, setQ] = React.useState('')
+  const [tab, setTab] = usePersistentState<'vehicles' | 'jcb'>('tab', 'vehicles')
+  const [q, setQ] = usePersistentState('q', '')
 
   const { data: plants = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
   const { data: vehicles = [] } = useQuery({ queryKey: ['rackVehicles', plantId], queryFn: () => api.rackVehicles.list(plantId) })

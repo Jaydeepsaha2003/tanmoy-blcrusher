@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { usePersistentState } from '@/lib/persistentState'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, BookOpen } from 'lucide-react'
@@ -33,7 +34,7 @@ export function OutsourceVendors(): React.JSX.Element {
   const { data = [] } = useQuery({ queryKey: ['outsource'], queryFn: api.outsource.list })
   const [open, setOpen] = React.useState(false)
   const [form, setForm] = React.useState<Partial<Outsource>>({})
-  const [q, setQ] = React.useState('')
+  const [q, setQ] = usePersistentState('q', '')
   const [head, setHead] = React.useState('')
 
   const heads = React.useMemo(() => [...new Set(data.map((o) => o.head).filter(Boolean))], [data])

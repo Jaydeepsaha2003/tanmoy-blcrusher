@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { usePersistentState } from '@/lib/persistentState'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, FileSpreadsheet, Fuel, FlaskConical, Gauge } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -38,7 +39,7 @@ export function Diesel(): React.JSX.Element {
   const qc = useQueryClient()
   const toast = useToast()
   const { plantId } = usePlant()
-  const [tab, setTab] = React.useState<'purchases' | 'issues' | 'by_machine'>('purchases')
+  const [tab, setTab] = usePersistentState<'purchases' | 'issues' | 'by_machine'>('tab', 'purchases')
 
   const { data: plants = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers', plantId], queryFn: () => api.suppliers.list(plantId) })

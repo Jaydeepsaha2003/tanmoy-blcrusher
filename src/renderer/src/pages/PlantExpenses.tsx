@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { usePersistentState } from '@/lib/persistentState'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, FileSpreadsheet, Zap, Wrench, Truck, Boxes, Receipt, Banknote } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -55,7 +56,7 @@ export function PlantExpenses(): React.JSX.Element {
   const [catFilter, setCatFilter] = React.useState<ExpenseCategory | ''>('')
   const [from, setFrom] = React.useState('')
   const [to, setTo] = React.useState('')
-  const [view, setView] = React.useState<'expenses' | 'book'>('expenses')
+  const [view, setView] = usePersistentState<'expenses' | 'book'>('view', 'expenses')
 
   const filter = clean({ plant_id: plantId, category: catFilter || undefined, from: from || undefined, to: to || undefined })
   const { data = [] } = useQuery({ queryKey: ['plantExpenses', filter], queryFn: () => api.plantExpenses.list(filter) })

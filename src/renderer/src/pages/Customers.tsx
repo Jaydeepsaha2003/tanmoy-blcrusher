@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { usePersistentState } from '@/lib/persistentState'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, FileSpreadsheet, Tags, Link2, Copy, ExternalLink, XCircle, Save } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -45,8 +46,8 @@ export function Customers(): React.JSX.Element {
   const [open, setOpen] = React.useState(false)
   const [form, setForm] = React.useState<Partial<Customer>>({})
   const [ratesFor, setRatesFor] = React.useState<Customer | null>(null)
-  const [q, setQ] = React.useState('')
-  const [companyFilter, setCompanyFilter] = React.useState('')
+  const [q, setQ] = usePersistentState('q', '')
+  const [companyFilter, setCompanyFilter] = usePersistentState('companyFilter', '')
 
   const filtered = React.useMemo(() => {
     const term = q.trim().toLowerCase()

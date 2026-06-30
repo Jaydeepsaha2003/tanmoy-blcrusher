@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { usePersistentState } from '@/lib/persistentState'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, FileSpreadsheet, Truck, ArrowLeft } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -36,9 +37,9 @@ export function Transporters(): React.JSX.Element {
   const [open, setOpen] = React.useState(false)
   const [form, setForm] = React.useState<Partial<Transporter>>({})
   const [fleetFor, setFleetFor] = React.useState<Transporter | null>(null)
-  const [q, setQ] = React.useState('')
-  const [companyFilter, setCompanyFilter] = React.useState('')
-  const [bal, setBal] = React.useState('')
+  const [q, setQ] = usePersistentState('q', '')
+  const [companyFilter, setCompanyFilter] = usePersistentState('companyFilter', '')
+  const [bal, setBal] = usePersistentState('bal', '')
 
   const filtered = React.useMemo(() => {
     const term = q.trim().toLowerCase()

@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { usePersistentState } from '@/lib/persistentState'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { FileSpreadsheet, ArrowLeftRight, Trash2 } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -49,7 +50,7 @@ export function Movements(): React.JSX.Element {
   const toast = useToast()
   const { plantId } = usePlant()
   const { data: locations = [] } = useQuery({ queryKey: ['locations', 0], queryFn: () => api.locations.list() })
-  const [filter, setFilter] = React.useState<Record<string, unknown>>({})
+  const [filter, setFilter] = usePersistentState<Record<string, unknown>>('filter', {})
   const { data = [] } = useQuery({
     queryKey: ['movements', filter, plantId],
     queryFn: () => api.movements.list({ ...filter, plant_id: plantId })

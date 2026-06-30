@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { usePersistentState } from '@/lib/persistentState'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, FileSpreadsheet, BookOpen } from 'lucide-react'
@@ -42,7 +43,7 @@ export function Companies(): React.JSX.Element {
     const cur = form.plant_ids ?? []
     setForm({ ...form, plant_ids: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] })
   }
-  const [q, setQ] = React.useState('')
+  const [q, setQ] = usePersistentState('q', '')
   const [role, setRole] = React.useState('')
 
   const filtered = React.useMemo(() => {

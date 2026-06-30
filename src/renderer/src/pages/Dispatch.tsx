@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { usePersistentState } from '@/lib/persistentState'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, FileSpreadsheet, X } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -50,11 +51,11 @@ export function Dispatch(): React.JSX.Element {
   const { data: outsourceVendors = [] } = useQuery({ queryKey: ['outsource'], queryFn: () => api.outsource.list() })
   const { data: transporters = [] } = useQuery({ queryKey: ['transporters', plantId], queryFn: () => api.transporters.list(plantId) })
   const { data: assets = [] } = useQuery({ queryKey: ['assets', plantId], queryFn: () => api.assets.list(plantId) })
-  const [filter, setFilter] = React.useState<{
+  const [filter, setFilter] = usePersistentState<{
     customer_id?: number
     delivery_status?: string
     payment_status?: string
-  }>({})
+  }>('filter', {})
   const { data = [] } = useQuery({
     queryKey: ['dispatches', filter, plantId],
     queryFn: () => api.dispatches.list(cleanFilter({ ...filter, plant_id: plantId }))

@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { usePersistentState } from '@/lib/persistentState'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Truck, IndianRupee } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -33,7 +34,7 @@ export function Deliveries(): React.JSX.Element {
   const qc = useQueryClient()
   const toast = useToast()
   const { plantId } = usePlant()
-  const [view, setView] = React.useState<'all' | 'pending' | 'rate_pending'>('all')
+  const [view, setView] = usePersistentState<'all' | 'pending' | 'rate_pending'>('view', 'all')
 
   const filter =
     view === 'pending'

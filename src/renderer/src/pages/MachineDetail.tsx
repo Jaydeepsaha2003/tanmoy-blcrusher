@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { usePersistentState } from '@/lib/persistentState'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Plus, Pencil, Trash2, Gauge, FileText, BarChart3, Paperclip, AlertTriangle, BookOpen, Wrench } from 'lucide-react'
@@ -44,7 +45,7 @@ export function MachineDetail(): React.JSX.Element {
   const toast = useToast()
   const nav = useNavigate()
 
-  const [tab, setTab] = React.useState<'sheet' | 'ledger' | 'logbook' | 'documents'>('sheet')
+  const [tab, setTab] = usePersistentState<'sheet' | 'ledger' | 'logbook' | 'documents'>('tab', 'sheet')
   const [from, setFrom] = React.useState('')
   const [to, setTo] = React.useState('')
 

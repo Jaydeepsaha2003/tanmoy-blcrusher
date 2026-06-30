@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { usePersistentState } from '@/lib/persistentState'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, FileSpreadsheet } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -35,7 +36,7 @@ export function Employees(): React.JSX.Element {
   const { data: plants = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
   const [open, setOpen] = React.useState(false)
   const [form, setForm] = React.useState<any>(null)
-  const [q, setQ] = React.useState('')
+  const [q, setQ] = usePersistentState('q', '')
   const [desig, setDesig] = React.useState('')
   const [status, setStatus] = React.useState('')
 

@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { usePersistentState } from '@/lib/persistentState'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, Gauge, BarChart3, AlertTriangle } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -14,11 +15,11 @@ export function MachineLogs(): React.JSX.Element {
   const qc = useQueryClient()
   const toast = useToast()
   const { plantId } = usePlant()
-  const [tab, setTab] = React.useState<'logbook' | 'mileage'>('logbook')
+  const [tab, setTab] = usePersistentState<'logbook' | 'mileage'>('tab', 'logbook')
   const [from, setFrom] = React.useState('')
   const [to, setTo] = React.useState('')
   const [assetId, setAssetId] = React.useState<number | ''>('')
-  const [mileType, setMileType] = React.useState<'all' | 'machine' | 'vehicle'>('all')
+  const [mileType, setMileType] = usePersistentState<'all' | 'machine' | 'vehicle'>('mileType', 'all')
 
   const { data: assets = [] } = useQuery({ queryKey: ['assets', plantId], queryFn: () => api.assets.list(plantId) })
   const { data: logs = [] } = useQuery({

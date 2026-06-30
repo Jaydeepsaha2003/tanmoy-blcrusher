@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { usePersistentState } from '@/lib/persistentState'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Wallet, BookOpen, FileSpreadsheet, HandCoins, Search, ArrowDownLeft, ArrowUpRight } from 'lucide-react'
@@ -93,9 +94,9 @@ export function Payments(): React.JSX.Element {
     ]
   }, [customers, suppliers, transporters, outsource, rackVehicles, rackJcbs])
 
-  const [q, setQ] = React.useState('')
-  const [typeFilter, setTypeFilter] = React.useState<LedgerType | ''>('')
-  const [statusFilter, setStatusFilter] = React.useState<'pending' | 'settled' | 'all'>('pending')
+  const [q, setQ] = usePersistentState('q', '')
+  const [typeFilter, setTypeFilter] = usePersistentState<LedgerType | ''>('typeFilter', '')
+  const [statusFilter, setStatusFilter] = usePersistentState<'pending' | 'settled' | 'all'>('statusFilter', 'pending')
   const [payForm, setPayForm] = React.useState<any>(null)
 
   const rows = React.useMemo(() => {
