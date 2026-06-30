@@ -17655,7 +17655,7 @@ var CFB = /* @__PURE__ */ function _CFB() {
     get_fs();
     return parse(fs.readFileSync(filename2), options);
   }
-  function read(blob, options) {
+  function read2(blob, options) {
     var type = options && options.type;
     if (!type) {
       if (has_buf && Buffer.isBuffer(blob)) type = "buffer";
@@ -17990,7 +17990,7 @@ var CFB = /* @__PURE__ */ function _CFB() {
     for (var i3 = 0; i3 < o2.length; ++i3) out[i3] = String.fromCharCode(o2[i3]);
     return out.join("");
   }
-  function write(cfb, options) {
+  function write2(cfb, options) {
     var o2 = _write(cfb, options);
     switch (options && options.type || "buffer") {
       case "file":
@@ -18851,9 +18851,9 @@ var CFB = /* @__PURE__ */ function _CFB() {
     rebuild_cfb(cfb, true);
   }
   exports.find = find2;
-  exports.read = read;
+  exports.read = read2;
   exports.parse = parse;
-  exports.write = write;
+  exports.write = write2;
   exports.writeFile = write_file;
   exports.utils = {
     cfb_new,
@@ -70125,6 +70125,38 @@ function Dashboard() {
     ] })
   ] });
 }
+const mem = /* @__PURE__ */ new Map();
+function read(key) {
+  try {
+    return sessionStorage.getItem(key);
+  } catch {
+    return mem.get(key) ?? null;
+  }
+}
+function write(key, value) {
+  try {
+    sessionStorage.setItem(key, value);
+  } catch {
+    mem.set(key, value);
+  }
+}
+function usePersistentState(field, initial) {
+  const { pathname } = useLocation();
+  const key = `bl.ui:${pathname}:${field}`;
+  const [value, setValue] = reactExports.useState(() => {
+    const raw = read(key);
+    if (raw == null) return initial;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return initial;
+    }
+  });
+  reactExports.useEffect(() => {
+    write(key, JSON.stringify(value));
+  }, [key, value]);
+  return [value, setValue];
+}
 let externalConfirm = null;
 function confirmDialog(opts) {
   if (!externalConfirm) return Promise.resolve(window.confirm(opts.message));
@@ -70155,7 +70187,7 @@ function Plants() {
   const { data = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
   const [open2, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState(empty$1);
-  const [q2, setQ] = reactExports.useState("");
+  const [q2, setQ] = usePersistentState("q", "");
   const [status, setStatus] = reactExports.useState("");
   const filtered = reactExports.useMemo(() => {
     const term = q2.trim().toLowerCase();
@@ -70455,8 +70487,8 @@ function Suppliers() {
   const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
   const [open2, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState({});
-  const [q2, setQ] = reactExports.useState("");
-  const [companyFilter, setCompanyFilter] = reactExports.useState("");
+  const [q2, setQ] = usePersistentState("q", "");
+  const [companyFilter, setCompanyFilter] = usePersistentState("companyFilter", "");
   const [dues, setDues] = reactExports.useState("");
   const filtered = reactExports.useMemo(() => {
     const term = q2.trim().toLowerCase();
@@ -70716,7 +70748,7 @@ function Purchases() {
   const { plantId } = usePlant();
   const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
   const { data: suppliers = [] } = useQuery({ queryKey: ["suppliers", plantId], queryFn: () => api.suppliers.list(plantId) });
-  const [filter, setFilter] = reactExports.useState({});
+  const [filter, setFilter] = usePersistentState("filter", {});
   const { data: locations = [] } = useQuery({ queryKey: ["locations", 0], queryFn: () => api.locations.list() });
   const { data: outsourceVendors = [] } = useQuery({ queryKey: ["outsource"], queryFn: () => api.outsource.list() });
   const { data: transporters = [] } = useQuery({ queryKey: ["transporters", plantId], queryFn: () => api.transporters.list(plantId) });
@@ -71561,7 +71593,7 @@ function FinishedGoods() {
   const toast = useToast();
   const { plantId } = usePlant();
   const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
-  const [filter, setFilter] = reactExports.useState({});
+  const [filter, setFilter] = usePersistentState("filter", {});
   const { data = [] } = useQuery({
     queryKey: ["finished", filter, plantId],
     queryFn: () => api.finished.list(cleanFilter$1({ ...filter, plant_id: plantId }))
@@ -72048,8 +72080,8 @@ function Customers() {
   const [open2, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState({});
   const [ratesFor, setRatesFor] = reactExports.useState(null);
-  const [q2, setQ] = reactExports.useState("");
-  const [companyFilter, setCompanyFilter] = reactExports.useState("");
+  const [q2, setQ] = usePersistentState("q", "");
+  const [companyFilter, setCompanyFilter] = usePersistentState("companyFilter", "");
   const filtered = reactExports.useMemo(() => {
     const term = q2.trim().toLowerCase();
     return data.filter((c2) => {
@@ -72413,7 +72445,7 @@ function Dispatch() {
   const { data: outsourceVendors = [] } = useQuery({ queryKey: ["outsource"], queryFn: () => api.outsource.list() });
   const { data: transporters = [] } = useQuery({ queryKey: ["transporters", plantId], queryFn: () => api.transporters.list(plantId) });
   const { data: assets = [] } = useQuery({ queryKey: ["assets", plantId], queryFn: () => api.assets.list(plantId) });
-  const [filter, setFilter] = reactExports.useState({});
+  const [filter, setFilter] = usePersistentState("filter", {});
   const { data = [] } = useQuery({
     queryKey: ["dispatches", filter, plantId],
     queryFn: () => api.dispatches.list(cleanFilter({ ...filter, plant_id: plantId }))
@@ -73181,7 +73213,7 @@ function DispatchQueue() {
   const qc2 = useQueryClient();
   const toast = useToast();
   const { plantId } = usePlant();
-  const [view, setView] = reactExports.useState("pending");
+  const [view, setView] = usePersistentState("view", "pending");
   const filter = view === "all" ? { plant_id: plantId } : { dispatch_status: view, plant_id: plantId };
   const { data = [] } = useQuery({
     queryKey: ["dispatches", "dispatch", view, plantId],
@@ -73399,9 +73431,9 @@ function Transporters() {
   const [open2, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState({});
   const [fleetFor, setFleetFor] = reactExports.useState(null);
-  const [q2, setQ] = reactExports.useState("");
-  const [companyFilter, setCompanyFilter] = reactExports.useState("");
-  const [bal, setBal] = reactExports.useState("");
+  const [q2, setQ] = usePersistentState("q", "");
+  const [companyFilter, setCompanyFilter] = usePersistentState("companyFilter", "");
+  const [bal, setBal] = usePersistentState("bal", "");
   const filtered = reactExports.useMemo(() => {
     const term = q2.trim().toLowerCase();
     return data.filter((t3) => {
@@ -73748,7 +73780,7 @@ function Companies() {
     const cur = form.plant_ids ?? [];
     setForm({ ...form, plant_ids: cur.includes(id2) ? cur.filter((x2) => x2 !== id2) : [...cur, id2] });
   }
-  const [q2, setQ] = reactExports.useState("");
+  const [q2, setQ] = usePersistentState("q", "");
   const [role, setRole] = reactExports.useState("");
   const filtered = reactExports.useMemo(() => {
     const term = q2.trim().toLowerCase();
@@ -74025,7 +74057,7 @@ function OutsourceVendors() {
   const { data = [] } = useQuery({ queryKey: ["outsource"], queryFn: api.outsource.list });
   const [open2, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState({});
-  const [q2, setQ] = reactExports.useState("");
+  const [q2, setQ] = usePersistentState("q", "");
   const [head, setHead] = reactExports.useState("");
   const heads = reactExports.useMemo(() => [...new Set(data.map((o2) => o2.head).filter(Boolean))], [data]);
   const filtered = reactExports.useMemo(() => {
@@ -74153,8 +74185,8 @@ function Assets() {
   const [open2, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState({});
   const [moveForm, setMoveForm] = reactExports.useState(null);
-  const [typeFilter, setTypeFilter] = reactExports.useState("all");
-  const [q2, setQ] = reactExports.useState("");
+  const [typeFilter, setTypeFilter] = usePersistentState("typeFilter", "all");
+  const [q2, setQ] = usePersistentState("q", "");
   const rows = reactExports.useMemo(() => {
     const term = q2.trim().toLowerCase();
     return data.filter((a2) => {
@@ -74420,7 +74452,7 @@ function MachineDetail() {
   const qc2 = useQueryClient();
   const toast = useToast();
   const nav = useNavigate();
-  const [tab, setTab] = reactExports.useState("sheet");
+  const [tab, setTab] = usePersistentState("tab", "sheet");
   const [from, setFrom] = reactExports.useState("");
   const [to, setTo] = reactExports.useState("");
   const { data: assets = [] } = useQuery({ queryKey: ["assets"], queryFn: () => api.assets.list() });
@@ -74773,11 +74805,11 @@ function MachineLogs() {
   const qc2 = useQueryClient();
   const toast = useToast();
   const { plantId } = usePlant();
-  const [tab, setTab] = reactExports.useState("logbook");
+  const [tab, setTab] = usePersistentState("tab", "logbook");
   const [from, setFrom] = reactExports.useState("");
   const [to, setTo] = reactExports.useState("");
   const [assetId, setAssetId] = reactExports.useState("");
-  const [mileType, setMileType] = reactExports.useState("all");
+  const [mileType, setMileType] = usePersistentState("mileType", "all");
   const { data: assets = [] } = useQuery({ queryKey: ["assets", plantId], queryFn: () => api.assets.list(plantId) });
   const { data: logs = [] } = useQuery({
     queryKey: ["allLogs", from, to, assetId],
@@ -74993,7 +75025,7 @@ function PartsStockPanel() {
   const qc2 = useQueryClient();
   const toast = useToast();
   const [type, setType] = reactExports.useState("");
-  const [q2, setQ] = reactExports.useState("");
+  const [q2, setQ] = usePersistentState("q", "");
   const [form, setForm] = reactExports.useState(null);
   const [stockMove, setStockMove] = reactExports.useState(null);
   const [selected, setSelected] = reactExports.useState();
@@ -75361,7 +75393,7 @@ function CostsPanel() {
   const { plantId } = usePlant();
   const [params] = useSearchParams();
   const machineParam = params.get("machine");
-  const [tab, setTab] = reactExports.useState("maintenance");
+  const [tab, setTab] = usePersistentState("tab", "maintenance");
   const [machineFilter, setMachineFilter] = reactExports.useState(machineParam ?? "");
   const [from, setFrom] = reactExports.useState("");
   const [to, setTo] = reactExports.useState("");
@@ -75993,7 +76025,7 @@ function PlantExpenses() {
   const [catFilter, setCatFilter] = reactExports.useState("");
   const [from, setFrom] = reactExports.useState("");
   const [to, setTo] = reactExports.useState("");
-  const [view, setView] = reactExports.useState("expenses");
+  const [view, setView] = usePersistentState("view", "expenses");
   const filter = clean$3({ plant_id: plantId, category: catFilter || void 0, from: from || void 0, to: to || void 0 });
   const { data = [] } = useQuery({ queryKey: ["plantExpenses", filter], queryFn: () => api.plantExpenses.list(filter) });
   const bookFilter = clean$3({ plant_id: plantId, from: from || void 0, to: to || void 0 });
@@ -76376,7 +76408,7 @@ function Diesel() {
   const qc2 = useQueryClient();
   const toast = useToast();
   const { plantId } = usePlant();
-  const [tab, setTab] = reactExports.useState("purchases");
+  const [tab, setTab] = usePersistentState("tab", "purchases");
   const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
   const { data: suppliers = [] } = useQuery({ queryKey: ["suppliers", plantId], queryFn: () => api.suppliers.list(plantId) });
   const { data: transporters = [] } = useQuery({ queryKey: ["transporters", plantId], queryFn: () => api.transporters.list(plantId) });
@@ -76707,7 +76739,7 @@ function Employees() {
   const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
   const [open2, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState(null);
-  const [q2, setQ] = reactExports.useState("");
+  const [q2, setQ] = usePersistentState("q", "");
   const [desig, setDesig] = reactExports.useState("");
   const [status, setStatus] = reactExports.useState("");
   const desigs = reactExports.useMemo(() => [...new Set(data.map((e3) => e3.designation).filter(Boolean))], [data]);
@@ -77156,7 +77188,7 @@ function Racks() {
   const nav = useNavigate();
   const { plantId } = usePlant();
   const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
-  const [filter, setFilter] = reactExports.useState({});
+  const [filter, setFilter] = usePersistentState("filter", {});
   const { data = [] } = useQuery({
     queryKey: ["racks", filter],
     queryFn: () => api.racks.list(filter.status ? { status: filter.status } : {})
@@ -78607,8 +78639,8 @@ function RackFleet() {
   const qc2 = useQueryClient();
   const toast = useToast();
   const { plantId } = usePlant();
-  const [tab, setTab] = reactExports.useState("vehicles");
-  const [q2, setQ] = reactExports.useState("");
+  const [tab, setTab] = usePersistentState("tab", "vehicles");
+  const [q2, setQ] = usePersistentState("q", "");
   const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
   const { data: vehicles = [] } = useQuery({ queryKey: ["rackVehicles", plantId], queryFn: () => api.rackVehicles.list(plantId) });
   const { data: jcbs = [] } = useQuery({ queryKey: ["rackJcbs", plantId], queryFn: () => api.rackJcbs.list(plantId) });
@@ -89727,7 +89759,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-LYk7AzDv.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-DjvWQMBt.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
@@ -93011,9 +93043,9 @@ function Payments() {
       ...rackJcbs.map((j2) => ({ value: `rack_jcb:${j2.id}`, type: "rack_jcb", id: j2.id, name: j2.name }))
     ];
   }, [customers, suppliers, transporters, outsource, rackVehicles, rackJcbs]);
-  const [q2, setQ] = reactExports.useState("");
-  const [typeFilter, setTypeFilter] = reactExports.useState("");
-  const [statusFilter, setStatusFilter] = reactExports.useState("pending");
+  const [q2, setQ] = usePersistentState("q", "");
+  const [typeFilter, setTypeFilter] = usePersistentState("typeFilter", "");
+  const [statusFilter, setStatusFilter] = usePersistentState("statusFilter", "pending");
   const [payForm, setPayForm] = reactExports.useState(null);
   const rows = reactExports.useMemo(() => {
     const term = q2.trim().toLowerCase();
@@ -93303,7 +93335,7 @@ function Deliveries() {
   const qc2 = useQueryClient();
   const toast = useToast();
   const { plantId } = usePlant();
-  const [view, setView] = reactExports.useState("all");
+  const [view, setView] = usePersistentState("view", "all");
   const filter = view === "pending" ? { delivery_status: "pending", plant_id: plantId } : view === "rate_pending" ? { delivery_status: "delivered", rate_pending: true, plant_id: plantId } : { plant_id: plantId };
   const { data = [] } = useQuery({
     queryKey: ["dispatches", view, plantId],
@@ -93415,7 +93447,7 @@ function Movements() {
   const toast = useToast();
   const { plantId } = usePlant();
   const { data: locations = [] } = useQuery({ queryKey: ["locations", 0], queryFn: () => api.locations.list() });
-  const [filter, setFilter] = reactExports.useState({});
+  const [filter, setFilter] = usePersistentState("filter", {});
   const { data = [] } = useQuery({
     queryKey: ["movements", filter, plantId],
     queryFn: () => api.movements.list({ ...filter, plant_id: plantId })
