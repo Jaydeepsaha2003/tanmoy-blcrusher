@@ -1,14 +1,13 @@
 import * as React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Wallet, BookOpen, FileSpreadsheet, HandCoins } from 'lucide-react'
+import { Wallet, BookOpen, FileSpreadsheet, HandCoins, Search, ArrowDownLeft, ArrowUpRight } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { LedgerType, DueRow, PaymentDirection } from '@shared/types'
 import { PageHeader, Page } from '@/components/layout'
 import {
   Button,
   Input,
-  Select,
   SearchSelect,
   Field,
   Badge,
@@ -25,7 +24,7 @@ import {
 } from '@/components/ui'
 import { useToast } from '@/components/toast'
 import { usePlant } from '@/lib/plant'
-import { fmtMoney, today, downloadExcel } from '@/lib/utils'
+import { fmtMoney, today, downloadExcel, cn } from '@/lib/utils'
 
 const typeLabel: Partial<Record<LedgerType, string>> = {
   customer: 'Customer',
@@ -53,6 +52,16 @@ const PAY_TYPES: { value: LedgerType; label: string }[] = [
   { value: 'rack_jcb', label: 'JCB' }
 ]
 
+const MODES = [
+  { value: 'cash', label: 'Cash' },
+  { value: 'bank', label: 'Bank Transfer' },
+  { value: 'upi', label: 'UPI' },
+  { value: 'cheque', label: 'Cheque' },
+  { value: 'other', label: 'Other' }
+]
+
+interface PartyOpt { value: string; type: LedgerType; id: number; name: string }
+
 export function Payments(): React.JSX.Element {
   const qc = useQueryClient()
   const toast = useToast()
@@ -62,39 +71,47 @@ export function Payments(): React.JSX.Element {
     queryKey: ['allDues', plantId],
     queryFn: () => api.ledgers.allDues(plantId)
   })
-  // All parties (no plant filter) for the advance/payment picker.
+  // All parties (no plant filter) so any debtor/creditor — on any plant — can be paid.
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers', 'all'], queryFn: () => api.suppliers.list() })
   const { data: customers = [] } = useQuery({ queryKey: ['customers', 'all'], queryFn: () => api.customers.list() })
   const { data: transporters = [] } = useQuery({ queryKey: ['transporters', 'all'], queryFn: () => api.transporters.list() })
   const { data: outsource = [] } = useQuery({ queryKey: ['outsource', 'all'], queryFn: () => api.outsource.list() })
   const { data: rackVehicles = [] } = useQuery({ queryKey: ['rackVehicles', 'all'], queryFn: () => api.rackVehicles.list() })
   const { data: rackJcbs = [] } = useQuery({ queryKey: ['rackJcbs', 'all'], queryFn: () => api.rackJcbs.list() })
-  const partyList = (t: LedgerType): { id: number; name: string; head?: string }[] =>
-    t === 'customer' ? customers
-      : t === 'supplier' ? suppliers
-        : t === 'transporter' ? transporters
-          : t === 'outsource' ? outsource
-            : t === 'rack_vehicle' ? rackVehicles.map((v) => ({ id: v.id, name: v.vehicle_no }))
-              : t === 'rack_jcb' ? rackJcbs.map((j) => ({ id: j.id, name: j.name }))
-                : []
 
+  // One combined directory of every party, for the "search any debtor or creditor" picker.
+  const allParties = React.useMemo<PartyOpt[]>(() => {
+    const mk = (type: LedgerType, arr: { id: number; name: string }[]): PartyOpt[] =>
+      arr.map((x) => ({ value: `${type}:${x.id}`, type, id: x.id, name: x.name }))
+    return [
+      ...mk('customer', customers),
+      ...mk('supplier', suppliers),
+      ...mk('transporter', transporters),
+      ...mk('outsource', outsource),
+      ...rackVehicles.map((v) => ({ value: `rack_vehicle:${v.id}`, type: 'rack_vehicle' as LedgerType, id: v.id, name: v.vehicle_no })),
+      ...rackJcbs.map((j) => ({ value: `rack_jcb:${j.id}`, type: 'rack_jcb' as LedgerType, id: j.id, name: j.name }))
+    ]
+  }, [customers, suppliers, transporters, outsource, rackVehicles, rackJcbs])
+
+  const [q, setQ] = React.useState('')
   const [typeFilter, setTypeFilter] = React.useState<LedgerType | ''>('')
-  const [statusFilter, setStatusFilter] = React.useState<'' | 'outstanding' | 'settled'>('')
+  const [statusFilter, setStatusFilter] = React.useState<'pending' | 'settled' | 'all'>('pending')
   const [payForm, setPayForm] = React.useState<any>(null)
 
-  const rows = data.filter((r) => {
-    if (typeFilter && r.party_type !== typeFilter) return false
-    if (statusFilter === 'outstanding' && Math.abs(r.balance) < 0.01) return false
-    if (statusFilter === 'settled' && Math.abs(r.balance) >= 0.01) return false
-    return true
-  })
+  const rows = React.useMemo(() => {
+    const term = q.trim().toLowerCase()
+    return data.filter((r) => {
+      if (typeFilter && r.party_type !== typeFilter) return false
+      if (statusFilter === 'pending' && Math.abs(r.balance) < 0.01) return false
+      if (statusFilter === 'settled' && Math.abs(r.balance) >= 0.01) return false
+      if (term && !r.name.toLowerCase().includes(term)) return false
+      return true
+    })
+  }, [data, q, typeFilter, statusFilter])
 
-  const totalReceivable = data
-    .filter((r) => r.kind === 'receivable' && r.balance > 0)
-    .reduce((s, r) => s + r.balance, 0)
-  const totalPayable = data
-    .filter((r) => r.kind === 'payable' && r.balance > 0)
-    .reduce((s, r) => s + r.balance, 0)
+  const totalReceivable = data.filter((r) => r.kind === 'receivable' && r.balance > 0).reduce((s, r) => s + r.balance, 0)
+  const totalPayable = data.filter((r) => r.kind === 'payable' && r.balance > 0).reduce((s, r) => s + r.balance, 0)
+  const pendingCount = data.filter((r) => Math.abs(r.balance) >= 0.01).length
 
   const savePayment = useMutation({
     mutationFn: (p: any) => api.payments.add(p),
@@ -110,12 +127,13 @@ export function Payments(): React.JSX.Element {
     onError: (e: Error) => toast.error(e.message)
   })
 
-  function openPayment(r: DueRow): void {
+  /** Open the modal for a known party row, defaulting the direction to its natural side. */
+  function openForRow(r: DueRow, direction: PaymentDirection): void {
     setPayForm({
       party_type: r.party_type,
       party_id: r.party_id,
       party_name: r.name,
-      direction: (r.kind === 'receivable' ? 'in' : 'out') as PaymentDirection,
+      direction,
       amount: r.balance > 0 ? r.balance : '',
       mode: 'cash',
       ref: '',
@@ -124,21 +142,15 @@ export function Payments(): React.JSX.Element {
     })
   }
 
-  // Record a payment or ADVANCE for any party — even one with no bills yet.
-  function openAdvance(): void {
-    setPayForm({
-      pick: true,
-      party_type: 'supplier' as LedgerType,
-      party_id: 0,
-      party_name: '',
-      direction: 'out' as PaymentDirection,
-      amount: '',
-      mode: 'cash',
-      ref: 'Advance',
-      date: today(),
-      remarks: ''
-    })
+  /** Open the modal with the unified party search (record a payment/advance for anyone). */
+  function openPicker(): void {
+    setPayForm({ pick: true, party_type: '', party_id: 0, party_name: '', direction: 'out' as PaymentDirection, amount: '', mode: 'cash', ref: '', date: today(), remarks: '' })
   }
+
+  // The balance of the party currently in the form (if it has dues on this plant).
+  const formDue = payForm
+    ? data.find((d) => d.party_type === payForm.party_type && d.party_id === payForm.party_id)
+    : undefined
 
   function exportExcel(): void {
     downloadExcel(
@@ -163,11 +175,11 @@ export function Payments(): React.JSX.Element {
     <>
       <PageHeader
         title="Payment Status"
-        description="All outstanding dues — customers, suppliers and transporters under one roof"
+        description="Outstanding dues for every party — receive from customers, pay suppliers & transport, all in one place"
         actions={
           <>
-            <Button onClick={openAdvance}>
-              <HandCoins size={16} /> Record Payment / Advance
+            <Button onClick={openPicker}>
+              <HandCoins size={16} /> Record Payment / Receipt
             </Button>
             <Button variant="outline" onClick={exportExcel} disabled={!rows.length}>
               <FileSpreadsheet size={16} /> Excel
@@ -177,56 +189,52 @@ export function Payments(): React.JSX.Element {
       />
       <Page>
         <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <Card>
-            <CardContent className="flex items-center gap-3.5 p-4">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary"><HandCoins size={21} /></div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Receivable (from customers)</div>
-                <div className="tnum text-xl font-bold text-primary">{fmtMoney(totalReceivable)}</div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="flex items-center gap-3.5 p-4">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-destructive/10 text-destructive"><Wallet size={21} /></div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Payable (suppliers + transport)</div>
-                <div className="tnum text-xl font-bold text-destructive">{fmtMoney(totalPayable)}</div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="flex items-center gap-3.5 p-4">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-success/10 text-success"><Wallet size={21} /></div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Net Position</div>
-                <div className={`tnum text-xl font-bold ${totalReceivable - totalPayable < 0 ? 'text-destructive' : 'text-success'}`}>{fmtMoney(totalReceivable - totalPayable)}</div>
-              </div>
-            </CardContent>
-          </Card>
+          <SummaryCard tone="primary" icon={<ArrowDownLeft size={21} />} label="Receivable (from customers)" value={fmtMoney(totalReceivable)} />
+          <SummaryCard tone="destructive" icon={<ArrowUpRight size={21} />} label="Payable (suppliers + transport)" value={fmtMoney(totalPayable)} />
+          <SummaryCard
+            tone={totalReceivable - totalPayable < 0 ? 'destructive' : 'success'}
+            icon={<Wallet size={21} />}
+            label="Net Position"
+            value={fmtMoney(totalReceivable - totalPayable)}
+          />
         </div>
 
         <div className="mb-4 flex flex-wrap items-center gap-2">
+          <div className="relative w-full sm:w-72">
+            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input className="pl-9" placeholder="Search any debtor or creditor…" value={q} onChange={(e) => setQ(e.target.value)} />
+          </div>
           <SearchSelect
-            className="w-44"
+            className="w-40"
             value={typeFilter}
             onChange={(v) => setTypeFilter(v as LedgerType | '')}
             options={[{ value: '', label: 'All parties' }, ...PAY_TYPES.map((t) => ({ value: t.value, label: t.label }))]}
           />
-          <SearchSelect
-            className="w-44"
-            value={statusFilter}
-            onChange={(v) => setStatusFilter(v as '' | 'outstanding' | 'settled')}
-            options={[
-              { value: '', label: 'All statuses' },
-              { value: 'outstanding', label: 'Outstanding' },
-              { value: 'settled', label: 'Settled' }
-            ]}
-          />
+          <div className="inline-flex rounded-lg border p-0.5">
+            {([['pending', 'Pending'], ['settled', 'Settled'], ['all', 'All']] as const).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setStatusFilter(key)}
+                className={cn(
+                  'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                  statusFilter === key ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-accent'
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <span className="ml-auto text-sm text-muted-foreground">{rows.length} shown · {pendingCount} pending</span>
         </div>
 
         {rows.length === 0 ? (
-          <EmptyState message="No parties to show." />
+          <EmptyState
+            message={
+              statusFilter === 'pending'
+                ? 'No pending dues — everyone is settled. Use “Record Payment / Receipt” to pay or receive from any party.'
+                : 'No parties match your search.'
+            }
+          />
         ) : (
           <Table>
             <THead>
@@ -241,31 +249,51 @@ export function Payments(): React.JSX.Element {
               </TR>
             </THead>
             <TBody>
-              {rows.map((r) => (
-                <TR key={`${r.party_type}-${r.party_id}`}>
-                  <TD className="font-medium">{r.name}</TD>
-                  <TD><Badge variant={typeBadge[r.party_type] ?? 'muted'}>{labelOf(r.party_type)}</Badge></TD>
-                  <TD className="text-right">{fmtMoney(r.total_debit)}</TD>
-                  <TD className="text-right">{fmtMoney(r.total_credit)}</TD>
-                  <TD className={`text-right font-semibold ${r.kind === 'receivable' ? 'text-primary' : 'text-destructive'}`}>
-                    {fmtMoney(Math.abs(r.balance))}
-                    <span className="ml-1 text-[11px] font-normal text-muted-foreground">
-                      {r.balance > 0 ? (r.kind === 'receivable' ? 'Dr' : 'Cr') : r.balance < 0 ? 'Adv' : ''}
-                    </span>
-                  </TD>
-                  <TD>{statusBadge(r)}</TD>
-                  <TD className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button variant="outline" size="sm" onClick={() => openPayment(r)}>
-                        <Wallet size={14} /> {r.kind === 'receivable' ? 'Receive' : 'Pay'}
-                      </Button>
-                      <Button variant="ghost" size="icon" title="Open ledger" onClick={() => nav('/ledgers', { state: { type: r.party_type, id: r.party_id } })}>
-                        <BookOpen size={15} />
-                      </Button>
-                    </div>
-                  </TD>
-                </TR>
-              ))}
+              {rows.map((r) => {
+                const settled = Math.abs(r.balance) < 0.01
+                const isReceivable = r.kind === 'receivable'
+                return (
+                  <TR key={`${r.party_type}-${r.party_id}`}>
+                    <TD className="font-medium">{r.name}</TD>
+                    <TD><Badge variant={typeBadge[r.party_type] ?? 'muted'}>{labelOf(r.party_type)}</Badge></TD>
+                    <TD className="tnum text-right">{fmtMoney(r.total_debit)}</TD>
+                    <TD className="tnum text-right">{fmtMoney(r.total_credit)}</TD>
+                    <TD className={`tnum text-right font-semibold ${isReceivable ? 'text-primary' : 'text-destructive'}`}>
+                      {fmtMoney(Math.abs(r.balance))}
+                      <span className="ml-1 text-[11px] font-normal text-muted-foreground">
+                        {r.balance > 0 ? (isReceivable ? 'Dr' : 'Cr') : r.balance < 0 ? 'Adv' : ''}
+                      </span>
+                    </TD>
+                    <TD>{statusBadge(r)}</TD>
+                    <TD className="text-right">
+                      <div className="flex justify-end gap-2">
+                        {isReceivable ? (
+                          <Button variant="outline" size="sm" className="text-success" onClick={() => openForRow(r, 'in')}>
+                            <ArrowDownLeft size={14} /> Receive
+                          </Button>
+                        ) : (
+                          <Button variant="outline" size="sm" className="text-destructive" onClick={() => openForRow(r, 'out')}>
+                            <ArrowUpRight size={14} /> Pay
+                          </Button>
+                        )}
+                        {!settled && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title={isReceivable ? 'Record a payment instead' : 'Record a receipt instead'}
+                            onClick={() => openForRow(r, isReceivable ? 'out' : 'in')}
+                          >
+                            {isReceivable ? 'Pay' : 'Receive'}
+                          </Button>
+                        )}
+                        <Button variant="ghost" size="icon" title="Open ledger" onClick={() => nav('/ledgers', { state: { type: r.party_type, id: r.party_id } })}>
+                          <BookOpen size={15} />
+                        </Button>
+                      </div>
+                    </TD>
+                  </TR>
+                )
+              })}
             </TBody>
           </Table>
         )}
@@ -275,86 +303,121 @@ export function Payments(): React.JSX.Element {
         <Modal
           open
           onClose={() => setPayForm(null)}
-          title={payForm.pick ? 'Record Payment / Advance' : `Record Payment — ${payForm.party_name}`}
+          title={payForm.party_name ? `${payForm.direction === 'in' ? 'Receive from' : 'Pay'} ${payForm.party_name}` : 'Record Payment / Receipt'}
         >
           <div className="space-y-4">
+            {/* Direction — Pay (money out) vs Receive (money in). */}
+            <Field label="Type" hint="Pay = money out · Receive = money in">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPayForm({ ...payForm, direction: 'out' })}
+                  className={cn(
+                    'flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors',
+                    payForm.direction === 'out' ? 'border-destructive bg-destructive/10 text-destructive' : 'border-input text-muted-foreground hover:bg-accent'
+                  )}
+                >
+                  <ArrowUpRight size={16} /> Pay
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPayForm({ ...payForm, direction: 'in' })}
+                  className={cn(
+                    'flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors',
+                    payForm.direction === 'in' ? 'border-success bg-success/10 text-success' : 'border-input text-muted-foreground hover:bg-accent'
+                  )}
+                >
+                  <ArrowDownLeft size={16} /> Receive
+                </button>
+              </div>
+            </Field>
+
             {payForm.pick && (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field label="Party type">
-                  <SearchSelect
-                    value={payForm.party_type}
-                    onChange={(v) =>
-                      setPayForm({ ...payForm, party_type: v as LedgerType, party_id: 0, party_name: '' })
-                    }
-                    options={PAY_TYPES.map((t) => ({ value: t.value, label: t.label }))}
-                  />
-                </Field>
-                <Field label="Party">
-                  <SearchSelect
-                    value={payForm.party_id || ''}
-                    onChange={(v) => {
-                      const id = Number(v)
-                      const p = partyList(payForm.party_type).find((x) => x.id === id)
-                      setPayForm({ ...payForm, party_id: id, party_name: p?.name ?? '' })
-                    }}
-                    options={partyList(payForm.party_type).map((p) => ({
-                      value: p.id,
-                      label: `${p.name}${p.head ? ` — ${p.head}` : ''}`
-                    }))}
-                    placeholder={`Select ${labelOf(payForm.party_type)}…`}
-                  />
-                </Field>
+              <Field label="Party" hint="Search across customers, suppliers, transporters, vehicles & JCBs — any plant">
+                <SearchSelect
+                  value={payForm.party_id ? `${payForm.party_type}:${payForm.party_id}` : ''}
+                  onChange={(v) => {
+                    const p = allParties.find((x) => x.value === v)
+                    if (p) setPayForm((f: any) => ({ ...f, party_type: p.type, party_id: p.id, party_name: p.name, direction: p.type === 'customer' ? 'in' : 'out' }))
+                  }}
+                  options={allParties.map((p) => ({ value: p.value, label: `${p.name} · ${labelOf(p.type)}` }))}
+                  placeholder="Search a debtor or creditor…"
+                />
+              </Field>
+            )}
+
+            {payForm.party_id > 0 && (
+              <div className="rounded-lg bg-muted/60 px-4 py-2.5 text-sm">
+                {formDue && Math.abs(formDue.balance) >= 0.01 ? (
+                  <>
+                    Current balance: <b className={formDue.kind === 'receivable' ? 'text-primary' : 'text-destructive'}>{fmtMoney(Math.abs(formDue.balance))}</b>{' '}
+                    {formDue.balance > 0 ? (formDue.kind === 'receivable' ? 'receivable' : 'payable') : 'advance'}
+                    {' · '}
+                    <button className="font-medium text-primary underline-offset-2 hover:underline" onClick={() => setPayForm({ ...payForm, amount: Math.abs(formDue.balance) })}>
+                      Use full amount
+                    </button>
+                  </>
+                ) : (
+                  <span className="text-muted-foreground">No dues on this plant — this will be recorded as an advance / on-account entry.</span>
+                )}
               </div>
             )}
+
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Direction">
-                <SearchSelect
-                  value={payForm.direction}
-                  onChange={(v) => setPayForm({ ...payForm, direction: v })}
-                  options={[
-                    { value: 'in', label: 'Received from party' },
-                    { value: 'out', label: 'Paid to party' }
-                  ]}
-                />
+              <Field label="Amount" required>
+                <Input type="number" step="0.01" autoFocus value={payForm.amount} onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })} placeholder="0.00" />
               </Field>
-              <Field label="Amount">
-                <Input type="number" step="0.01" autoFocus value={payForm.amount} onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })} />
-              </Field>
-              <Field label="Mode">
-                <SearchSelect
-                  value={payForm.mode}
-                  onChange={(v) => setPayForm({ ...payForm, mode: v })}
-                  options={[
-                    { value: 'cash', label: 'Cash' },
-                    { value: 'bank', label: 'Bank Transfer' },
-                    { value: 'upi', label: 'UPI' },
-                    { value: 'cheque', label: 'Cheque' },
-                    { value: 'other', label: 'Other' }
-                  ]}
-                />
-              </Field>
-              <Field label="Date">
+              <Field label="Date" required>
                 <Input type="date" value={payForm.date} onChange={(e) => setPayForm({ ...payForm, date: e.target.value })} />
               </Field>
+              <Field label="Mode">
+                <SearchSelect value={payForm.mode} onChange={(v) => setPayForm({ ...payForm, mode: v })} options={MODES} />
+              </Field>
+              <Field label="Reference" hint="Bill no, cheque no…">
+                <Input value={payForm.ref} onChange={(e) => setPayForm({ ...payForm, ref: e.target.value })} />
+              </Field>
             </div>
-            <Field label="Reference" hint="Optional — bill no, cheque no…">
-              <Input value={payForm.ref} onChange={(e) => setPayForm({ ...payForm, ref: e.target.value })} />
-            </Field>
             <Field label="Remarks">
               <Input value={payForm.remarks} onChange={(e) => setPayForm({ ...payForm, remarks: e.target.value })} />
             </Field>
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 pt-1">
               <Button variant="outline" onClick={() => setPayForm(null)}>Cancel</Button>
               <Button
                 onClick={() => savePayment.mutate({ ...payForm, amount: Number(payForm.amount) })}
-                disabled={!(Number(payForm.amount) > 0) || (payForm.pick && !payForm.party_id)}
+                disabled={!(Number(payForm.amount) > 0) || !payForm.party_id}
               >
-                Save Payment
+                {payForm.direction === 'in' ? 'Save Receipt' : 'Save Payment'}
               </Button>
             </div>
           </div>
         </Modal>
       )}
     </>
+  )
+}
+
+function SummaryCard({
+  icon,
+  label,
+  value,
+  tone
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string
+  tone: 'primary' | 'destructive' | 'success'
+}): React.JSX.Element {
+  const bg = tone === 'destructive' ? 'bg-destructive/10 text-destructive' : tone === 'success' ? 'bg-success/10 text-success' : 'bg-primary/10 text-primary'
+  const txt = tone === 'destructive' ? 'text-destructive' : tone === 'success' ? 'text-success' : 'text-primary'
+  return (
+    <Card>
+      <CardContent className="flex items-center gap-3.5 p-4">
+        <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${bg}`}>{icon}</div>
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
+          <div className={`tnum text-xl font-bold ${txt}`}>{value}</div>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
