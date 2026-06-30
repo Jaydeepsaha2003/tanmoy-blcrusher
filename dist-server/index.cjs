@@ -5813,13 +5813,17 @@ async function deletePayment(payload) {
   return { ok: true };
 }
 var OPENING_TYPES = ["customer", "supplier", "transporter", "outsource", "plant"];
-async function openingEntries(partyType, partyId) {
+async function openingEntries(partyType, partyId, plantId) {
   if (!OPENING_TYPES.includes(partyType)) return [];
+  const scopeByPlant = !!plantId && partyType !== "plant";
+  const params = { party_type: partyType, party_id: partyId };
+  if (scopeByPlant) params.plant_id = plantId;
   const rows = await getDb().prepare(
     `SELECT ob.amount, ob.direction, ob.as_of_date, p.name AS plant_name
        FROM opening_balances ob LEFT JOIN plants p ON p.id = ob.plant_id
-       WHERE ob.party_type = ? AND ob.party_id = ?`
-  ).all(partyType, partyId);
+       WHERE ob.party_type = @party_type AND ob.party_id = @party_id
+       ${scopeByPlant ? "AND (ob.plant_id = @plant_id OR ob.plant_id IS NULL)" : ""}`
+  ).all(params);
   return rows.filter((r) => r.amount > 0).map((r) => ({
     date: r.as_of_date || "1900-04-01",
     created_at: "",
@@ -5829,10 +5833,10 @@ async function openingEntries(partyType, partyId) {
     credit: r.direction === "credit" ? roundMoney2(r.amount) : 0
   }));
 }
-async function buildEntries(partyType, partyId) {
+async function buildEntries(partyType, partyId, plantId) {
   const d = getDb();
   const entries = [];
-  entries.push(...await openingEntries(partyType, partyId));
+  entries.push(...await openingEntries(partyType, partyId, plantId));
   if (partyType === "rack") {
     const loadings = await d.prepare(
       `SELECT rl.loading_no, rl.date, rl.created_at, COALESCE(rl.amount,0) AS amount,
@@ -5943,7 +5947,7 @@ async function buildEntries(partyType, partyId) {
       outsource: "Outsource"
     };
     for (const link of await companyLinks(partyId)) {
-      for (const e of await buildEntries(link.type, link.id))
+      for (const e of await buildEntries(link.type, link.id, plantId))
         entries.push({ ...e, particulars: `[${roleLabel[link.type]}] ${e.particulars}` });
     }
     entries.sort(
@@ -6695,7 +6699,7 @@ function runningSign(partyType) {
 }
 async function getLedger(payload) {
   const name = await partyName(payload.party_type, payload.party_id);
-  const all = await buildEntries(payload.party_type, payload.party_id);
+  const all = await buildEntries(payload.party_type, payload.party_id, payload.plant_id);
   const sign = runningSign(payload.party_type);
   let opening = 0;
   let visible = all;
@@ -6817,7 +6821,7 @@ async function getPartyBalances(payload) {
   const sign = runningSign(payload.party_type);
   const result = [];
   for (const p of parties) {
-    const entries = await buildEntries(payload.party_type, p.id);
+    const entries = await buildEntries(payload.party_type, p.id, payload.plant_id);
     const totalDebit = entries.reduce((a, e) => a + e.debit, 0);
     const totalCredit = entries.reduce((a, e) => a + e.credit, 0);
     result.push({

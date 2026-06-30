@@ -11437,7 +11437,7 @@ const api = {
     delete: (id2) => call("rackJcbs.delete", { id: id2 })
   },
   ledgers: {
-    get: (party_type, party_id, from, to) => call("ledgers.get", { party_type, party_id, from, to }),
+    get: (party_type, party_id, from, to, plant_id) => call("ledgers.get", { party_type, party_id, from, to, plant_id }),
     balances: (party_type, plant_id) => call("ledgers.balances", { party_type, plant_id }),
     allDues: (plant_id) => call("ledgers.allDues", { plant_id }),
     getOpening: (party_type, party_id) => call("ledgers.getOpening", { party_type, party_id }),
@@ -89330,7 +89330,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-BHQsrCUV.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-DjG1kF8o.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
@@ -92048,8 +92048,8 @@ function Ledgers() {
   const { data: branding } = useQuery({ queryKey: ["branding"], queryFn: () => api.rates.getBranding() });
   const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
   const { data: ledger } = useQuery({
-    queryKey: ["ledger", partyType, partyId, from, to],
-    queryFn: () => api.ledgers.get(partyType, partyId, from || void 0, to || void 0),
+    queryKey: ["ledger", partyType, partyId, from, to, plantId],
+    queryFn: () => api.ledgers.get(partyType, partyId, from || void 0, to || void 0, plantId),
     enabled: !!partyId
   });
   function refresh() {
