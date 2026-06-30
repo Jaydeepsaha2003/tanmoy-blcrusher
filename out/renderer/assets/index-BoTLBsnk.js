@@ -11831,6 +11831,16 @@ const createLucideIcon = (iconName, iconNode) => {
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
+const ArrowDownLeft = createLucideIcon("ArrowDownLeft", [
+  ["path", { d: "M17 7 7 17", key: "15tmo1" }],
+  ["path", { d: "M17 17H7V7", key: "1org7z" }]
+]);
+/**
+ * @license lucide-react v0.468.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
 const ArrowDownToLine = createLucideIcon("ArrowDownToLine", [
   ["path", { d: "M12 17V3", key: "1cwfxf" }],
   ["path", { d: "m6 11 6 6 6-6", key: "12ii2o" }],
@@ -11878,6 +11888,16 @@ const ArrowUpFromLine = createLucideIcon("ArrowUpFromLine", [
   ["path", { d: "m18 9-6-6-6 6", key: "kcunyi" }],
   ["path", { d: "M12 3v14", key: "7cf3v8" }],
   ["path", { d: "M5 21h14", key: "11awu3" }]
+]);
+/**
+ * @license lucide-react v0.468.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const ArrowUpRight = createLucideIcon("ArrowUpRight", [
+  ["path", { d: "M7 7h10v10", key: "1tivn9" }],
+  ["path", { d: "M7 17 17 7", key: "1vkiza" }]
 ]);
 /**
  * @license lucide-react v0.468.0 - ISC
@@ -70680,7 +70700,7 @@ const payBadge$7 = {
   partial: "warning",
   unpaid: "destructive"
 };
-const MODES = [
+const MODES$1 = [
   { key: "raw", label: "Raw Purchase", icon: Mountain, material_type: "raw", purchase_mode: "purchase" },
   { key: "finished", label: "Products (Finished)", icon: Boxes, material_type: "finished", purchase_mode: "purchase" },
   { key: "mining", label: "Mining (Royalty)", icon: Pickaxe, material_type: "raw", purchase_mode: "mining" }
@@ -70767,7 +70787,7 @@ function Purchases() {
     } else toast.error(res.error || "Could not delete.");
   }
   function setMode(key) {
-    const m2 = MODES.find((x2) => x2.key === key);
+    const m2 = MODES$1.find((x2) => x2.key === key);
     setForm({ ...form, material_type: m2.material_type, purchase_mode: m2.purchase_mode, product_name: key === "finished" ? form.product_name : "" });
   }
   const lines = form?.transporters ?? [];
@@ -70969,7 +70989,7 @@ function Purchases() {
       ] })
     ] }),
     form && /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { open: open2, onClose: () => setOpen(false), title: form.id ? `Edit ${form.purchase_no}` : "New Purchase", width: "max-w-4xl", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-5 grid grid-cols-3 gap-2 rounded-xl border bg-muted/40 p-1", children: MODES.map((opt) => {
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-5 grid grid-cols-3 gap-2 rounded-xl border bg-muted/40 p-1", children: MODES$1.map((opt) => {
         const active = mk2 === opt.key;
         return /* @__PURE__ */ jsxRuntimeExports.jsxs(
           "button",
@@ -71177,14 +71197,14 @@ function Purchases() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.remarks || "", onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-3 sm:grid-cols-3", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(
-            SummaryCard,
+            SummaryCard$1,
             {
               label: mk2 === "finished" ? "Adds to finished goods" : "Adds to raw stock",
               value: `${mk2 === "finished" ? form.product_name || "—" : formLocations.find((l2) => l2.id === form.stock_location_id)?.name || "Plant default"} · ${fmtQty(toCm(Number(form.quantity) || 0, form.uom || "CM"))} m³`
             }
           ),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(SummaryCard, { label: mk2 === "mining" ? "Royalty to supplier" : "Goods amount", value: fmtMoney(goods), accent: true }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(SummaryCard, { label: "Transport + Machines", value: `${fmtMoney(transportTotal)} + ${fmtMoney(machineTotal)}` })
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SummaryCard$1, { label: mk2 === "mining" ? "Royalty to supplier" : "Goods amount", value: fmtMoney(goods), accent: true }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SummaryCard$1, { label: "Transport + Machines", value: `${fmtMoney(transportTotal)} + ${fmtMoney(machineTotal)}` })
         ] })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 flex justify-end gap-2", children: [
@@ -71201,7 +71221,7 @@ function Purchases() {
     ] })
   ] });
 }
-function SummaryCard({ label, value, accent }) {
+function SummaryCard$1({ label, value, accent }) {
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border bg-muted/40 px-4 py-3 text-sm", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: label }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-1 " + (accent ? "font-bold text-primary" : ""), children: value })
@@ -89707,7 +89727,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-CyLx7Bfi.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-LYk7AzDv.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
@@ -92958,6 +92978,13 @@ const PAY_TYPES = [
   { value: "rack_vehicle", label: "Vehicle" },
   { value: "rack_jcb", label: "JCB" }
 ];
+const MODES = [
+  { value: "cash", label: "Cash" },
+  { value: "bank", label: "Bank Transfer" },
+  { value: "upi", label: "UPI" },
+  { value: "cheque", label: "Cheque" },
+  { value: "other", label: "Other" }
+];
 function Payments() {
   const qc2 = useQueryClient();
   const toast = useToast();
@@ -92973,18 +93000,34 @@ function Payments() {
   const { data: outsource = [] } = useQuery({ queryKey: ["outsource", "all"], queryFn: () => api.outsource.list() });
   const { data: rackVehicles = [] } = useQuery({ queryKey: ["rackVehicles", "all"], queryFn: () => api.rackVehicles.list() });
   const { data: rackJcbs = [] } = useQuery({ queryKey: ["rackJcbs", "all"], queryFn: () => api.rackJcbs.list() });
-  const partyList = (t3) => t3 === "customer" ? customers : t3 === "supplier" ? suppliers : t3 === "transporter" ? transporters : t3 === "outsource" ? outsource : t3 === "rack_vehicle" ? rackVehicles.map((v2) => ({ id: v2.id, name: v2.vehicle_no })) : t3 === "rack_jcb" ? rackJcbs.map((j2) => ({ id: j2.id, name: j2.name })) : [];
+  const allParties = reactExports.useMemo(() => {
+    const mk2 = (type, arr) => arr.map((x2) => ({ value: `${type}:${x2.id}`, type, id: x2.id, name: x2.name }));
+    return [
+      ...mk2("customer", customers),
+      ...mk2("supplier", suppliers),
+      ...mk2("transporter", transporters),
+      ...mk2("outsource", outsource),
+      ...rackVehicles.map((v2) => ({ value: `rack_vehicle:${v2.id}`, type: "rack_vehicle", id: v2.id, name: v2.vehicle_no })),
+      ...rackJcbs.map((j2) => ({ value: `rack_jcb:${j2.id}`, type: "rack_jcb", id: j2.id, name: j2.name }))
+    ];
+  }, [customers, suppliers, transporters, outsource, rackVehicles, rackJcbs]);
+  const [q2, setQ] = reactExports.useState("");
   const [typeFilter, setTypeFilter] = reactExports.useState("");
-  const [statusFilter, setStatusFilter] = reactExports.useState("");
+  const [statusFilter, setStatusFilter] = reactExports.useState("pending");
   const [payForm, setPayForm] = reactExports.useState(null);
-  const rows = data.filter((r2) => {
-    if (typeFilter && r2.party_type !== typeFilter) return false;
-    if (statusFilter === "outstanding" && Math.abs(r2.balance) < 0.01) return false;
-    if (statusFilter === "settled" && Math.abs(r2.balance) >= 0.01) return false;
-    return true;
-  });
+  const rows = reactExports.useMemo(() => {
+    const term = q2.trim().toLowerCase();
+    return data.filter((r2) => {
+      if (typeFilter && r2.party_type !== typeFilter) return false;
+      if (statusFilter === "pending" && Math.abs(r2.balance) < 0.01) return false;
+      if (statusFilter === "settled" && Math.abs(r2.balance) >= 0.01) return false;
+      if (term && !r2.name.toLowerCase().includes(term)) return false;
+      return true;
+    });
+  }, [data, q2, typeFilter, statusFilter]);
   const totalReceivable = data.filter((r2) => r2.kind === "receivable" && r2.balance > 0).reduce((s2, r2) => s2 + r2.balance, 0);
   const totalPayable = data.filter((r2) => r2.kind === "payable" && r2.balance > 0).reduce((s2, r2) => s2 + r2.balance, 0);
+  const pendingCount = data.filter((r2) => Math.abs(r2.balance) >= 0.01).length;
   const savePayment = useMutation({
     mutationFn: (p2) => api.payments.add(p2),
     onSuccess: () => {
@@ -92998,12 +93041,12 @@ function Payments() {
     },
     onError: (e3) => toast.error(e3.message)
   });
-  function openPayment(r2) {
+  function openForRow(r2, direction) {
     setPayForm({
       party_type: r2.party_type,
       party_id: r2.party_id,
       party_name: r2.name,
-      direction: r2.kind === "receivable" ? "in" : "out",
+      direction,
       amount: r2.balance > 0 ? r2.balance : "",
       mode: "cash",
       ref: "",
@@ -93011,20 +93054,10 @@ function Payments() {
       remarks: ""
     });
   }
-  function openAdvance() {
-    setPayForm({
-      pick: true,
-      party_type: "supplier",
-      party_id: 0,
-      party_name: "",
-      direction: "out",
-      amount: "",
-      mode: "cash",
-      ref: "Advance",
-      date: today(),
-      remarks: ""
-    });
+  function openPicker() {
+    setPayForm({ pick: true, party_type: "", party_id: 0, party_name: "", direction: "out", amount: "", mode: "cash", ref: "", date: today(), remarks: "" });
   }
+  const formDue = payForm ? data.find((d2) => d2.party_type === payForm.party_type && d2.party_id === payForm.party_id) : void 0;
   function exportExcel() {
     downloadExcel(
       "payment-status",
@@ -93051,11 +93084,11 @@ function Payments() {
       PageHeader,
       {
         title: "Payment Status",
-        description: "All outstanding dues — customers, suppliers and transporters under one roof",
+        description: "Outstanding dues for every party — receive from customers, pay suppliers & transport, all in one place",
         actions: /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { onClick: openAdvance, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { onClick: openPicker, children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(HandCoins, { size: 16 }),
-            " Record Payment / Advance"
+            " Record Payment / Receipt"
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", onClick: exportExcel, disabled: !rows.length, children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(FileSpreadsheet, { size: 16 }),
@@ -93066,53 +93099,57 @@ function Payments() {
     ),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Page, { children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-5 grid grid-cols-1 gap-4 sm:grid-cols-3", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "flex items-center gap-3.5 p-4", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary", children: /* @__PURE__ */ jsxRuntimeExports.jsx(HandCoins, { size: 21 }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: "Receivable (from customers)" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "tnum text-xl font-bold text-primary", children: fmtMoney(totalReceivable) })
-          ] })
-        ] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "flex items-center gap-3.5 p-4", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-11 w-11 items-center justify-center rounded-xl bg-destructive/10 text-destructive", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Wallet, { size: 21 }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: "Payable (suppliers + transport)" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "tnum text-xl font-bold text-destructive", children: fmtMoney(totalPayable) })
-          ] })
-        ] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "flex items-center gap-3.5 p-4", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-11 w-11 items-center justify-center rounded-xl bg-success/10 text-success", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Wallet, { size: 21 }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: "Net Position" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `tnum text-xl font-bold ${totalReceivable - totalPayable < 0 ? "text-destructive" : "text-success"}`, children: fmtMoney(totalReceivable - totalPayable) })
-          ] })
-        ] }) })
+        /* @__PURE__ */ jsxRuntimeExports.jsx(SummaryCard, { tone: "primary", icon: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowDownLeft, { size: 21 }), label: "Receivable (from customers)", value: fmtMoney(totalReceivable) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(SummaryCard, { tone: "destructive", icon: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowUpRight, { size: 21 }), label: "Payable (suppliers + transport)", value: fmtMoney(totalPayable) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SummaryCard,
+          {
+            tone: totalReceivable - totalPayable < 0 ? "destructive" : "success",
+            icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Wallet, { size: 21 }),
+            label: "Net Position",
+            value: fmtMoney(totalReceivable - totalPayable)
+          }
+        )
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap items-center gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative w-full sm:w-72", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Search, { size: 15, className: "pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { className: "pl-9", placeholder: "Search any debtor or creditor…", value: q2, onChange: (e3) => setQ(e3.target.value) })
+        ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           SearchSelect,
           {
-            className: "w-44",
+            className: "w-40",
             value: typeFilter,
             onChange: (v2) => setTypeFilter(v2),
             options: [{ value: "", label: "All parties" }, ...PAY_TYPES.map((t3) => ({ value: t3.value, label: t3.label }))]
           }
         ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          SearchSelect,
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "inline-flex rounded-lg border p-0.5", children: [["pending", "Pending"], ["settled", "Settled"], ["all", "All"]].map(([key, label]) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
           {
-            className: "w-44",
-            value: statusFilter,
-            onChange: (v2) => setStatusFilter(v2),
-            options: [
-              { value: "", label: "All statuses" },
-              { value: "outstanding", label: "Outstanding" },
-              { value: "settled", label: "Settled" }
-            ]
-          }
-        )
+            onClick: () => setStatusFilter(key),
+            className: cn(
+              "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+              statusFilter === key ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-accent"
+            ),
+            children: label
+          },
+          key
+        )) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "ml-auto text-sm text-muted-foreground", children: [
+          rows.length,
+          " shown · ",
+          pendingCount,
+          " pending"
+        ] })
       ] }),
-      rows.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No parties to show." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
+      rows.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+        EmptyState,
+        {
+          message: statusFilter === "pending" ? "No pending dues — everyone is settled. Use “Record Payment / Receipt” to pay or receive from any party." : "No parties match your search."
+        }
+      ) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Party" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Type" }),
@@ -93122,25 +93159,41 @@ function Payments() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Status" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
         ] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: rows.map((r2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: r2.name }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: typeBadge$1[r2.party_type] ?? "muted", children: labelOf(r2.party_type) }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtMoney(r2.total_debit) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: fmtMoney(r2.total_credit) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: `text-right font-semibold ${r2.kind === "receivable" ? "text-primary" : "text-destructive"}`, children: [
-            fmtMoney(Math.abs(r2.balance)),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ml-1 text-[11px] font-normal text-muted-foreground", children: r2.balance > 0 ? r2.kind === "receivable" ? "Dr" : "Cr" : r2.balance < 0 ? "Adv" : "" })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: statusBadge2(r2) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-end gap-2", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", size: "sm", onClick: () => openPayment(r2), children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(Wallet, { size: 14 }),
-              " ",
-              r2.kind === "receivable" ? "Receive" : "Pay"
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: rows.map((r2) => {
+          const settled = Math.abs(r2.balance) < 0.01;
+          const isReceivable = r2.kind === "receivable";
+          return /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: r2.name }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: typeBadge$1[r2.party_type] ?? "muted", children: labelOf(r2.party_type) }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: fmtMoney(r2.total_debit) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: fmtMoney(r2.total_credit) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: `tnum text-right font-semibold ${isReceivable ? "text-primary" : "text-destructive"}`, children: [
+              fmtMoney(Math.abs(r2.balance)),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ml-1 text-[11px] font-normal text-muted-foreground", children: r2.balance > 0 ? isReceivable ? "Dr" : "Cr" : r2.balance < 0 ? "Adv" : "" })
             ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Open ledger", onClick: () => nav("/ledgers", { state: { type: r2.party_type, id: r2.party_id } }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(BookOpen, { size: 15 }) })
-          ] }) })
-        ] }, `${r2.party_type}-${r2.party_id}`)) })
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: statusBadge2(r2) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-end gap-2", children: [
+              isReceivable ? /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", size: "sm", className: "text-success", onClick: () => openForRow(r2, "in"), children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowDownLeft, { size: 14 }),
+                " Receive"
+              ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", size: "sm", className: "text-destructive", onClick: () => openForRow(r2, "out"), children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowUpRight, { size: 14 }),
+                " Pay"
+              ] }),
+              !settled && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                Button,
+                {
+                  variant: "ghost",
+                  size: "sm",
+                  title: isReceivable ? "Record a payment instead" : "Record a receipt instead",
+                  onClick: () => openForRow(r2, isReceivable ? "out" : "in"),
+                  children: isReceivable ? "Pay" : "Receive"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Open ledger", onClick: () => nav("/ledgers", { state: { type: r2.party_type, id: r2.party_id } }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(BookOpen, { size: 15 }) })
+            ] }) })
+          ] }, `${r2.party_type}-${r2.party_id}`);
+        }) })
       ] })
     ] }),
     payForm && /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -93148,73 +93201,75 @@ function Payments() {
       {
         open: true,
         onClose: () => setPayForm(null),
-        title: payForm.pick ? "Record Payment / Advance" : `Record Payment — ${payForm.party_name}`,
+        title: payForm.party_name ? `${payForm.direction === "in" ? "Receive from" : "Pay"} ${payForm.party_name}` : "Record Payment / Receipt",
         children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
-          payForm.pick && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Party type", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-              SearchSelect,
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Type", hint: "Pay = money out · Receive = money in", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-2", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
               {
-                value: payForm.party_type,
-                onChange: (v2) => setPayForm({ ...payForm, party_type: v2, party_id: 0, party_name: "" }),
-                options: PAY_TYPES.map((t3) => ({ value: t3.value, label: t3.label }))
+                type: "button",
+                onClick: () => setPayForm({ ...payForm, direction: "out" }),
+                className: cn(
+                  "flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors",
+                  payForm.direction === "out" ? "border-destructive bg-destructive/10 text-destructive" : "border-input text-muted-foreground hover:bg-accent"
+                ),
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowUpRight, { size: 16 }),
+                  " Pay"
+                ]
               }
-            ) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Party", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-              SearchSelect,
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
               {
-                value: payForm.party_id || "",
-                onChange: (v2) => {
-                  const id2 = Number(v2);
-                  const p2 = partyList(payForm.party_type).find((x2) => x2.id === id2);
-                  setPayForm({ ...payForm, party_id: id2, party_name: p2?.name ?? "" });
-                },
-                options: partyList(payForm.party_type).map((p2) => ({
-                  value: p2.id,
-                  label: `${p2.name}${p2.head ? ` — ${p2.head}` : ""}`
-                })),
-                placeholder: `Select ${labelOf(payForm.party_type)}…`
+                type: "button",
+                onClick: () => setPayForm({ ...payForm, direction: "in" }),
+                className: cn(
+                  "flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors",
+                  payForm.direction === "in" ? "border-success bg-success/10 text-success" : "border-input text-muted-foreground hover:bg-accent"
+                ),
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowDownLeft, { size: 16 }),
+                  " Receive"
+                ]
               }
-            ) })
-          ] }),
+            )
+          ] }) }),
+          payForm.pick && /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Party", hint: "Search across customers, suppliers, transporters, vehicles & JCBs — any plant", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SearchSelect,
+            {
+              value: payForm.party_id ? `${payForm.party_type}:${payForm.party_id}` : "",
+              onChange: (v2) => {
+                const p2 = allParties.find((x2) => x2.value === v2);
+                if (p2) setPayForm((f2) => ({ ...f2, party_type: p2.type, party_id: p2.id, party_name: p2.name, direction: p2.type === "customer" ? "in" : "out" }));
+              },
+              options: allParties.map((p2) => ({ value: p2.value, label: `${p2.name} · ${labelOf(p2.type)}` })),
+              placeholder: "Search a debtor or creditor…"
+            }
+          ) }),
+          payForm.party_id > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-lg bg-muted/60 px-4 py-2.5 text-sm", children: formDue && Math.abs(formDue.balance) >= 0.01 ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+            "Current balance: ",
+            /* @__PURE__ */ jsxRuntimeExports.jsx("b", { className: formDue.kind === "receivable" ? "text-primary" : "text-destructive", children: fmtMoney(Math.abs(formDue.balance)) }),
+            " ",
+            formDue.balance > 0 ? formDue.kind === "receivable" ? "receivable" : "payable" : "advance",
+            " · ",
+            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "font-medium text-primary underline-offset-2 hover:underline", onClick: () => setPayForm({ ...payForm, amount: Math.abs(formDue.balance) }), children: "Use full amount" })
+          ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-muted-foreground", children: "No dues on this plant — this will be recorded as an advance / on-account entry." }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Direction", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-              SearchSelect,
-              {
-                value: payForm.direction,
-                onChange: (v2) => setPayForm({ ...payForm, direction: v2 }),
-                options: [
-                  { value: "in", label: "Received from party" },
-                  { value: "out", label: "Paid to party" }
-                ]
-              }
-            ) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Amount", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", autoFocus: true, value: payForm.amount, onChange: (e3) => setPayForm({ ...payForm, amount: e3.target.value }) }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Mode", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-              SearchSelect,
-              {
-                value: payForm.mode,
-                onChange: (v2) => setPayForm({ ...payForm, mode: v2 }),
-                options: [
-                  { value: "cash", label: "Cash" },
-                  { value: "bank", label: "Bank Transfer" },
-                  { value: "upi", label: "UPI" },
-                  { value: "cheque", label: "Cheque" },
-                  { value: "other", label: "Other" }
-                ]
-              }
-            ) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: payForm.date, onChange: (e3) => setPayForm({ ...payForm, date: e3.target.value }) }) })
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Amount", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", autoFocus: true, value: payForm.amount, onChange: (e3) => setPayForm({ ...payForm, amount: e3.target.value }), placeholder: "0.00" }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: payForm.date, onChange: (e3) => setPayForm({ ...payForm, date: e3.target.value }) }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Mode", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: payForm.mode, onChange: (v2) => setPayForm({ ...payForm, mode: v2 }), options: MODES }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Reference", hint: "Bill no, cheque no…", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: payForm.ref, onChange: (e3) => setPayForm({ ...payForm, ref: e3.target.value }) }) })
           ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Reference", hint: "Optional — bill no, cheque no…", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: payForm.ref, onChange: (e3) => setPayForm({ ...payForm, ref: e3.target.value }) }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: payForm.remarks, onChange: (e3) => setPayForm({ ...payForm, remarks: e3.target.value }) }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-end gap-2 pt-2", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-end gap-2 pt-1", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setPayForm(null), children: "Cancel" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(
               Button,
               {
                 onClick: () => savePayment.mutate({ ...payForm, amount: Number(payForm.amount) }),
-                disabled: !(Number(payForm.amount) > 0) || payForm.pick && !payForm.party_id,
-                children: "Save Payment"
+                disabled: !(Number(payForm.amount) > 0) || !payForm.party_id,
+                children: payForm.direction === "in" ? "Save Receipt" : "Save Payment"
               }
             )
           ] })
@@ -93222,6 +93277,22 @@ function Payments() {
       }
     )
   ] });
+}
+function SummaryCard({
+  icon,
+  label,
+  value,
+  tone: tone2
+}) {
+  const bg2 = tone2 === "destructive" ? "bg-destructive/10 text-destructive" : tone2 === "success" ? "bg-success/10 text-success" : "bg-primary/10 text-primary";
+  const txt = tone2 === "destructive" ? "text-destructive" : tone2 === "success" ? "text-success" : "text-primary";
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "flex items-center gap-3.5 p-4", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `flex h-11 w-11 items-center justify-center rounded-xl ${bg2}`, children: icon }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: label }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `tnum text-xl font-bold ${txt}`, children: value })
+    ] })
+  ] }) });
 }
 const payBadge = {
   paid: "success",
