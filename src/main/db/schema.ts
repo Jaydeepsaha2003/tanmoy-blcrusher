@@ -571,6 +571,25 @@ CREATE TABLE IF NOT EXISTS rack_jcb_plants (
   plant_id    INTEGER NOT NULL REFERENCES plants(id)
 );
 
+-- A transporter's own fleet: vehicles and JCBs, with capacity in every UOM and
+-- per-trip / per-unit rates. kind = 'vehicle' | 'jcb'.
+CREATE TABLE IF NOT EXISTS transporter_fleet (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  transporter_id INTEGER NOT NULL REFERENCES transporters(id),
+  kind           TEXT NOT NULL DEFAULT 'vehicle',
+  name           TEXT NOT NULL DEFAULT '',
+  driver_name    TEXT NOT NULL DEFAULT '',
+  driver_mobile  TEXT NOT NULL DEFAULT '',
+  cap_cm         REAL,
+  cap_ton        REAL,
+  cap_cft        REAL,
+  rate_per_trip  REAL,
+  rate_per_unit  REAL,
+  rate_unit_uom  TEXT NOT NULL DEFAULT 'CM',
+  remarks        TEXT NOT NULL DEFAULT '',
+  created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS asset_plant_moves (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   asset_id      INTEGER NOT NULL REFERENCES assets(id),
@@ -756,6 +775,7 @@ CREATE INDEX IF NOT EXISTS idx_coplants_company ON company_plants(company_id);
 CREATE INDEX IF NOT EXISTS idx_pplants_product ON product_plants(product_id);
 CREATE INDEX IF NOT EXISTS idx_rvplants_vehicle ON rack_vehicle_plants(rack_vehicle_id);
 CREATE INDEX IF NOT EXISTS idx_rjplants_jcb ON rack_jcb_plants(rack_jcb_id);
+CREATE INDEX IF NOT EXISTS idx_tfleet_transporter ON transporter_fleet(transporter_id);
 CREATE INDEX IF NOT EXISTS idx_amoves_asset ON asset_plant_moves(asset_id);
 CREATE INDEX IF NOT EXISTS idx_spare_parts_plant ON spare_parts(plant_id);
 CREATE INDEX IF NOT EXISTS idx_part_moves_part ON spare_part_movements(part_id);

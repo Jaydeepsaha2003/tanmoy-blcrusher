@@ -436,6 +436,27 @@ export interface Transporter {
   balance_amount?: number
 }
 
+/** A vehicle or JCB belonging to a transporter, with capacity in every UOM and rates. */
+export interface TransporterFleetItem {
+  id: number
+  transporter_id: number
+  kind: 'vehicle' | 'jcb'
+  /** Vehicle no. (kind=vehicle) or JCB name / no. (kind=jcb). */
+  name: string
+  driver_name: string
+  driver_mobile: string
+  cap_cm: number | null
+  cap_ton: number | null
+  cap_cft: number | null
+  /** Rate charged per trip. */
+  rate_per_trip: number | null
+  /** Rate charged per unit of rate_unit_uom (m³ / Ton / CFT). */
+  rate_per_unit: number | null
+  rate_unit_uom: Uom
+  remarks: string
+  created_at?: string
+}
+
 /** A hired vehicle in the rack fleet (plant→yard / yard→destination), assignable to plants. */
 export interface RackVehicle {
   id: number

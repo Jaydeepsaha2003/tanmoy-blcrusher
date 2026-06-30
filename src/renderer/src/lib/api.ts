@@ -28,6 +28,7 @@ import type {
   RackSale,
   RackVehicle,
   RackJcb,
+  TransporterFleetItem,
   PaymentEntry,
   LedgerStatement,
   PartyBalance,
@@ -236,6 +237,15 @@ export const api = {
     create: (p: Partial<Transporter>) => call<Transporter>('transporters.create', p),
     update: (p: Partial<Transporter>) => call<Transporter>('transporters.update', p),
     delete: (id: number) => call<{ ok: boolean; error?: string }>('transporters.delete', { id })
+  },
+  transporterFleet: {
+    list: (transporter_id: number, kind?: 'vehicle' | 'jcb') =>
+      call<TransporterFleetItem[]>('transporterFleet.list', { transporter_id, kind }),
+    create: (p: Partial<TransporterFleetItem>) =>
+      call<TransporterFleetItem>('transporterFleet.create', p),
+    update: (p: Partial<TransporterFleetItem>) =>
+      call<TransporterFleetItem>('transporterFleet.update', p),
+    delete: (id: number) => call<{ ok: boolean }>('transporterFleet.delete', { id })
   },
   companies: {
     list: () => call<Company[]>('companies.list'),

@@ -1060,6 +1060,28 @@ CREATE INDEX idx_pplants_product ON product_plants(product_id)`
     id: '033_finished_opening_value',
     sql: `ALTER TABLE finished_goods_opening ADD COLUMN opening_rate DOUBLE NOT NULL DEFAULT 0;
 ALTER TABLE finished_goods_opening ADD COLUMN opening_amount DOUBLE NOT NULL DEFAULT 0`
+  },
+  {
+    // Per-transporter fleet: the vehicles and JCBs a transporter owns/operates,
+    // with capacity in all UOMs and per-trip / per-unit rates.
+    id: '034_transporter_fleet',
+    sql: `CREATE TABLE IF NOT EXISTS transporter_fleet (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  transporter_id INT NOT NULL,
+  kind           VARCHAR(16) NOT NULL DEFAULT 'vehicle',
+  name           VARCHAR(191) NOT NULL DEFAULT '',
+  driver_name    VARCHAR(191) NOT NULL DEFAULT '',
+  driver_mobile  VARCHAR(64) NOT NULL DEFAULT '',
+  cap_cm         DOUBLE,
+  cap_ton        DOUBLE,
+  cap_cft        DOUBLE,
+  rate_per_trip  DOUBLE,
+  rate_per_unit  DOUBLE,
+  rate_unit_uom  VARCHAR(8) NOT NULL DEFAULT 'CM',
+  remarks        TEXT,
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_tfleet_transporter ON transporter_fleet(transporter_id)`
   }
 ]
 

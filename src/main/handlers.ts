@@ -13,6 +13,7 @@ import * as finished from './services/finishedGoods'
 import * as dispatches from './services/dispatches'
 import * as movements from './services/movements'
 import * as transporters from './services/transporters'
+import * as transporterFleet from './services/transporterFleet'
 import * as companies from './services/companies'
 import * as racks from './services/racks'
 import * as rackFleet from './services/rackFleet'
@@ -126,6 +127,10 @@ export const handlers: Record<string, (payload: any) => unknown> = {
   'transporters.create': transporters.createTransporter,
   'transporters.update': transporters.updateTransporter,
   'transporters.delete': transporters.deleteTransporter,
+  'transporterFleet.list': transporterFleet.listTransporterFleet,
+  'transporterFleet.create': transporterFleet.createTransporterFleet,
+  'transporterFleet.update': transporterFleet.updateTransporterFleet,
+  'transporterFleet.delete': transporterFleet.deleteTransporterFleet,
 
   'companies.list': companies.listCompanies,
   'companies.create': companies.createCompany,
