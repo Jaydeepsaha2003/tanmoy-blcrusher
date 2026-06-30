@@ -339,6 +339,7 @@ CREATE TABLE IF NOT EXISTS dispatch_transporters (
   qty            REAL NOT NULL DEFAULT 0,
   rate           REAL NOT NULL DEFAULT 0,
   charge         REAL NOT NULL DEFAULT 0,
+  bill_customer  INTEGER NOT NULL DEFAULT 0,
   created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
@@ -1131,6 +1132,7 @@ CREATE TABLE IF NOT EXISTS dispatch_transporters (
   qty            DOUBLE NOT NULL DEFAULT 0,
   rate           DOUBLE NOT NULL DEFAULT 0,
   charge         DOUBLE NOT NULL DEFAULT 0,
+  bill_customer  INT NOT NULL DEFAULT 0,
   created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS dispatch_machines (
@@ -1957,6 +1959,11 @@ ALTER TABLE rack_sale_transporters MODIFY transporter_id INT NULL;
 CREATE INDEX idx_runload_vehicle ON rack_unloadings(rack_vehicle_id);
 CREATE INDEX idx_runload_jcb ON rack_unloadings(rack_jcb_id);
 CREATE INDEX idx_rstrans_vehicle ON rack_sale_transporters(rack_vehicle_id)`
+  },
+  {
+    // Direct-sale transporter lines can be billed through to the customer (pass-through transport).
+    id: "031_dispatch_transporter_bill_customer",
+    sql: `ALTER TABLE dispatch_transporters ADD COLUMN bill_customer INT NOT NULL DEFAULT 0`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -2052,6 +2059,7 @@ async function sqliteLegacyMigrate(adapter2) {
   await addColumn("rack_sale_transporters", "diesel_litres", "REAL");
   await addColumn("rack_sale_transporters", "diesel_amount", "REAL");
   await addColumn("rack_sale_transporters", "diesel_charged", "INTEGER NOT NULL DEFAULT 0");
+  await addColumn("dispatch_transporters", "bill_customer", "INTEGER NOT NULL DEFAULT 0");
 }
 async function importProductsFromSettings(adapter2) {
   const all = (await adapter2.exec(`SELECT id, name FROM products ORDER BY id`, void 0, null)).rows;
@@ -3997,15 +4005,21 @@ async function writeDispatchChildLines(d, dispatchId, transporters, machines) {
   await d.prepare(`DELETE FROM dispatch_transporters WHERE dispatch_id = ?`).run(dispatchId);
   await d.prepare(`DELETE FROM dispatch_machines WHERE dispatch_id = ?`).run(dispatchId);
   const tStmt = d.prepare(
-    `INSERT INTO dispatch_transporters (dispatch_id, transporter_id, vehicle_no, basis, qty, rate, charge) VALUES (?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO dispatch_transporters (dispatch_id, transporter_id, vehicle_no, basis, qty, rate, charge, bill_customer) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   );
+  let billedTransport = 0;
+  let firstVehicle = "";
   for (const t of transporters ?? []) {
     if (!t.transporter_id) continue;
     const basis = t.basis === "trip" || t.basis === "uom" ? t.basis : "flat";
     const qty = basis === "flat" ? 0 : Number(t.qty) || 0;
     const rate = basis === "flat" ? 0 : Number(t.rate) || 0;
     const charge = basis === "flat" ? round23(Number(t.charge) || 0) : round23(qty * rate);
-    await tStmt.run(dispatchId, t.transporter_id, properCase(t.vehicle_no || ""), basis, qty, rate, charge);
+    const billCustomer = t.bill_customer ? 1 : 0;
+    const veh = properCase(t.vehicle_no || "");
+    if (billCustomer) billedTransport = round23(billedTransport + charge);
+    if (!firstVehicle && veh) firstVehicle = veh;
+    await tStmt.run(dispatchId, t.transporter_id, veh, basis, qty, rate, charge, billCustomer);
   }
   const mStmt = d.prepare(
     `INSERT INTO dispatch_machines (dispatch_id, asset_id, basis, qty, rate, amount, outsource_id) VALUES (?, ?, ?, ?, ?, ?, ?)`
@@ -4017,6 +4031,7 @@ async function writeDispatchChildLines(d, dispatchId, transporters, machines) {
     const rate = Number(m.rate) || 0;
     await mStmt.run(dispatchId, m.asset_id, basis, qty, rate, round23(qty * rate), m.outsource_id ?? null);
   }
+  return { billedTransport, firstVehicle };
 }
 async function getDispatchDetail(payload) {
   const d = getDb();
@@ -4227,7 +4242,8 @@ async function createDispatch(p) {
       linked_purchase_id: null
     });
     const dispatchId = Number(info.lastInsertRowid);
-    await writeDispatchChildLines(d, dispatchId, p.transporters, p.machines);
+    const child = await writeDispatchChildLines(d, dispatchId, p.transporters, p.machines);
+    await d.prepare(`UPDATE dispatches SET transport_charge=?, transport_billed=?, vehicle_no=CASE WHEN vehicle_no='' THEN ? ELSE vehicle_no END WHERE id=?`).run(child.billedTransport, child.billedTransport > 0 ? 1 : 0, child.firstVehicle, dispatchId);
     if (!outsourced) {
       await addMovement(d, {
         type: "dispatch",
@@ -4276,7 +4292,8 @@ async function updateDispatch(p) {
         outsourced=@outsourced, outsource_id=@outsource_id, delivery_status=@delivery_status, payment_status=@payment_status, paid_amount=@paid_amount,
         to_plant_id=@to_plant_id, linked_purchase_id=NULL, date=@date, remarks=@remarks WHERE id=@id`
     ).run({ id: p.id, ...fields, dispatch_no: newNo, customer_id: customerId, to_plant_id: toPlantId });
-    await writeDispatchChildLines(d, p.id, p.transporters, p.machines);
+    const child = await writeDispatchChildLines(d, p.id, p.transporters, p.machines);
+    await d.prepare(`UPDATE dispatches SET transport_charge=?, transport_billed=?, vehicle_no=CASE WHEN vehicle_no='' THEN ? ELSE vehicle_no END WHERE id=?`).run(child.billedTransport, child.billedTransport > 0 ? 1 : 0, child.firstVehicle, p.id);
     await d.prepare(`DELETE FROM stock_movements WHERE ref_no=? AND type='dispatch'`).run(old.dispatch_no);
     if (!outsourced) {
       await addMovement(d, {
