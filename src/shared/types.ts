@@ -792,6 +792,8 @@ export interface DispatchTransporter {
   qty: number
   rate: number
   charge: number
+  /** 1 = this transport charge is also billed to the customer (pass-through). */
+  bill_customer?: number
 }
 
 /** A machine-usage cost line on a direct sale (mirrors PurchaseMachine). */

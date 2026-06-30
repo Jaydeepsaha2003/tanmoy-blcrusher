@@ -60,6 +60,8 @@ interface DispatchTransporterInput {
   qty?: number
   rate?: number
   charge?: number
+  /** Tick to also bill this transport charge to the customer (pass-through). */
+  bill_customer?: boolean | number
 }
 /** A machine-usage cost line as accepted from the UI. */
 interface DispatchMachineInput {
@@ -70,25 +72,32 @@ interface DispatchMachineInput {
   outsource_id?: number | null
 }
 
-/** Replace the transporter + machine cost lines for a direct sale. */
+/** Replace the transporter + machine cost lines for a direct sale. Returns the total transport
+ *  charge that is billed through to the customer (sum of the lines ticked 'bill to customer'). */
 async function writeDispatchChildLines(
   d: Db,
   dispatchId: number,
   transporters?: DispatchTransporterInput[],
   machines?: DispatchMachineInput[]
-): Promise<void> {
+): Promise<{ billedTransport: number; firstVehicle: string }> {
   await d.prepare(`DELETE FROM dispatch_transporters WHERE dispatch_id = ?`).run(dispatchId)
   await d.prepare(`DELETE FROM dispatch_machines WHERE dispatch_id = ?`).run(dispatchId)
   const tStmt = d.prepare(
-    `INSERT INTO dispatch_transporters (dispatch_id, transporter_id, vehicle_no, basis, qty, rate, charge) VALUES (?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO dispatch_transporters (dispatch_id, transporter_id, vehicle_no, basis, qty, rate, charge, bill_customer) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   )
+  let billedTransport = 0
+  let firstVehicle = ''
   for (const t of transporters ?? []) {
     if (!t.transporter_id) continue
     const basis: PurchaseTransportBasis = t.basis === 'trip' || t.basis === 'uom' ? t.basis : 'flat'
     const qty = basis === 'flat' ? 0 : Number(t.qty) || 0
     const rate = basis === 'flat' ? 0 : Number(t.rate) || 0
     const charge = basis === 'flat' ? round2(Number(t.charge) || 0) : round2(qty * rate)
-    await tStmt.run(dispatchId, t.transporter_id, properCase(t.vehicle_no || ''), basis, qty, rate, charge)
+    const billCustomer = t.bill_customer ? 1 : 0
+    const veh = properCase(t.vehicle_no || '')
+    if (billCustomer) billedTransport = round2(billedTransport + charge)
+    if (!firstVehicle && veh) firstVehicle = veh
+    await tStmt.run(dispatchId, t.transporter_id, veh, basis, qty, rate, charge, billCustomer)
   }
   const mStmt = d.prepare(
     `INSERT INTO dispatch_machines (dispatch_id, asset_id, basis, qty, rate, amount, outsource_id) VALUES (?, ?, ?, ?, ?, ?, ?)`
@@ -100,6 +109,7 @@ async function writeDispatchChildLines(
     const rate = Number(m.rate) || 0
     await mStmt.run(dispatchId, m.asset_id, basis, qty, rate, round2(qty * rate), m.outsource_id ?? null)
   }
+  return { billedTransport, firstVehicle }
 }
 
 /** Full direct sale with its transporter + machine cost lines (for the edit modal). */
@@ -399,7 +409,12 @@ export async function createDispatch(p: DispatchInput): Promise<Dispatch> {
         linked_purchase_id: null
       })
     const dispatchId = Number(info.lastInsertRowid)
-    await writeDispatchChildLines(d, dispatchId, p.transporters, p.machines)
+    const child = await writeDispatchChildLines(d, dispatchId, p.transporters, p.machines)
+    // Transport billed to the customer is the sum of the ticked transporter lines (pass-through);
+    // also adopt the first carrier's vehicle no when the sale has none of its own.
+    await d
+      .prepare(`UPDATE dispatches SET transport_charge=?, transport_billed=?, vehicle_no=CASE WHEN vehicle_no='' THEN ? ELSE vehicle_no END WHERE id=?`)
+      .run(child.billedTransport, child.billedTransport > 0 ? 1 : 0, child.firstVehicle, dispatchId)
     if (!outsourced) {
       await addMovement(d, {
         type: 'dispatch',
@@ -454,7 +469,11 @@ export async function updateDispatch(p: DispatchInput): Promise<Dispatch> {
         outsourced=@outsourced, outsource_id=@outsource_id, delivery_status=@delivery_status, payment_status=@payment_status, paid_amount=@paid_amount,
         to_plant_id=@to_plant_id, linked_purchase_id=NULL, date=@date, remarks=@remarks WHERE id=@id`
     ).run({ id: p.id, ...fields, dispatch_no: newNo, customer_id: customerId, to_plant_id: toPlantId })
-    await writeDispatchChildLines(d, p.id!, p.transporters, p.machines)
+    const child = await writeDispatchChildLines(d, p.id!, p.transporters, p.machines)
+    // Transport billed to the customer = sum of the ticked transporter lines (pass-through).
+    await d
+      .prepare(`UPDATE dispatches SET transport_charge=?, transport_billed=?, vehicle_no=CASE WHEN vehicle_no='' THEN ? ELSE vehicle_no END WHERE id=?`)
+      .run(child.billedTransport, child.billedTransport > 0 ? 1 : 0, child.firstVehicle, p.id)
     // Rebuild the stock movement to match the current outsourced flag (re-key to the new no).
     await d.prepare(`DELETE FROM stock_movements WHERE ref_no=? AND type='dispatch'`).run(old.dispatch_no)
     if (!outsourced) {

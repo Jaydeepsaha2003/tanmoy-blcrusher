@@ -204,6 +204,7 @@ CREATE TABLE IF NOT EXISTS dispatch_transporters (
   qty            DOUBLE NOT NULL DEFAULT 0,
   rate           DOUBLE NOT NULL DEFAULT 0,
   charge         DOUBLE NOT NULL DEFAULT 0,
+  bill_customer  INT NOT NULL DEFAULT 0,
   created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS dispatch_machines (
@@ -1036,6 +1037,11 @@ ALTER TABLE rack_sale_transporters MODIFY transporter_id INT NULL;
 CREATE INDEX idx_runload_vehicle ON rack_unloadings(rack_vehicle_id);
 CREATE INDEX idx_runload_jcb ON rack_unloadings(rack_jcb_id);
 CREATE INDEX idx_rstrans_vehicle ON rack_sale_transporters(rack_vehicle_id)`
+  },
+  {
+    // Direct-sale transporter lines can be billed through to the customer (pass-through transport).
+    id: '031_dispatch_transporter_bill_customer',
+    sql: `ALTER TABLE dispatch_transporters ADD COLUMN bill_customer INT NOT NULL DEFAULT 0`
   }
 ]
 
@@ -1153,6 +1159,8 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   await addColumn('rack_sale_transporters', 'diesel_litres', 'REAL')
   await addColumn('rack_sale_transporters', 'diesel_amount', 'REAL')
   await addColumn('rack_sale_transporters', 'diesel_charged', 'INTEGER NOT NULL DEFAULT 0')
+  // Direct-sale transporter line billed through to the customer.
+  await addColumn('dispatch_transporters', 'bill_customer', 'INTEGER NOT NULL DEFAULT 0')
 }
 
 /**

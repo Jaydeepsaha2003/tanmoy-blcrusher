@@ -131,7 +131,7 @@ export function Dispatch(): React.JSX.Element {
       paid_amount: src.paid_amount ?? '',
       transport_billed: !!src.transport_billed,
       other_billed: !!src.other_billed,
-      transporters: (src.transporters ?? []).map((t) => ({ transporter_id: t.transporter_id, vehicle_no: t.vehicle_no, basis: t.basis || 'flat', qty: t.qty || '', rate: t.rate || '', charge: t.charge })),
+      transporters: (src.transporters ?? []).map((t) => ({ transporter_id: t.transporter_id, vehicle_no: t.vehicle_no, basis: t.basis || 'flat', qty: t.qty || '', rate: t.rate || '', charge: t.charge, bill_customer: !!t.bill_customer })),
       machines: (src.machines ?? []).map((m) => ({ asset_id: m.asset_id, basis: m.basis, qty: m.qty, rate: m.rate, outsource_id: m.outsource_id }))
     })
     setOpen(true)
@@ -149,7 +149,7 @@ export function Dispatch(): React.JSX.Element {
 
   // Transporter cost-line helpers
   const tlines = form?.transporters ?? []
-  function addTransporter(): void { setForm({ ...form, transporters: [...tlines, { transporter_id: 0, vehicle_no: '', basis: 'flat', qty: '', rate: '', charge: '' }] }) }
+  function addTransporter(): void { setForm({ ...form, transporters: [...tlines, { transporter_id: 0, vehicle_no: '', basis: 'flat', qty: '', rate: '', charge: '', bill_customer: false }] }) }
   function setTransporter(i: number, patch: any): void { setForm({ ...form, transporters: tlines.map((t: any, idx: number) => (idx === i ? { ...t, ...patch } : t)) }) }
   function delTransporter(i: number): void { setForm({ ...form, transporters: tlines.filter((_: any, idx: number) => idx !== i) }) }
 
@@ -173,10 +173,11 @@ export function Dispatch(): React.JSX.Element {
       sale_quantity: sale,
       rate: form.rate === '' || form.rate == null ? null : Number(form.rate),
       buy_rate: isOut && form.buy_rate !== '' && form.buy_rate != null ? Number(form.buy_rate) : null,
-      transport_charge: Number(form.transport_charge) || 0,
+      // Transport billed to the customer is the roll-up of ticked transporter lines (server also derives this).
+      transport_charge: 0,
       other_charge: Number(form.other_charge) || 0,
       paid_amount: Number(form.paid_amount) || 0,
-      transport_billed: !!form.transport_billed,
+      transport_billed: false,
       other_billed: !!form.other_billed,
       // Outsource sale = sold without plant stock; inter-plant always uses real stock.
       outsourced: isOut,
@@ -188,7 +189,8 @@ export function Dispatch(): React.JSX.Element {
           basis: t.basis || 'flat',
           qty: Number(t.qty) || 0,
           rate: Number(t.rate) || 0,
-          charge: Number(t.charge) || 0
+          charge: Number(t.charge) || 0,
+          bill_customer: !!t.bill_customer
         })),
       machines: (form.machines ?? [])
         .filter((m: any) => m.asset_id)
@@ -230,16 +232,19 @@ export function Dispatch(): React.JSX.Element {
   // Outsource sale: what we pay the vendor, and the live profit on the deal.
   const buyAmount = isOutsource && form && form.buy_rate !== '' && form.buy_rate != null ? billableQty * Number(form.buy_rate) : 0
   const profit = goods - buyAmount
-  const billedExtra = form
-    ? (form.transport_billed ? Number(form.transport_charge) || 0 : 0) +
-      (form.other_billed ? Number(form.other_charge) || 0 : 0)
-    : 0
+  // Extra profit: when the customer-received qty exceeds the dispatched qty we bill the extra
+  // without sending more stock — pure margin.
+  const rateNum = form && form.rate !== '' ? Number(form.rate) || 0 : 0
+  const extraProfit = saleQty != null && saleQty > actualQty ? (saleQty - actualQty) * rateNum : 0
+  const lineCharge = (t: any): number =>
+    t.basis === 'trip' || t.basis === 'uom' ? (Number(t.qty) || 0) * (Number(t.rate) || 0) : Number(t.charge) || 0
+  // Transport billed to the customer = the transporter lines ticked "bill to customer".
+  const billedTransport = (form?.transporters ?? []).reduce((s: number, t: any) => s + (t.bill_customer ? lineCharge(t) : 0), 0)
+  const billedExtra = billedTransport + (form && form.other_billed ? Number(form.other_charge) || 0 : 0)
   const invoiceTotal = goods + billedExtra
   const available = form
     ? (selProduct?.balance_qty ?? 0) + (form.id ? Number(form.qty_cm) || 0 : 0)
     : 0
-  const lineCharge = (t: any): number =>
-    t.basis === 'trip' || t.basis === 'uom' ? (Number(t.qty) || 0) * (Number(t.rate) || 0) : Number(t.charge) || 0
   const transportCost = (form?.transporters ?? []).reduce((s: number, t: any) => s + lineCharge(t), 0)
   const machineCost = (form?.machines ?? []).reduce((s: number, m: any) => s + (Number(m.qty) || 0) * (Number(m.rate) || 0), 0)
   const destPlants = plants.filter((p) => p.id !== form?.plant_id)
@@ -363,14 +368,20 @@ export function Dispatch(): React.JSX.Element {
                   </TD>
                   <TD className="text-right">
                     <span className="tnum">{fmtQty(d.quantity)}</span> <span className="text-xs text-muted-foreground">{d.uom}</span>
-                    {d.sale_quantity != null && d.quantity - d.sale_quantity !== 0 && (
-                      <div className="text-[11px] text-muted-foreground">
-                        sold {fmtQty(d.sale_quantity)}
-                        <span className={d.quantity - d.sale_quantity > 0 ? 'text-warning' : 'text-destructive'}>
-                          {' · '}±{fmtQty(Math.abs(d.quantity - d.sale_quantity))}
-                        </span>
-                      </div>
-                    )}
+                    {d.sale_quantity != null && d.sale_quantity !== d.quantity && (() => {
+                      const diff = (d.sale_quantity ?? 0) - d.quantity
+                      const extra = diff > 0 && d.rate != null ? diff * d.rate : 0
+                      return (
+                        <div className="text-[11px]">
+                          <span className="text-muted-foreground">rec {fmtQty(d.sale_quantity)}</span>
+                          {diff > 0 ? (
+                            <span className="text-success"> · +{fmtQty(diff)} extra{extra > 0 ? ` profit ₹${fmtMoney(extra)}` : ''}</span>
+                          ) : (
+                            <span className="text-warning"> · short {fmtQty(-diff)}</span>
+                          )}
+                        </div>
+                      )
+                    })()}
                   </TD>
                   <TD className="tnum text-right">{d.rate == null ? <Badge variant="warning">No rate</Badge> : fmtMoney(d.rate)}</TD>
                   <TD className="tnum text-right font-semibold">{fmtMoney(d.billed_total)}</TD>
@@ -557,24 +568,11 @@ export function Dispatch(): React.JSX.Element {
               </div>
             </Section>
 
-            {/* Vehicle & delivery */}
-            <Section title="Vehicle & Delivery">
+            {/* Delivery — the carrier & its vehicle are captured on the transporter line below */}
+            <Section title="Delivery">
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-                <Field label="Vehicle Type" required>
-                  <SearchSelect
-                    value={form.vehicle_type}
-                    onChange={(v) => setForm({ ...form, vehicle_type: v as VehicleType })}
-                    options={[{ value: 'own', label: 'Own Vehicle' }, { value: 'rented', label: 'Rented' }, { value: 'party', label: 'From Party' }]}
-                  />
-                </Field>
-                <Field label="Vehicle No.">
-                  <Input value={form.vehicle_no} onChange={(e) => setForm({ ...form, vehicle_no: e.target.value })} placeholder="e.g. JH-01-AB-1234" />
-                </Field>
-                <Field label="Driver">
-                  <Input value={form.driver} onChange={(e) => setForm({ ...form, driver: e.target.value })} />
-                </Field>
-                <Field label="Challan No.">
-                  <Input value={form.challan_no} onChange={(e) => setForm({ ...form, challan_no: e.target.value })} />
+                <Field label="Challan No." hint="Delivery note — blank auto-generates">
+                  <Input value={form.challan_no} onChange={(e) => setForm({ ...form, challan_no: e.target.value })} placeholder="Auto" />
                 </Field>
                 <Field label="Delivery Status" required>
                   <SearchSelect
@@ -587,17 +585,17 @@ export function Dispatch(): React.JSX.Element {
             </Section>
 
             {/* Transport cost lines */}
-            <Section title="Transport — cost lines (optional)">
+            <Section title="Transport — carrier & charges (optional)">
               <div className="space-y-2">
                 {tlines.length > 0 && (
-                  <div className="grid grid-cols-[1fr_92px_96px_64px_76px_90px_32px] gap-2 px-1 text-[11px] font-semibold uppercase text-muted-foreground">
-                    <div>Transporter</div><div>Vehicle</div><div>Basis</div><div>Qty</div><div>Rate ₹</div><div>Charge ₹</div><div></div>
+                  <div className="grid grid-cols-[1fr_84px_84px_52px_66px_80px_56px_28px] gap-2 px-1 text-[11px] font-semibold uppercase text-muted-foreground">
+                    <div>Transporter</div><div>Vehicle</div><div>Basis</div><div>Qty</div><div>Rate ₹</div><div>Charge ₹</div><div className="text-center">Bill Cust.</div><div></div>
                   </div>
                 )}
                 {tlines.map((t: any, i: number) => {
                   const computed = t.basis === 'trip' || t.basis === 'uom'
                   return (
-                    <div key={i} className="grid grid-cols-[1fr_92px_96px_64px_76px_90px_32px] items-center gap-2">
+                    <div key={i} className="grid grid-cols-[1fr_84px_84px_52px_66px_80px_56px_28px] items-center gap-2">
                       <SearchSelect
                         value={t.transporter_id || ''}
                         onChange={(v) => setTransporter(i, { transporter_id: Number(v) })}
@@ -619,6 +617,9 @@ export function Dispatch(): React.JSX.Element {
                       ) : (
                         <Input type="number" step="0.01" value={t.charge} onChange={(e) => setTransporter(i, { charge: e.target.value })} />
                       )}
+                      <label className="flex h-9 items-center justify-center" title="Also bill this transport to the customer">
+                        <input type="checkbox" className="h-4 w-4" checked={!!t.bill_customer} onChange={(e) => setTransporter(i, { bill_customer: e.target.checked })} />
+                      </label>
                       <Button variant="ghost" size="icon" onClick={() => delTransporter(i)}><X size={15} className="text-destructive" /></Button>
                     </div>
                   )
@@ -629,7 +630,7 @@ export function Dispatch(): React.JSX.Element {
               </Button>
               <p className="mt-1 text-[11px] text-muted-foreground">
                 {transporters.length
-                  ? "Your transport cost — posts to the transporter's ledger and the plant. (To charge the customer for delivery, use Transport Charges below.)"
+                  ? "Posts to the transporter's ledger (payable). Tick “Bill Cust.” to also add that charge to the customer's invoice (pass-through)."
                   : 'Add transporters under Transporters first.'}
               </p>
             </Section>
@@ -677,13 +678,6 @@ export function Dispatch(): React.JSX.Element {
             <Section title="Charges & Payment">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <ChargeField
-                  label="Transport Charges"
-                  amount={form.transport_charge}
-                  billed={form.transport_billed}
-                  onAmount={(v) => setForm({ ...form, transport_charge: v })}
-                  onBilled={(v) => setForm({ ...form, transport_billed: v })}
-                />
-                <ChargeField
                   label="Other Charges"
                   amount={form.other_charge}
                   billed={form.other_billed}
@@ -693,6 +687,11 @@ export function Dispatch(): React.JSX.Element {
                 <Field label="Amount Received" hint="Sets payment status automatically">
                   <Input type="number" step="0.01" value={form.paid_amount} onChange={(e) => setForm({ ...form, paid_amount: e.target.value })} />
                 </Field>
+                {billedTransport > 0 && (
+                  <Field label="Transport billed to customer" hint="From the ticked transporter lines">
+                    <Input value={`₹${fmtMoney(billedTransport)}`} disabled />
+                  </Field>
+                )}
               </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <Field label="Payment Status">
@@ -711,7 +710,7 @@ export function Dispatch(): React.JSX.Element {
             </Section>
 
             {/* Summary */}
-            <div className={cn('grid grid-cols-1 gap-3', isOutsource ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3')}>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-xl border bg-muted/40 px-4 py-3 text-sm">
                 <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Stock</div>
                 {isOutsource ? (
@@ -741,11 +740,21 @@ export function Dispatch(): React.JSX.Element {
               </div>
               {isOutsource && (
                 <div className={cn('rounded-xl border px-4 py-3 text-sm', profit >= 0 ? 'border-success/40 bg-success/5' : 'border-destructive/40 bg-destructive/5')}>
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Profit (live)</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Outsource Profit (live)</div>
                   <div className="mt-1">
                     Sale <b>{fmtMoney(goods)}</b> − Buy <b>{fmtMoney(buyAmount)}</b>
                     {' = '}
                     <b className={profit >= 0 ? 'text-success' : 'text-destructive'}>{fmtMoney(profit)}</b>
+                  </div>
+                </div>
+              )}
+              {extraProfit > 0 && (
+                <div className="rounded-xl border border-success/40 bg-success/5 px-4 py-3 text-sm">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Extra Profit (over-receipt)</div>
+                  <div className="mt-1">
+                    Customer received <b>{fmtQty(saleQty ?? 0)}</b> vs dispatched <b>{fmtQty(actualQty)}</b> {form.uom}
+                    {' → '}
+                    <b className="text-success">{fmtMoney(extraProfit)}</b>
                   </div>
                 </div>
               )}
