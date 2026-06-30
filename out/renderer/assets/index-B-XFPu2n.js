@@ -11327,7 +11327,7 @@ const api = {
     delete: (id2) => call("transportCharges.delete", { id: id2 })
   },
   products: {
-    list: () => call("products.list"),
+    list: (plant_id) => call("products.list", { plant_id }),
     create: (p2) => call("products.create", p2),
     update: (p2) => call("products.update", p2),
     delete: (id2) => call("products.delete", { id: id2 })
@@ -11366,7 +11366,13 @@ const api = {
   finished: {
     list: (filter) => call("finished.list", filter),
     available: (plant_id) => call("finished.available", { plant_id }),
-    setOpening: (plant_id, product_name, opening_qty) => call("finished.setOpening", { plant_id, product_name, opening_qty })
+    setOpening: (plant_id, product_name, opening_qty, opening_rate, opening_amount) => call("finished.setOpening", {
+      plant_id,
+      product_name,
+      opening_qty,
+      opening_rate,
+      opening_amount
+    })
   },
   dispatches: {
     list: (filter) => call("dispatches.list", filter),
@@ -71481,14 +71487,31 @@ function FinishedGoods() {
   const uomLabel2 = viewUom === "CM" ? "m³" : viewUom === "TON" ? "Ton" : "CFT";
   const conv = (cm, plantId2) => fromCm(Number(cm) || 0, viewUom, plants.find((p2) => p2.id === plantId2));
   const [open2, setOpen] = reactExports.useState(false);
-  const [form, setForm] = reactExports.useState({ product_name: "", opening_qty: 0, uom: "CM" });
+  const [form, setForm] = reactExports.useState({ product_name: "", opening_qty: 0, uom: "CM", rate: "", amount: "" });
   plants.find((p2) => p2.id === form.plant_id);
   const openingCm = toCm(Number(form.opening_qty) || 0, form.uom);
+  const amountTotal = Number(form.amount) || 0;
+  const ratePerCm = openingCm > 0 ? round2$3(amountTotal / openingCm) : 0;
+  function updateQty(v2) {
+    const qty = Number(v2) || 0;
+    const rate = Number(form.rate) || 0;
+    setForm({ ...form, opening_qty: v2, amount: rate > 0 ? round2$3(rate * qty) : form.amount });
+  }
+  function updateRate(v2) {
+    const rate = Number(v2) || 0;
+    const qty = Number(form.opening_qty) || 0;
+    setForm({ ...form, rate: v2, amount: round2$3(rate * qty) });
+  }
+  function updateAmount(v2) {
+    const amount = Number(v2) || 0;
+    const qty = Number(form.opening_qty) || 0;
+    setForm({ ...form, amount: v2, rate: qty > 0 ? round2$3(amount / qty) : 0 });
+  }
   const save = useMutation({
     // Opening can be entered in any UOM; it's stored as m³ (the base unit). Saving
     // the same plant + product overwrites the previous opening, so wrong entries
     // are corrected by editing the row.
-    mutationFn: () => api.finished.setOpening(form.plant_id, form.product_name, openingCm),
+    mutationFn: () => api.finished.setOpening(form.plant_id, form.product_name, openingCm, ratePerCm, amountTotal),
     onSuccess: () => {
       qc2.invalidateQueries({ queryKey: ["finished"] });
       setOpen(false);
@@ -71497,14 +71520,16 @@ function FinishedGoods() {
     onError: (e3) => toast.error(e3.message)
   });
   function openEdit(f2) {
-    setForm({ plant_id: f2.plant_id, product_name: f2.product_name, opening_qty: f2.opening_qty, uom: "CM", editing: true });
+    const amount = Number(f2.opening_amount) || 0;
+    const rate = f2.opening_qty > 0 ? round2$3(amount / f2.opening_qty) : Number(f2.opening_rate) || 0;
+    setForm({ plant_id: f2.plant_id, product_name: f2.product_name, opening_qty: f2.opening_qty, uom: "CM", editing: true, rate: rate || "", amount: amount || "" });
     setOpen(true);
   }
   function exportExcel() {
     downloadExcel(
       "finished-goods",
       "Finished Goods",
-      ["Plant", "Product", `Opening (${uomLabel2})`, `Produced (${uomLabel2})`, `Purchased (${uomLabel2})`, `Dispatched (${uomLabel2})`, `To Rack (${uomLabel2})`, `Balance (${uomLabel2})`],
+      ["Plant", "Product", `Opening (${uomLabel2})`, `Produced (${uomLabel2})`, `Purchased (${uomLabel2})`, `Dispatched (${uomLabel2})`, `To Rack (${uomLabel2})`, `Balance (${uomLabel2})`, "Opening Value (₹)"],
       data.map((f2) => [
         f2.plant_name,
         f2.product_name,
@@ -71513,7 +71538,8 @@ function FinishedGoods() {
         conv(f2.purchased_qty, f2.plant_id),
         conv(f2.dispatched_qty, f2.plant_id),
         conv(f2.loaded_qty, f2.plant_id),
-        conv(f2.balance_qty, f2.plant_id)
+        conv(f2.balance_qty, f2.plant_id),
+        f2.opening_amount || 0
       ])
     );
   }
@@ -71541,7 +71567,7 @@ function FinishedGoods() {
             " Excel"
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { onClick: () => {
-            setForm({ plant_id: plantId ?? plants[0]?.id, product_name: "", opening_qty: 0, uom: "CM" });
+            setForm({ plant_id: plantId ?? plants[0]?.id, product_name: "", opening_qty: 0, uom: "CM", rate: "", amount: "" });
             setOpen(true);
           }, disabled: !plants.length, children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(PencilLine, { size: 16 }),
@@ -71579,7 +71605,8 @@ function FinishedGoods() {
             uomLabel2,
             ")"
           ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Opening" })
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Opening ₹" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Edit" })
         ] }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: data.map((f2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: f2.plant_name }),
@@ -71590,7 +71617,8 @@ function FinishedGoods() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right text-destructive", children: fmtQty(conv(f2.dispatched_qty, f2.plant_id)) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right text-warning", children: fmtQty(conv(f2.loaded_qty, f2.plant_id)) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right font-semibold", children: fmtQty(conv(f2.balance_qty, f2.plant_id)) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Edit opening stock", onClick: () => openEdit({ plant_id: f2.plant_id, product_name: f2.product_name, opening_qty: f2.opening_qty }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }) })
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right text-muted-foreground", children: f2.opening_amount ? fmtMoney(f2.opening_amount) : "-" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Edit opening stock", onClick: () => openEdit({ plant_id: f2.plant_id, product_name: f2.product_name, opening_qty: f2.opening_qty, opening_rate: f2.opening_rate, opening_amount: f2.opening_amount }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }) })
         ] }, `${f2.plant_id}-${f2.product_name}`)) })
       ] })
     ] }),
@@ -71614,7 +71642,11 @@ function FinishedGoods() {
             options: UOMS.map((u2) => ({ value: u2, label: u2 === "CM" ? "m³" : u2 === "TON" ? "Ton" : "CFT" }))
           }
         ) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `Opening Quantity (${form.uom === "CM" ? "m³" : form.uom})`, hint: form.uom !== "CM" && openingCm > 0 ? `= ${fmtQty(openingCm)} m³` : "Stored as m³", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.opening_qty, onChange: (e3) => setForm({ ...form, opening_qty: e3.target.value }) }) })
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `Opening Quantity (${form.uom === "CM" ? "m³" : form.uom})`, hint: form.uom !== "CM" && openingCm > 0 ? `= ${fmtQty(openingCm)} m³` : "Stored as m³", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.opening_qty, onChange: (e3) => updateQty(e3.target.value) }) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `Rate (₹ / ${form.uom === "CM" ? "m³" : form.uom})`, hint: "Optional — values the opening stock", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.rate, onChange: (e3) => updateRate(e3.target.value), placeholder: "0.00" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Amount (₹)", hint: "Rate × quantity — editable", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.amount, onChange: (e3) => updateAmount(e3.target.value), placeholder: "0.00" }) })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-end gap-2 pt-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setOpen(false), children: "Cancel" }),
@@ -71628,12 +71660,25 @@ function cleanFilter$1(f2) {
   for (const [k2, v2] of Object.entries(f2)) if (v2 != null && v2 !== "") out[k2] = v2;
   return out;
 }
+function round2$3(n2) {
+  return Math.round((n2 + Number.EPSILON) * 100) / 100;
+}
 function Products() {
   const qc2 = useQueryClient();
   const toast = useToast();
-  const { data = [] } = useQuery({ queryKey: ["products"], queryFn: () => api.products.list() });
+  const { plantId } = usePlant();
+  const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
+  const { data = [] } = useQuery({
+    queryKey: ["products", plantId],
+    queryFn: () => api.products.list(plantId)
+  });
   const [open2, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState({ status: "active" });
+  const plantNames = (ids) => (ids ?? []).length ? (ids ?? []).map((id2) => plants.find((p2) => p2.id === id2)?.name ?? "").filter(Boolean).join(", ") : "All plants";
+  function togglePlant(id2) {
+    const cur = form.plant_ids ?? [];
+    setForm({ ...form, plant_ids: cur.includes(id2) ? cur.filter((x2) => x2 !== id2) : [...cur, id2] });
+  }
   const save = useMutation({
     mutationFn: (p2) => p2.id ? api.products.update(p2) : api.products.create(p2),
     onSuccess: () => {
@@ -71657,9 +71702,9 @@ function Products() {
       PageHeader,
       {
         title: "Products",
-        description: "Your finished-goods products, shared across all plants. They feed the Production Settings and Rate List dropdowns.",
+        description: "Your finished-goods products. Assign each to the plants it belongs to (or leave it common to all). They feed the Production Settings and Rate List dropdowns.",
         actions: /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { onClick: () => {
-          setForm({ status: "active", description: "" });
+          setForm({ status: "active", description: "", plant_ids: plantId ? [plantId] : [] });
           setOpen(true);
         }, children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 16 }),
@@ -71671,16 +71716,18 @@ function Products() {
       /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Product" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Description" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plants" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Status" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
       ] }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: data.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: p2.name }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: p2.description || "-" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: plantNames(p2.plant_ids) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: p2.status === "active" ? "success" : "muted", children: p2.status }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => {
-            setForm(p2);
+            setForm({ ...p2, plant_ids: p2.plant_ids ?? [] });
             setOpen(true);
           }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => remove(p2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
@@ -71711,6 +71758,7 @@ function Products() {
           options: [{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }]
         }
       ) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plants", hint: "Tick the plants this product belongs to — leave all unticked to make it common to every plant", children: /* @__PURE__ */ jsxRuntimeExports.jsx(PlantCheckboxes, { plants, selected: form.plant_ids ?? [], onToggle: togglePlant }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-end gap-2 pt-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setOpen(false), children: "Cancel" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: () => save.mutate(form), disabled: !form.name?.trim(), children: "Save" })
@@ -72279,7 +72327,7 @@ function Dispatch() {
     queryFn: () => api.customers.list(plantId)
   });
   const { data: outsourceVendors = [] } = useQuery({ queryKey: ["outsource"], queryFn: () => api.outsource.list() });
-  const { data: products = [] } = useQuery({ queryKey: ["products"], queryFn: api.products.list });
+  const { data: products = [] } = useQuery({ queryKey: ["products"], queryFn: () => api.products.list() });
   const { data: transporters = [] } = useQuery({ queryKey: ["transporters", plantId], queryFn: () => api.transporters.list(plantId) });
   const { data: assets = [] } = useQuery({ queryKey: ["assets", plantId], queryFn: () => api.assets.list(plantId) });
   const [filter, setFilter] = reactExports.useState({});
@@ -89401,7 +89449,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-BWr_UUJa.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-DnzvTRX8.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;

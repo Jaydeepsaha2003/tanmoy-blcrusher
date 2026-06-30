@@ -439,9 +439,11 @@ CREATE TABLE IF NOT EXISTS spare_part_movements (
 );
 
 CREATE TABLE IF NOT EXISTS finished_goods_opening (
-  plant_id     INTEGER NOT NULL REFERENCES plants(id),
-  product_name TEXT NOT NULL,
-  opening_qty  REAL NOT NULL DEFAULT 0,
+  plant_id       INTEGER NOT NULL REFERENCES plants(id),
+  product_name   TEXT NOT NULL,
+  opening_qty    REAL NOT NULL DEFAULT 0,
+  opening_rate   REAL NOT NULL DEFAULT 0,
+  opening_amount REAL NOT NULL DEFAULT 0,
   PRIMARY KEY (plant_id, product_name)
 );
 
@@ -683,6 +685,11 @@ CREATE TABLE IF NOT EXISTS company_plants (
   company_id INTEGER NOT NULL REFERENCES companies(id),
   plant_id   INTEGER NOT NULL REFERENCES plants(id)
 );
+CREATE TABLE IF NOT EXISTS product_plants (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  product_id INTEGER NOT NULL REFERENCES products(id),
+  plant_id   INTEGER NOT NULL REFERENCES plants(id)
+);
 
 -- Railway-rack fleet: hired vehicles and JCB loaders, assignable to multiple plants.
 CREATE TABLE IF NOT EXISTS rack_vehicles (
@@ -905,6 +912,7 @@ CREATE INDEX IF NOT EXISTS idx_cplants_customer ON customer_plants(customer_id);
 CREATE INDEX IF NOT EXISTS idx_splants_supplier ON supplier_plants(supplier_id);
 CREATE INDEX IF NOT EXISTS idx_tplants_transporter ON transporter_plants(transporter_id);
 CREATE INDEX IF NOT EXISTS idx_coplants_company ON company_plants(company_id);
+CREATE INDEX IF NOT EXISTS idx_pplants_product ON product_plants(product_id);
 CREATE INDEX IF NOT EXISTS idx_rvplants_vehicle ON rack_vehicle_plants(rack_vehicle_id);
 CREATE INDEX IF NOT EXISTS idx_rjplants_jcb ON rack_jcb_plants(rack_jcb_id);
 CREATE INDEX IF NOT EXISTS idx_amoves_asset ON asset_plant_moves(asset_id);
@@ -1198,9 +1206,11 @@ CREATE TABLE IF NOT EXISTS production_outputs (
   quantity      DOUBLE NOT NULL
 );
 CREATE TABLE IF NOT EXISTS finished_goods_opening (
-  plant_id     INT NOT NULL,
-  product_name VARCHAR(191) NOT NULL,
-  opening_qty  DOUBLE NOT NULL DEFAULT 0,
+  plant_id       INT NOT NULL,
+  product_name   VARCHAR(191) NOT NULL,
+  opening_qty    DOUBLE NOT NULL DEFAULT 0,
+  opening_rate   DOUBLE NOT NULL DEFAULT 0,
+  opening_amount DOUBLE NOT NULL DEFAULT 0,
   PRIMARY KEY (plant_id, product_name)
 );
 CREATE TABLE IF NOT EXISTS dispatches (
@@ -1964,6 +1974,22 @@ CREATE INDEX idx_rstrans_vehicle ON rack_sale_transporters(rack_vehicle_id)`
     // Direct-sale transporter lines can be billed through to the customer (pass-through transport).
     id: "031_dispatch_transporter_bill_customer",
     sql: `ALTER TABLE dispatch_transporters ADD COLUMN bill_customer INT NOT NULL DEFAULT 0`
+  },
+  {
+    // Multi-plant products: assign each product to one or more plants (empty = common to all).
+    id: "032_product_plants",
+    sql: `CREATE TABLE IF NOT EXISTS product_plants (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  product_id INT NOT NULL,
+  plant_id   INT NOT NULL
+);
+CREATE INDEX idx_pplants_product ON product_plants(product_id)`
+  },
+  {
+    // Opening finished-goods stock can be valued: a per-m³ rate and the total amount.
+    id: "033_finished_opening_value",
+    sql: `ALTER TABLE finished_goods_opening ADD COLUMN opening_rate DOUBLE NOT NULL DEFAULT 0;
+ALTER TABLE finished_goods_opening ADD COLUMN opening_amount DOUBLE NOT NULL DEFAULT 0`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -2060,6 +2086,8 @@ async function sqliteLegacyMigrate(adapter2) {
   await addColumn("rack_sale_transporters", "diesel_amount", "REAL");
   await addColumn("rack_sale_transporters", "diesel_charged", "INTEGER NOT NULL DEFAULT 0");
   await addColumn("dispatch_transporters", "bill_customer", "INTEGER NOT NULL DEFAULT 0");
+  await addColumn("finished_goods_opening", "opening_rate", "REAL NOT NULL DEFAULT 0");
+  await addColumn("finished_goods_opening", "opening_amount", "REAL NOT NULL DEFAULT 0");
 }
 async function importProductsFromSettings(adapter2) {
   const all = (await adapter2.exec(`SELECT id, name FROM products ORDER BY id`, void 0, null)).rows;
@@ -2995,7 +3023,8 @@ var PARTY_PLANT_TABLE = {
   transporter: { junction: "transporter_plants", col: "transporter_id" },
   company: { junction: "company_plants", col: "company_id" },
   rack_vehicle: { junction: "rack_vehicle_plants", col: "rack_vehicle_id" },
-  rack_jcb: { junction: "rack_jcb_plants", col: "rack_jcb_id" }
+  rack_jcb: { junction: "rack_jcb_plants", col: "rack_jcb_id" },
+  product: { junction: "product_plants", col: "product_id" }
 };
 function plantIdSet(p) {
   if (Array.isArray(p.plant_ids)) return [...new Set(p.plant_ids.map(Number).filter((n) => n > 0))];
@@ -3222,8 +3251,12 @@ async function deleteCustomer(payload) {
 }
 
 // src/main/services/products.ts
-async function listProducts(_payload = {}) {
-  return await getDb().prepare(`SELECT id, name, description, status, created_at FROM products ORDER BY name`).all();
+async function listProducts(payload = {}) {
+  const d = getDb();
+  const clause = payload.plant_id ? `WHERE ${plantScopeSql("p", "product")}` : "";
+  const rows = await d.prepare(`SELECT p.id, p.name, p.description, p.status, p.created_at FROM products p ${clause} ORDER BY p.name`).all(payload);
+  await attachPartyPlants(d, "product", rows);
+  return rows;
 }
 async function createProduct(p) {
   const d = getDb();
@@ -3231,8 +3264,16 @@ async function createProduct(p) {
   if (!name) throw new Error("Product name is required.");
   const dup = await d.prepare(`SELECT id FROM products WHERE LOWER(name) = LOWER(?)`).get(name);
   if (dup) throw new Error("A product with this name already exists.");
-  const info = await d.prepare(`INSERT INTO products (plant_id, name, description, status) VALUES (0, ?, ?, ?)`).run(name, p.description ?? "", p.status ?? "active");
-  return await d.prepare(`SELECT * FROM products WHERE id = ?`).get(info.lastInsertRowid);
+  const plants = plantIdSet(p);
+  const id = await d.transaction(async () => {
+    const info = await d.prepare(`INSERT INTO products (plant_id, name, description, status) VALUES (0, ?, ?, ?)`).run(name, p.description ?? "", p.status ?? "active");
+    const pid = Number(info.lastInsertRowid);
+    await writePartyPlants(d, "product", pid, plants);
+    return pid;
+  });
+  const row = await d.prepare(`SELECT * FROM products WHERE id = ?`).get(id);
+  await attachPartyPlants(d, "product", [row]);
+  return row;
 }
 async function updateProduct(p) {
   const d = getDb();
@@ -3240,8 +3281,14 @@ async function updateProduct(p) {
   if (!name) throw new Error("Product name is required.");
   const dup = await d.prepare(`SELECT id FROM products WHERE LOWER(name) = LOWER(?) AND id <> ?`).get(name, p.id);
   if (dup) throw new Error("A product with this name already exists.");
-  await d.prepare(`UPDATE products SET name=?, description=?, status=? WHERE id=?`).run(name, p.description ?? "", p.status ?? "active", p.id);
-  return await d.prepare(`SELECT * FROM products WHERE id = ?`).get(p.id);
+  const plants = plantIdSet(p);
+  await d.transaction(async () => {
+    await d.prepare(`UPDATE products SET name=?, description=?, status=? WHERE id=?`).run(name, p.description ?? "", p.status ?? "active", p.id);
+    await writePartyPlants(d, "product", p.id, plants);
+  });
+  const row = await d.prepare(`SELECT * FROM products WHERE id = ?`).get(p.id);
+  await attachPartyPlants(d, "product", [row]);
+  return row;
 }
 async function deleteProduct(payload) {
   const d = getDb();
@@ -3251,7 +3298,10 @@ async function deleteProduct(payload) {
   if (used.c > 0) {
     return { ok: false, error: "Cannot delete: this product is used in Production Settings." };
   }
-  await d.prepare(`DELETE FROM products WHERE id = ?`).run(payload.id);
+  await d.transaction(async () => {
+    await d.prepare(`DELETE FROM product_plants WHERE product_id = ?`).run(payload.id);
+    await d.prepare(`DELETE FROM products WHERE id = ?`).run(payload.id);
+  });
   return { ok: true };
 }
 
@@ -3935,9 +3985,13 @@ async function listFinishedGoods(filter = {}) {
         COALESCE(SUM(CASE WHEN m.type='purchase' ${datePurch} THEN m.change_qty ELSE 0 END),0) AS purchased_qty,
         COALESCE(SUM(CASE WHEN m.type='dispatch' ${dateDisp} THEN -m.change_qty ELSE 0 END),0) AS dispatched_qty,
         COALESCE(SUM(CASE WHEN m.type='rack_load' ${dateLoad} THEN -m.change_qty ELSE 0 END),0) AS loaded_qty,
-        COALESCE(SUM(m.change_qty),0) AS balance_qty
+        COALESCE(SUM(m.change_qty),0) AS balance_qty,
+        COALESCE(MAX(fgo.opening_rate),0) AS opening_rate,
+        COALESCE(MAX(fgo.opening_amount),0) AS opening_amount
        FROM stock_movements m
        JOIN plants p ON p.id = m.plant_id
+       LEFT JOIN finished_goods_opening fgo
+         ON fgo.plant_id = m.plant_id AND fgo.product_name = m.product_name
        WHERE ${where.join(" AND ")}
        GROUP BY m.plant_id, m.product_name
        ORDER BY p.name, m.product_name`
@@ -3949,7 +4003,9 @@ async function listFinishedGoods(filter = {}) {
     purchased_qty: round6(r.purchased_qty),
     dispatched_qty: round6(r.dispatched_qty),
     loaded_qty: round6(r.loaded_qty),
-    balance_qty: round6(r.balance_qty)
+    balance_qty: round6(r.balance_qty),
+    opening_rate: round6(r.opening_rate ?? 0),
+    opening_amount: round6(r.opening_amount ?? 0)
   }));
 }
 function buildDateClause(filter, params, prefix) {
@@ -3971,15 +4027,22 @@ async function setOpening(payload) {
   const d = getDb();
   const date = payload.date || (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const product = properCase(payload.product_name);
+  const qty = payload.opening_qty || 0;
+  let amount = Number(payload.opening_amount) || 0;
+  let rate = Number(payload.opening_rate) || 0;
+  if (amount === 0 && rate > 0) amount = rate * qty;
+  if (rate === 0 && amount > 0 && qty > 0) rate = amount / qty;
   await d.transaction(async () => {
     await d.prepare(
-      dbKind() === "mysql" ? `INSERT INTO finished_goods_opening (plant_id, product_name, opening_qty)
-           VALUES (?, ?, ?)
-           ON DUPLICATE KEY UPDATE opening_qty = VALUES(opening_qty)` : `INSERT INTO finished_goods_opening (plant_id, product_name, opening_qty)
-           VALUES (?, ?, ?)
-           ON CONFLICT(plant_id, product_name) DO UPDATE SET opening_qty = excluded.opening_qty`
-    ).run(payload.plant_id, product, payload.opening_qty || 0);
-    await setFinishedOpening(d, payload.plant_id, product, payload.opening_qty || 0, date);
+      dbKind() === "mysql" ? `INSERT INTO finished_goods_opening (plant_id, product_name, opening_qty, opening_rate, opening_amount)
+           VALUES (?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE opening_qty = VALUES(opening_qty),
+             opening_rate = VALUES(opening_rate), opening_amount = VALUES(opening_amount)` : `INSERT INTO finished_goods_opening (plant_id, product_name, opening_qty, opening_rate, opening_amount)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(plant_id, product_name) DO UPDATE SET opening_qty = excluded.opening_qty,
+             opening_rate = excluded.opening_rate, opening_amount = excluded.opening_amount`
+    ).run(payload.plant_id, product, qty, rate, amount);
+    await setFinishedOpening(d, payload.plant_id, product, qty, date);
   });
   return { ok: true };
 }
