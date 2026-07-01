@@ -46877,16 +46877,10 @@ const NAV = [
     ]
   },
   {
-    heading: "Rail Dispatch",
-    items: [
-      { to: "/racks", label: "Railway Racks", icon: TrainFront, module: "racks" },
-      { to: "/rack-fleet", label: "Vehicles & JCB", icon: Truck, module: "racks" }
-    ]
-  },
-  {
     heading: "Direct Sales",
     items: [
       { to: "/dispatch", label: "Direct Sale", icon: Send, module: "dispatch" },
+      { to: "/racks", label: "Railway Rack", icon: TrainFront, module: "racks" },
       { to: "/dispatch-queue", label: "Dispatch", icon: PackageCheck, module: "dispatch" },
       { to: "/deliveries", label: "Delivery Status", icon: ClipboardCheck, module: "dispatch" },
       { to: "/rate-chart", label: "Rate Chart", icon: IndianRupee, module: "masters" }
@@ -46909,7 +46903,7 @@ const NAV = [
       { to: "/budget", label: "Budget", icon: PiggyBank, module: "plantExpenses" },
       { to: "/payroll", label: "Payroll", icon: HardHat, module: "payroll" },
       { to: "/ledgers", label: "Ledgers", icon: BookOpen, module: "ledgers" },
-      { to: "/payments", label: "Payment Status", icon: Wallet, module: "payments" }
+      { to: "/payments", label: "Make Payment", icon: Wallet, module: "payments" }
     ]
   },
   {
@@ -89859,7 +89853,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-jz3Q8nIA.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-B6UllBL1.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
@@ -93215,7 +93209,7 @@ function Payments() {
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       PageHeader,
       {
-        title: "Payment Status",
+        title: "Make Payment",
         description: "Outstanding dues for every party — receive from customers, pay suppliers & transport, all in one place",
         actions: /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { onClick: openPicker, children: [
