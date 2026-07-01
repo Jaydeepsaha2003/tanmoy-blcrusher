@@ -248,9 +248,18 @@ CREATE TABLE IF NOT EXISTS transport_charges (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
   vehicle_type      TEXT NOT NULL,
   stock_location_id INTEGER NOT NULL REFERENCES stock_locations(id),
+  destination_id    INTEGER REFERENCES destinations(id),
   basis             TEXT NOT NULL DEFAULT 'trip',
   charge            REAL NOT NULL DEFAULT 0,
   updated_at        TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+-- Reusable delivery destinations (origin location \u2192 destination transport rates).
+CREATE TABLE IF NOT EXISTS destinations (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  name       TEXT NOT NULL,
+  remarks    TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS stock_locations (
@@ -915,6 +924,7 @@ CREATE INDEX IF NOT EXISTS idx_customers_token ON customers(share_token);
 CREATE INDEX IF NOT EXISTS idx_opening_party ON opening_balances(party_type, party_id);
 CREATE INDEX IF NOT EXISTS idx_ratechart_loc ON rate_chart(stock_location_id);
 CREATE INDEX IF NOT EXISTS idx_transport_loc ON transport_charges(stock_location_id);
+CREATE INDEX IF NOT EXISTS idx_transport_dest ON transport_charges(destination_id);
 CREATE INDEX IF NOT EXISTS idx_budget_plant ON budgets(plant_id);
 CREATE INDEX IF NOT EXISTS idx_ptrans_purchase ON purchase_transporters(purchase_id);
 CREATE INDEX IF NOT EXISTS idx_ptrans_transporter ON purchase_transporters(transporter_id);
@@ -2048,6 +2058,18 @@ ALTER TABLE stock_locations ADD COLUMN opening_amount DOUBLE NOT NULL DEFAULT 0`
     // A diesel issue to a transporter can record the specific vehicle it fuelled.
     id: "036_diesel_issue_vehicle",
     sql: `ALTER TABLE diesel_issues ADD COLUMN vehicle_no VARCHAR(64) NOT NULL DEFAULT ''`
+  },
+  {
+    // Reusable Destinations master + origin→destination on transport (delivery) rates.
+    id: "037_destinations_routes",
+    sql: `CREATE TABLE IF NOT EXISTS destinations (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  name       VARCHAR(255) NOT NULL,
+  remarks    TEXT,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+ALTER TABLE transport_charges ADD COLUMN destination_id INT;
+CREATE INDEX idx_transport_dest ON transport_charges(destination_id)`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -2149,6 +2171,7 @@ async function sqliteLegacyMigrate(adapter2) {
   await addColumn("stock_locations", "opening_rate", "REAL NOT NULL DEFAULT 0");
   await addColumn("stock_locations", "opening_amount", "REAL NOT NULL DEFAULT 0");
   await addColumn("diesel_issues", "vehicle_no", `TEXT NOT NULL DEFAULT ''`);
+  await addColumn("transport_charges", "destination_id", "INTEGER");
 }
 async function importProductsFromSettings(adapter2) {
   const all = (await adapter2.exec(`SELECT id, name FROM products ORDER BY id`, void 0, null)).rows;
@@ -3551,12 +3574,13 @@ async function listTransportCharges(payload = {}) {
   const d = getDb();
   const clause = payload.plant_id ? "WHERE l.plant_id = @plant_id" : "";
   return await d.prepare(
-    `SELECT tc.*, l.name AS stock_location_name, p.name AS plant_name
+    `SELECT tc.*, l.name AS stock_location_name, p.name AS plant_name, dest.name AS destination_name
        FROM transport_charges tc
        JOIN stock_locations l ON l.id = tc.stock_location_id
        JOIN plants p ON p.id = l.plant_id
+       LEFT JOIN destinations dest ON dest.id = tc.destination_id
        ${clause}
-       ORDER BY p.name, l.name, tc.vehicle_type`
+       ORDER BY p.name, l.name, dest.name, tc.vehicle_type`
   ).all(payload);
 }
 async function createTransportCharge(p) {
@@ -3566,9 +3590,9 @@ async function createTransportCharge(p) {
   if (!p.stock_location_id) throw new Error("Select a location.");
   const basis = VALID_BASIS.includes(p.basis) ? p.basis : "trip";
   const info = await d.prepare(
-    `INSERT INTO transport_charges (vehicle_type, stock_location_id, basis, charge, updated_at)
-       VALUES (?, ?, ?, ?, ?)`
-  ).run(vehicle, p.stock_location_id, basis, money(p.charge), nowIso2());
+    `INSERT INTO transport_charges (vehicle_type, stock_location_id, destination_id, basis, charge, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(vehicle, p.stock_location_id, p.destination_id ? Number(p.destination_id) : null, basis, money(p.charge), nowIso2());
   return await d.prepare(`SELECT * FROM transport_charges WHERE id = ?`).get(info.lastInsertRowid);
 }
 async function updateTransportCharge(p) {
@@ -3578,12 +3602,43 @@ async function updateTransportCharge(p) {
   if (!vehicle) throw new Error("Enter a vehicle / lorry type.");
   const basis = VALID_BASIS.includes(p.basis) ? p.basis : "trip";
   await d.prepare(
-    `UPDATE transport_charges SET vehicle_type=?, stock_location_id=?, basis=?, charge=?, updated_at=? WHERE id=?`
-  ).run(vehicle, p.stock_location_id, basis, money(p.charge), nowIso2(), p.id);
+    `UPDATE transport_charges SET vehicle_type=?, stock_location_id=?, destination_id=?, basis=?, charge=?, updated_at=? WHERE id=?`
+  ).run(vehicle, p.stock_location_id, p.destination_id ? Number(p.destination_id) : null, basis, money(p.charge), nowIso2(), p.id);
   return await d.prepare(`SELECT * FROM transport_charges WHERE id = ?`).get(p.id);
 }
 async function deleteTransportCharge(payload) {
   await getDb().prepare(`DELETE FROM transport_charges WHERE id = ?`).run(payload.id);
+  return { ok: true };
+}
+
+// src/main/services/destinations.ts
+async function listDestinations() {
+  return await getDb().prepare(`SELECT * FROM destinations ORDER BY name`).all();
+}
+async function createDestination(p) {
+  const d = getDb();
+  const name = properCase(p.name || "");
+  if (!name) throw new Error("Destination name is required.");
+  const dup = await d.prepare(`SELECT id FROM destinations WHERE LOWER(name) = LOWER(?)`).get(name);
+  if (dup) throw new Error("A destination with this name already exists.");
+  const info = await d.prepare(`INSERT INTO destinations (name, remarks) VALUES (?, ?)`).run(name, p.remarks ?? "");
+  return await d.prepare(`SELECT * FROM destinations WHERE id = ?`).get(info.lastInsertRowid);
+}
+async function updateDestination(p) {
+  const d = getDb();
+  if (!p.id) throw new Error("Missing destination id.");
+  const name = properCase(p.name || "");
+  if (!name) throw new Error("Destination name is required.");
+  const dup = await d.prepare(`SELECT id FROM destinations WHERE LOWER(name) = LOWER(?) AND id <> ?`).get(name, p.id);
+  if (dup) throw new Error("A destination with this name already exists.");
+  await d.prepare(`UPDATE destinations SET name=?, remarks=? WHERE id=?`).run(name, p.remarks ?? "", p.id);
+  return await d.prepare(`SELECT * FROM destinations WHERE id = ?`).get(p.id);
+}
+async function deleteDestination(payload) {
+  const d = getDb();
+  const used = await d.prepare(`SELECT COUNT(*) AS c FROM transport_charges WHERE destination_id = ?`).get(payload.id);
+  if (used.c > 0) return { ok: false, error: "Cannot delete: this destination is used in transport rates." };
+  await d.prepare(`DELETE FROM destinations WHERE id = ?`).run(payload.id);
   return { ok: true };
 }
 
@@ -9239,6 +9294,10 @@ var handlers = {
   "transportCharges.create": createTransportCharge,
   "transportCharges.update": updateTransportCharge,
   "transportCharges.delete": deleteTransportCharge,
+  "destinations.list": listDestinations,
+  "destinations.create": createDestination,
+  "destinations.update": updateDestination,
+  "destinations.delete": deleteDestination,
   "purchases.list": listPurchases,
   "purchases.detail": getPurchaseDetail,
   "purchases.create": createPurchase,
