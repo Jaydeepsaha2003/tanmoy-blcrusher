@@ -86,16 +86,10 @@ export const NAV: NavGroup[] = [
     ]
   },
   {
-    heading: 'Rail Dispatch',
-    items: [
-      { to: '/racks', label: 'Railway Racks', icon: TrainFront, module: 'racks' },
-      { to: '/rack-fleet', label: 'Vehicles & JCB', icon: Truck, module: 'racks' }
-    ]
-  },
-  {
     heading: 'Direct Sales',
     items: [
       { to: '/dispatch', label: 'Direct Sale', icon: Send, module: 'dispatch' },
+      { to: '/racks', label: 'Railway Rack', icon: TrainFront, module: 'racks' },
       { to: '/dispatch-queue', label: 'Dispatch', icon: PackageCheck, module: 'dispatch' },
       { to: '/deliveries', label: 'Delivery Status', icon: ClipboardCheck, module: 'dispatch' },
       { to: '/rate-chart', label: 'Rate Chart', icon: IndianRupee, module: 'masters' }
@@ -118,7 +112,7 @@ export const NAV: NavGroup[] = [
       { to: '/budget', label: 'Budget', icon: PiggyBank, module: 'plantExpenses' },
       { to: '/payroll', label: 'Payroll', icon: HardHat, module: 'payroll' },
       { to: '/ledgers', label: 'Ledgers', icon: BookOpen, module: 'ledgers' },
-      { to: '/payments', label: 'Payment Status', icon: Wallet, module: 'payments' }
+      { to: '/payments', label: 'Make Payment', icon: Wallet, module: 'payments' }
     ]
   },
   {

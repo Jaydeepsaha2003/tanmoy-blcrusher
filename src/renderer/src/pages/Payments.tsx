@@ -175,7 +175,7 @@ export function Payments(): React.JSX.Element {
   return (
     <>
       <PageHeader
-        title="Payment Status"
+        title="Make Payment"
         description="Outstanding dues for every party — receive from customers, pay suppliers & transport, all in one place"
         actions={
           <>
