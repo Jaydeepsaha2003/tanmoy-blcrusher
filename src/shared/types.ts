@@ -199,9 +199,20 @@ export interface TransportCharge {
   stock_location_id: number
   stock_location_name?: string
   plant_name?: string
+  /** Delivery destination for this route rate (null = any / generic origin charge). */
+  destination_id?: number | null
+  destination_name?: string | null
   basis: TransportBasis
   charge: number
   updated_at?: string
+}
+
+/** A reusable delivery destination for origin→destination transport rates. */
+export interface Destination {
+  id: number
+  name: string
+  remarks: string
+  created_at?: string
 }
 
 /** Data backing the public, no-login rate page shared with a customer. */

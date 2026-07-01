@@ -1095,6 +1095,18 @@ ALTER TABLE stock_locations ADD COLUMN opening_amount DOUBLE NOT NULL DEFAULT 0`
     // A diesel issue to a transporter can record the specific vehicle it fuelled.
     id: '036_diesel_issue_vehicle',
     sql: `ALTER TABLE diesel_issues ADD COLUMN vehicle_no VARCHAR(64) NOT NULL DEFAULT ''`
+  },
+  {
+    // Reusable Destinations master + origin→destination on transport (delivery) rates.
+    id: '037_destinations_routes',
+    sql: `CREATE TABLE IF NOT EXISTS destinations (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  name       VARCHAR(255) NOT NULL,
+  remarks    TEXT,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+ALTER TABLE transport_charges ADD COLUMN destination_id INT;
+CREATE INDEX idx_transport_dest ON transport_charges(destination_id)`
   }
 ]
 
@@ -1222,6 +1234,8 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   await addColumn('stock_locations', 'opening_amount', 'REAL NOT NULL DEFAULT 0')
   // Diesel issue can name the transporter vehicle it fuelled.
   await addColumn('diesel_issues', 'vehicle_no', `TEXT NOT NULL DEFAULT ''`)
+  // Origin→destination transport rates (destinations table comes from SCHEMA on the SQLite path).
+  await addColumn('transport_charges', 'destination_id', 'INTEGER')
 }
 
 /**

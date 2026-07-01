@@ -6,6 +6,7 @@ import * as customers from './services/customers'
 import * as products from './services/products'
 import * as rates from './services/rates'
 import * as rateChart from './services/rateChart'
+import * as destinations from './services/destinations'
 import * as purchases from './services/purchases'
 import * as psettings from './services/productionSettings'
 import * as productions from './services/productions'
@@ -89,6 +90,10 @@ export const handlers: Record<string, (payload: any) => unknown> = {
   'transportCharges.create': rateChart.createTransportCharge,
   'transportCharges.update': rateChart.updateTransportCharge,
   'transportCharges.delete': rateChart.deleteTransportCharge,
+  'destinations.list': destinations.listDestinations,
+  'destinations.create': destinations.createDestination,
+  'destinations.update': destinations.updateDestination,
+  'destinations.delete': destinations.deleteDestination,
 
   'purchases.list': purchases.listPurchases,
   'purchases.detail': purchases.getPurchaseDetail,

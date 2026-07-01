@@ -83,12 +83,13 @@ export async function listTransportCharges(payload: { plant_id?: number } = {}):
   const clause = payload.plant_id ? 'WHERE l.plant_id = @plant_id' : ''
   return (await d
     .prepare(
-      `SELECT tc.*, l.name AS stock_location_name, p.name AS plant_name
+      `SELECT tc.*, l.name AS stock_location_name, p.name AS plant_name, dest.name AS destination_name
        FROM transport_charges tc
        JOIN stock_locations l ON l.id = tc.stock_location_id
        JOIN plants p ON p.id = l.plant_id
+       LEFT JOIN destinations dest ON dest.id = tc.destination_id
        ${clause}
-       ORDER BY p.name, l.name, tc.vehicle_type`
+       ORDER BY p.name, l.name, dest.name, tc.vehicle_type`
     )
     .all(payload)) as TransportCharge[]
 }
@@ -101,10 +102,10 @@ export async function createTransportCharge(p: TransportCharge): Promise<Transpo
   const basis: TransportBasis = VALID_BASIS.includes(p.basis) ? p.basis : 'trip'
   const info = await d
     .prepare(
-      `INSERT INTO transport_charges (vehicle_type, stock_location_id, basis, charge, updated_at)
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO transport_charges (vehicle_type, stock_location_id, destination_id, basis, charge, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
     )
-    .run(vehicle, p.stock_location_id, basis, money(p.charge), nowIso())
+    .run(vehicle, p.stock_location_id, p.destination_id ? Number(p.destination_id) : null, basis, money(p.charge), nowIso())
   return (await d.prepare(`SELECT * FROM transport_charges WHERE id = ?`).get(info.lastInsertRowid)) as TransportCharge
 }
 
@@ -116,9 +117,9 @@ export async function updateTransportCharge(p: TransportCharge): Promise<Transpo
   const basis: TransportBasis = VALID_BASIS.includes(p.basis) ? p.basis : 'trip'
   await d
     .prepare(
-      `UPDATE transport_charges SET vehicle_type=?, stock_location_id=?, basis=?, charge=?, updated_at=? WHERE id=?`
+      `UPDATE transport_charges SET vehicle_type=?, stock_location_id=?, destination_id=?, basis=?, charge=?, updated_at=? WHERE id=?`
     )
-    .run(vehicle, p.stock_location_id, basis, money(p.charge), nowIso(), p.id)
+    .run(vehicle, p.stock_location_id, p.destination_id ? Number(p.destination_id) : null, basis, money(p.charge), nowIso(), p.id)
   return (await d.prepare(`SELECT * FROM transport_charges WHERE id = ?`).get(p.id)) as TransportCharge
 }
 

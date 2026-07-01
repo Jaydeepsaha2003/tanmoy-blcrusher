@@ -89,9 +89,18 @@ CREATE TABLE IF NOT EXISTS transport_charges (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
   vehicle_type      TEXT NOT NULL,
   stock_location_id INTEGER NOT NULL REFERENCES stock_locations(id),
+  destination_id    INTEGER REFERENCES destinations(id),
   basis             TEXT NOT NULL DEFAULT 'trip',
   charge            REAL NOT NULL DEFAULT 0,
   updated_at        TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+-- Reusable delivery destinations (origin location → destination transport rates).
+CREATE TABLE IF NOT EXISTS destinations (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  name       TEXT NOT NULL,
+  remarks    TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS stock_locations (
@@ -756,6 +765,7 @@ CREATE INDEX IF NOT EXISTS idx_customers_token ON customers(share_token);
 CREATE INDEX IF NOT EXISTS idx_opening_party ON opening_balances(party_type, party_id);
 CREATE INDEX IF NOT EXISTS idx_ratechart_loc ON rate_chart(stock_location_id);
 CREATE INDEX IF NOT EXISTS idx_transport_loc ON transport_charges(stock_location_id);
+CREATE INDEX IF NOT EXISTS idx_transport_dest ON transport_charges(destination_id);
 CREATE INDEX IF NOT EXISTS idx_budget_plant ON budgets(plant_id);
 CREATE INDEX IF NOT EXISTS idx_ptrans_purchase ON purchase_transporters(purchase_id);
 CREATE INDEX IF NOT EXISTS idx_ptrans_transporter ON purchase_transporters(transporter_id);

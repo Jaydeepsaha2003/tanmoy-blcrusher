@@ -7,6 +7,7 @@ import type {
   CustomerRate,
   RateChartRow,
   TransportCharge,
+  Destination,
   Purchase,
   ProductionSetting,
   Production,
@@ -142,6 +143,12 @@ export const api = {
     create: (p: Partial<TransportCharge>) => call<TransportCharge>('transportCharges.create', p),
     update: (p: Partial<TransportCharge>) => call<TransportCharge>('transportCharges.update', p),
     delete: (id: number) => call<{ ok: boolean }>('transportCharges.delete', { id })
+  },
+  destinations: {
+    list: () => call<Destination[]>('destinations.list'),
+    create: (p: Partial<Destination>) => call<Destination>('destinations.create', p),
+    update: (p: Partial<Destination>) => call<Destination>('destinations.update', p),
+    delete: (id: number) => call<{ ok: boolean; error?: string }>('destinations.delete', { id })
   },
   products: {
     list: (plant_id?: number) => call<Product[]>('products.list', { plant_id }),
