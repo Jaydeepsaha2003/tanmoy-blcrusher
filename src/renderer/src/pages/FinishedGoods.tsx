@@ -208,7 +208,7 @@ export function FinishedGoods(): React.JSX.Element {
           <Field label="Product Name">
             <Input value={form.product_name} disabled={form.editing} onChange={(e) => setForm({ ...form, product_name: e.target.value })} placeholder="e.g. 30/40" />
           </Field>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Unit (UOM)">
               <SearchSelect
                 value={form.uom}
@@ -220,7 +220,7 @@ export function FinishedGoods(): React.JSX.Element {
               <Input type="number" step="0.001" value={form.opening_qty} onChange={(e) => updateQty(e.target.value)} />
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label={`Rate (₹ / ${form.uom === 'CM' ? 'm³' : form.uom})`} hint="Optional — values the opening stock">
               <Input type="number" step="0.01" value={form.rate} onChange={(e) => updateRate(e.target.value)} placeholder="0.00" />
             </Field>

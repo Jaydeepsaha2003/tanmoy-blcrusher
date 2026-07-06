@@ -283,7 +283,7 @@ export function PartsStockPanel(): React.JSX.Element {
               </>
             )}
             {stockMove.mode === 'in' ? (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Field label="Quantity" hint="Quantity received into stock"><Input autoFocus type="number" min="0" step="0.001" value={stockMove.quantity} onChange={(e) => setStockMove({ ...stockMove, quantity: e.target.value })} /></Field>
                 <Field label="Rate per Unit (₹)" hint={Number(stockMove.quantity) > 0 && Number(stockMove.rate) > 0 ? `= ₹${(Number(stockMove.quantity) * Number(stockMove.rate)).toFixed(2)}` : 'Purchase rate (optional)'}>
                   <Input type="number" min="0" step="0.01" value={stockMove.rate ?? ''} onChange={(e) => setStockMove({ ...stockMove, rate: e.target.value })} placeholder="0.00" />
@@ -291,7 +291,7 @@ export function PartsStockPanel(): React.JSX.Element {
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <Field label="Quantity" hint="Quantity issued for use"><Input autoFocus type="number" min="0" step="0.001" value={stockMove.quantity} onChange={(e) => setStockMove({ ...stockMove, quantity: e.target.value })} /></Field>
                   <Field label="Used For Machine / Vehicle" required>
                     <SearchSelect value={stockMove.asset_id ?? ''} onChange={(v) => setStockMove({ ...stockMove, asset_id: Number(v) })} options={assets.map((a) => ({ value: a.id, label: a.name }))} placeholder="Select machine…" />

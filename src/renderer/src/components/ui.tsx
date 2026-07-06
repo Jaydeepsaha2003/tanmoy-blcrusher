@@ -344,24 +344,29 @@ export function Modal({
   }, [open, onClose])
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-3 pt-8 backdrop-blur-sm sm:p-4 sm:pt-16">
-      <div
-        className={cn(
-          'animate-in relative w-full rounded-2xl border bg-card shadow-2xl ring-1 ring-black/5',
-          width
-        )}
-      >
-        <div className="flex items-center justify-between border-b px-6 py-4">
-          <h2 className="text-[17px] font-semibold tracking-tight">{title}</h2>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            aria-label="Close"
-          >
-            <X size={18} />
-          </button>
+    // The whole overlay scrolls (min-h-full + items-center centres without clipping,
+    // and never traps the top of a tall modal). The body itself is NOT overflow-clipped
+    // so SearchSelect dropdowns can spill past the card. Responsive padding fits phones.
+    <div className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-black/50 backdrop-blur-sm">
+      <div className="flex min-h-full items-center justify-center p-3 sm:p-4">
+        <div
+          className={cn(
+            'animate-in relative w-full rounded-2xl border bg-card shadow-2xl ring-1 ring-black/5',
+            width
+          )}
+        >
+          <div className="flex items-center justify-between gap-3 border-b px-4 py-3 sm:px-6 sm:py-4">
+            <h2 className="truncate text-[15px] font-semibold tracking-tight sm:text-[17px]">{title}</h2>
+            <button
+              onClick={onClose}
+              className="-mr-1 shrink-0 rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              aria-label="Close"
+            >
+              <X size={18} />
+            </button>
+          </div>
+          <div className="p-4 sm:p-6">{children}</div>
         </div>
-        <div className="p-6">{children}</div>
       </div>
     </div>
   )

@@ -168,7 +168,7 @@ export function StockLocations(): React.JSX.Element {
               onChange={(e) => setQty(e.target.value)}
             />
           </Field>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Rate (₹ / m³)" hint="Optional — to value the opening stock">
               <Input type="number" step="0.01" value={form.opening_rate ?? ''} onChange={(e) => setRate(e.target.value)} placeholder="0.00" />
             </Field>
