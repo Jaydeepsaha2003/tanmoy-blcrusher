@@ -69996,7 +69996,6 @@ function Dashboard() {
         const recv = data.billReceivable;
         const pay = data.billsPayable;
         const net = recv - pay;
-        const ob2 = data.openingBalance;
         const recvIsAdvance = recv < -5e-3;
         const payIsAdvance = pay < -5e-3;
         return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4 lg:grid-cols-4", children: [
@@ -70036,12 +70035,12 @@ function Dashboard() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             Stat$1,
             {
-              icon: Scale,
-              label: "Opening Balance",
-              value: fmtMoney(Math.abs(ob2)),
-              tone: ob2 < 0 ? "destructive" : "success",
-              valueTone: ob2 < 0 ? "destructive" : "success",
-              hint: `Carried forward (${ob2 < 0 ? "Cr" : "Dr"}) — already in the figures`
+              icon: Banknote,
+              label: "Cash in Hand",
+              value: fmtMoney(data.cashInHand),
+              tone: data.cashInHand < 0 ? "destructive" : "default",
+              valueTone: data.cashInHand < 0 ? "destructive" : void 0,
+              hint: "Plant cashbook — opening + received − payments"
             }
           )
         ] });
@@ -76588,6 +76587,9 @@ function PlantCashbook({ plants, employees }) {
   function refresh() {
     qc2.invalidateQueries({ queryKey: ["plantCash"] });
     qc2.invalidateQueries({ queryKey: ["plantCashEntries"] });
+    qc2.invalidateQueries({ queryKey: ["wages"] });
+    qc2.invalidateQueries({ queryKey: ["allDues"] });
+    qc2.invalidateQueries({ queryKey: ["dashboard"] });
   }
   const saveOpening = useMutation({
     mutationFn: () => api.plantCash.setOpening(plant, Number(openingForm) || 0),
@@ -77575,10 +77577,12 @@ function Payroll() {
     (a2, w2) => {
       a2.gross += w2.amount;
       a2.paid += w2.paid_amount;
+      a2.adv += w2.advance || 0;
       return a2;
     },
-    { gross: 0, paid: 0 }
+    { gross: 0, paid: 0, adv: 0 }
   );
+  const outstanding = round2(totals.gross - totals.paid - totals.adv);
   const save = useMutation({
     mutationFn: (p2) => p2.id ? api.wages.update(p2) : api.wages.create(p2),
     onSuccess: () => {
@@ -77664,7 +77668,7 @@ function Payroll() {
       }
     ),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Page, { children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "p-4", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: "Net Wages" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "tnum mt-1 text-lg font-bold", children: fmtMoney(totals.gross) })
@@ -77674,8 +77678,12 @@ function Payroll() {
           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "tnum mt-1 text-lg font-bold text-success", children: fmtMoney(totals.paid) })
         ] }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "p-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: "Advances" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "tnum mt-1 text-lg font-bold text-warning", children: fmtMoney(totals.adv) })
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "p-4", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: "Outstanding" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "tnum mt-1 text-lg font-bold text-destructive", children: fmtMoney(totals.gross - totals.paid) })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "tnum mt-1 text-lg font-bold text-destructive", children: fmtMoney(outstanding) })
         ] }) })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap items-center gap-2", children: [
@@ -77692,6 +77700,7 @@ function Payroll() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Earned" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "OT" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Net" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Advance" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Payment" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
         ] }) }),
@@ -77712,7 +77721,11 @@ function Payroll() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: fmtMoney(w2.earned) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right text-muted-foreground", children: w2.ot_amount ? fmtMoney(w2.ot_amount) : "-" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right font-semibold", children: fmtMoney(w2.amount) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: payBadge$1[w2.payment_status], children: w2.payment_status }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right text-warning", children: w2.advance ? fmtMoney(w2.advance) : "-" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: (() => {
+            const s2 = derivePaymentStatus(w2.amount, round2(w2.paid_amount + (w2.advance || 0)));
+            return /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: payBadge$1[s2], children: s2 });
+          })() }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => setForm({ ...w2, ot_rate: w2.ot_rate || "", deduction: w2.deduction || "", paid_amount: w2.paid_amount || "", days_worked: w2.days_worked }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => remove(w2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
@@ -90380,7 +90393,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-C5zkRfA3.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-C22D4YX9.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;

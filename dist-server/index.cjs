@@ -8293,23 +8293,38 @@ async function getAllDues(payload = {}) {
     }
   }
   const d = getDb();
-  const emps = await d.prepare(
-    `SELECT e.id, e.name, COALESCE(SUM(w.amount),0) AS gross, COALESCE(SUM(w.paid_amount),0) AS paid
-       FROM employees e JOIN wage_entries w ON w.employee_id = e.id
+  const wrows = await d.prepare(
+    `SELECT w.employee_id, e.name, w.plant_id, w.period,
+              COALESCE(SUM(w.amount),0) AS gross, COALESCE(SUM(w.paid_amount),0) AS paid,
+              (SELECT COALESCE(SUM(pce.amount),0) FROM plant_cash_entries pce
+                 WHERE pce.type='Advance' AND pce.direction='out'
+                   AND pce.employee_id = w.employee_id AND pce.plant_id = w.plant_id
+                   AND SUBSTR(pce.date,1,7) = w.period) AS adv
+       FROM wage_entries w JOIN employees e ON e.id = w.employee_id
        ${payload.plant_id ? "WHERE w.plant_id = @plant_id" : ""}
-       GROUP BY e.id, e.name
-       HAVING COALESCE(SUM(w.amount),0) - COALESCE(SUM(w.paid_amount),0) > 0.005`
+       GROUP BY w.employee_id, e.name, w.plant_id, w.period`
   ).all(payload.plant_id ? { plant_id: payload.plant_id } : {});
-  for (const e of emps)
-    rows.push({
-      party_type: "employee",
-      party_id: e.id,
-      name: e.name,
-      total_debit: roundMoney2(e.paid),
-      total_credit: roundMoney2(e.gross),
-      balance: roundMoney2(e.gross - e.paid),
-      kind: "payable"
-    });
+  const byEmp = /* @__PURE__ */ new Map();
+  for (const r of wrows) {
+    const applied = Math.min(r.adv, Math.max(0, r.gross - r.paid));
+    const out = Math.max(0, r.gross - r.paid - r.adv);
+    const acc = byEmp.get(r.employee_id) ?? { name: r.name, gross: 0, settled: 0, out: 0 };
+    acc.gross += r.gross;
+    acc.settled += r.paid + applied;
+    acc.out += out;
+    byEmp.set(r.employee_id, acc);
+  }
+  for (const [id, a] of byEmp)
+    if (a.out > 5e-3)
+      rows.push({
+        party_type: "employee",
+        party_id: id,
+        name: a.name,
+        total_debit: roundMoney2(a.settled),
+        total_credit: roundMoney2(a.gross),
+        balance: roundMoney2(a.out),
+        kind: "payable"
+      });
   return rows;
 }
 
@@ -9227,7 +9242,11 @@ async function listWageEntries(filter = {}) {
   }
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
   return await d.prepare(
-    `SELECT w.*, e.name AS employee_name, e.designation, a.name AS asset_name
+    `SELECT w.*, e.name AS employee_name, e.designation, a.name AS asset_name,
+              (SELECT COALESCE(SUM(pce.amount),0) FROM plant_cash_entries pce
+                 WHERE pce.type='Advance' AND pce.direction='out'
+                   AND pce.employee_id = w.employee_id AND pce.plant_id = w.plant_id
+                   AND SUBSTR(pce.date,1,7) = w.period) AS advance
        FROM wage_entries w
        JOIN employees e ON e.id = w.employee_id
        LEFT JOIN assets a ON a.id = w.asset_id
@@ -9309,16 +9328,25 @@ async function payEmployee(p) {
   await d.transaction(async () => {
     const where = p.plant_id ? `employee_id = @employee_id AND plant_id = @plant_id` : `employee_id = @employee_id`;
     const rows = await d.prepare(
-      `SELECT id, amount, paid_amount FROM wage_entries
-         WHERE ${where} AND COALESCE(amount,0) - COALESCE(paid_amount,0) > 0.005
-         ORDER BY period, id`
+      `SELECT w.id, w.amount, w.paid_amount,
+                (SELECT COALESCE(SUM(pce.amount),0) FROM plant_cash_entries pce
+                   WHERE pce.type='Advance' AND pce.direction='out'
+                     AND pce.employee_id = w.employee_id AND pce.plant_id = w.plant_id
+                     AND SUBSTR(pce.date,1,7) = w.period) AS advance
+         FROM wage_entries w
+         WHERE ${where} AND COALESCE(w.amount,0) - COALESCE(w.paid_amount,0)
+               - (SELECT COALESCE(SUM(pce.amount),0) FROM plant_cash_entries pce
+                    WHERE pce.type='Advance' AND pce.direction='out'
+                      AND pce.employee_id = w.employee_id AND pce.plant_id = w.plant_id
+                      AND SUBSTR(pce.date,1,7) = w.period) > 0.005
+         ORDER BY w.period, w.id`
     ).all({ employee_id: p.employee_id, plant_id: p.plant_id ?? null });
     for (const w of rows) {
       if (remaining <= 5e-3) break;
-      const due = money7((w.amount || 0) - (w.paid_amount || 0));
+      const due = money7((w.amount || 0) - (w.paid_amount || 0) - (w.advance || 0));
       const pay = Math.min(due, remaining);
       const newPaid = money7((w.paid_amount || 0) + pay);
-      await d.prepare(`UPDATE wage_entries SET paid_amount = ?, payment_status = ? WHERE id = ?`).run(newPaid, derivePaymentStatus(w.amount || 0, newPaid), w.id);
+      await d.prepare(`UPDATE wage_entries SET paid_amount = ?, payment_status = ? WHERE id = ?`).run(newPaid, derivePaymentStatus(w.amount || 0, money7(newPaid + (w.advance || 0))), w.id);
       remaining = money7(remaining - pay);
     }
   });
@@ -9576,6 +9604,12 @@ async function getDashboard(payload = {}) {
   const sumBal = (arr) => arr.reduce((s, b) => s + b.balance, 0);
   const billReceivable = money8({ q: sumBal(custBal) });
   const billsPayable = money8({ q: sumBal(supBal) + sumBal(transBal) + sumBal(outBal) + sumBal(vehBal) + sumBal(jcbBal) });
+  const cashInHand = money8(
+    await d.prepare(
+      `SELECT (SELECT COALESCE(SUM(opening_balance),0) FROM plant_cash_opening${plWhere})
+              + (SELECT COALESCE(SUM(CASE WHEN direction='in' THEN amount ELSE -amount END),0) FROM plant_cash_entries${plWhere}) AS q`
+    ).get()
+  );
   const obAnd = pid ? ` AND ob.plant_id = ${pid}` : "";
   const openingBalance = money8(
     await d.prepare(
@@ -9618,6 +9652,7 @@ async function getDashboard(payload = {}) {
     rackTransportCost,
     rackProfit,
     openingBalance,
+    cashInHand,
     billReceivable,
     billsPayable,
     topCustomers,
