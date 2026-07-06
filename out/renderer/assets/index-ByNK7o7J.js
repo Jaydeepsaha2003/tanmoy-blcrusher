@@ -46806,30 +46806,35 @@ function Modal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open2, onClose]);
   if (!open2) return null;
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-3 pt-8 backdrop-blur-sm sm:p-4 sm:pt-16", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-    "div",
-    {
-      className: cn(
-        "animate-in relative w-full rounded-2xl border bg-card shadow-2xl ring-1 ring-black/5",
-        width
-      ),
-      children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between border-b px-6 py-4", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-[17px] font-semibold tracking-tight", children: title }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "button",
-            {
-              onClick: onClose,
-              className: "rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
-              "aria-label": "Close",
-              children: /* @__PURE__ */ jsxRuntimeExports.jsx(X$1, { size: 18 })
-            }
-          )
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-6", children })
-      ]
-    }
-  ) });
+  return (
+    // The whole overlay scrolls (min-h-full + items-center centres without clipping,
+    // and never traps the top of a tall modal). The body itself is NOT overflow-clipped
+    // so SearchSelect dropdowns can spill past the card. Responsive padding fits phones.
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-black/50 backdrop-blur-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-full items-center justify-center p-3 sm:p-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        className: cn(
+          "animate-in relative w-full rounded-2xl border bg-card shadow-2xl ring-1 ring-black/5",
+          width
+        ),
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between gap-3 border-b px-4 py-3 sm:px-6 sm:py-4", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "truncate text-[15px] font-semibold tracking-tight sm:text-[17px]", children: title }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                onClick: onClose,
+                className: "-mr-1 shrink-0 rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+                "aria-label": "Close",
+                children: /* @__PURE__ */ jsxRuntimeExports.jsx(X$1, { size: 18 })
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-4 sm:p-6", children })
+        ]
+      }
+    ) }) })
+  );
 }
 function EmptyState({ message }) {
   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-col items-center justify-center rounded-lg border border-dashed py-14 text-sm text-muted-foreground", children: message });
@@ -70515,7 +70520,7 @@ function StockLocations() {
               onChange: (e3) => setQty(e3.target.value)
             }
           ) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Rate (₹ / m³)", hint: "Optional — to value the opening stock", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.opening_rate ?? "", onChange: (e3) => setRate(e3.target.value), placeholder: "0.00" }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Amount (₹)", hint: "Rate × quantity — editable", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.opening_amount ?? "", onChange: (e3) => setAmount(e3.target.value), placeholder: "0.00" }) })
           ] }),
@@ -71809,7 +71814,7 @@ function FinishedGoods() {
         }
       ) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product Name", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.product_name, disabled: form.editing, onChange: (e3) => setForm({ ...form, product_name: e3.target.value }), placeholder: "e.g. 30/40" }) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Unit (UOM)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
           SearchSelect,
           {
@@ -71820,7 +71825,7 @@ function FinishedGoods() {
         ) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `Opening Quantity (${form.uom === "CM" ? "m³" : form.uom})`, hint: form.uom !== "CM" && openingCm > 0 ? `= ${fmtQty(openingCm)} m³` : "Stored as m³", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.opening_qty, onChange: (e3) => updateQty(e3.target.value) }) })
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: `Rate (₹ / ${form.uom === "CM" ? "m³" : form.uom})`, hint: "Optional — values the opening stock", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.rate, onChange: (e3) => updateRate(e3.target.value), placeholder: "0.00" }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Amount (₹)", hint: "Rate × quantity — editable", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.amount, onChange: (e3) => updateAmount(e3.target.value), placeholder: "0.00" }) })
       ] }),
@@ -75438,11 +75443,11 @@ function PartsStockPanel() {
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "UOM", required: true, hint: "Switch the unit used for this part.", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: stockMove.unit || "PCS", onChange: (v2) => setStockMove({ ...stockMove, unit: v2 }), options: UNITS.map((u2) => ({ value: u2, label: u2 })) }) })
         ] }),
-        stockMove.mode === "in" ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-3", children: [
+        stockMove.mode === "in" ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-3 sm:grid-cols-2", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Quantity", hint: "Quantity received into stock", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { autoFocus: true, type: "number", min: "0", step: "0.001", value: stockMove.quantity, onChange: (e3) => setStockMove({ ...stockMove, quantity: e3.target.value }) }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Rate per Unit (₹)", hint: Number(stockMove.quantity) > 0 && Number(stockMove.rate) > 0 ? `= ₹${(Number(stockMove.quantity) * Number(stockMove.rate)).toFixed(2)}` : "Purchase rate (optional)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", min: "0", step: "0.01", value: stockMove.rate ?? "", onChange: (e3) => setStockMove({ ...stockMove, rate: e3.target.value }), placeholder: "0.00" }) })
         ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-3", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-3 sm:grid-cols-2", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Quantity", hint: "Quantity issued for use", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { autoFocus: true, type: "number", min: "0", step: "0.001", value: stockMove.quantity, onChange: (e3) => setStockMove({ ...stockMove, quantity: e3.target.value }) }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Used For Machine / Vehicle", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: stockMove.asset_id ?? "", onChange: (v2) => setStockMove({ ...stockMove, asset_id: Number(v2) }), options: assets.map((a2) => ({ value: a2.id, label: a2.name })), placeholder: "Select machine…" }) })
           ] }),
@@ -90393,7 +90398,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-C22D4YX9.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-BBHN4ALm.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
