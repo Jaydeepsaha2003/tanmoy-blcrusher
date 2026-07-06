@@ -293,6 +293,28 @@ CREATE TABLE IF NOT EXISTS cashbook_entries (
   created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
+-- Plant-wise cashbook: one opening balance per plant + a receipts/payments register.
+CREATE TABLE IF NOT EXISTS plant_cash_opening (
+  plant_id        INTEGER PRIMARY KEY REFERENCES plants(id),
+  opening_balance REAL NOT NULL DEFAULT 0,
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+-- direction 'in' = received (+balance); 'out' = payment (\u2212balance). type e.g. 'Other',
+-- 'Advance' (employee_id set for an advance to a specific employee).
+CREATE TABLE IF NOT EXISTS plant_cash_entries (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  entry_no    TEXT NOT NULL DEFAULT '',
+  plant_id    INTEGER NOT NULL REFERENCES plants(id),
+  title       TEXT NOT NULL DEFAULT '',
+  type        TEXT NOT NULL DEFAULT 'Other',
+  employee_id INTEGER REFERENCES employees(id),
+  amount      REAL NOT NULL DEFAULT 0,
+  direction   TEXT NOT NULL DEFAULT 'out',
+  date        TEXT NOT NULL,
+  remarks     TEXT NOT NULL DEFAULT '',
+  created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS stock_locations (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   plant_id       INTEGER NOT NULL REFERENCES plants(id),
@@ -967,6 +989,7 @@ CREATE INDEX IF NOT EXISTS idx_transport_loc ON transport_charges(stock_location
 CREATE INDEX IF NOT EXISTS idx_transport_dest ON transport_charges(destination_id);
 CREATE INDEX IF NOT EXISTS idx_cbentry_holder ON cashbook_entries(holder_id);
 CREATE INDEX IF NOT EXISTS idx_cbhplants_holder ON cashbook_holder_plants(holder_id);
+CREATE INDEX IF NOT EXISTS idx_pcash_plant ON plant_cash_entries(plant_id);
 CREATE INDEX IF NOT EXISTS idx_budget_plant ON budgets(plant_id);
 CREATE INDEX IF NOT EXISTS idx_ptrans_purchase ON purchase_transporters(purchase_id);
 CREATE INDEX IF NOT EXISTS idx_ptrans_transporter ON purchase_transporters(transporter_id);
@@ -2158,6 +2181,29 @@ ALTER TABLE employees ADD COLUMN pan_no VARCHAR(64) NOT NULL DEFAULT '';
 ALTER TABLE employees ADD COLUMN dl_no VARCHAR(64) NOT NULL DEFAULT '';
 ALTER TABLE employees ADD COLUMN bank_account VARCHAR(64) NOT NULL DEFAULT '';
 ALTER TABLE employees ADD COLUMN bank_ifsc VARCHAR(32) NOT NULL DEFAULT ''`
+  },
+  {
+    // Plant-wise cashbook: per-plant opening balance + receipts/payments register.
+    id: "040_plant_cashbook",
+    sql: `CREATE TABLE IF NOT EXISTS plant_cash_opening (
+  plant_id        INT PRIMARY KEY,
+  opening_balance DOUBLE NOT NULL DEFAULT 0,
+  updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS plant_cash_entries (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  entry_no    VARCHAR(191) NOT NULL DEFAULT '',
+  plant_id    INT NOT NULL,
+  title       VARCHAR(255) NOT NULL DEFAULT '',
+  type        VARCHAR(64) NOT NULL DEFAULT 'Other',
+  employee_id INT,
+  amount      DOUBLE NOT NULL DEFAULT 0,
+  direction   VARCHAR(8) NOT NULL DEFAULT 'out',
+  date        VARCHAR(32) NOT NULL,
+  remarks     TEXT,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_pcash_plant ON plant_cash_entries(plant_id)`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -4823,6 +4869,63 @@ async function deleteCashEntry(payload) {
   if (!e) return { ok: true };
   if (e.kind === "expense" && e.expense_id) await deletePlantExpense({ id: Number(e.expense_id) });
   await d.prepare(`DELETE FROM cashbook_entries WHERE id = ?`).run(payload.id);
+  return { ok: true };
+}
+async function getPlantCashSummary(payload) {
+  const d = getDb();
+  const op = await d.prepare(`SELECT opening_balance FROM plant_cash_opening WHERE plant_id = ?`).get(payload.plant_id);
+  const agg = await d.prepare(
+    `SELECT COALESCE(SUM(CASE WHEN direction='in' THEN amount ELSE 0 END),0) AS tin,
+              COALESCE(SUM(CASE WHEN direction='out' THEN amount ELSE 0 END),0) AS tout
+       FROM plant_cash_entries WHERE plant_id = ?`
+  ).get(payload.plant_id);
+  const opening = money4(op?.opening_balance || 0);
+  return {
+    plant_id: payload.plant_id,
+    opening_balance: opening,
+    total_in: money4(agg.tin),
+    total_out: money4(agg.tout),
+    balance: money4(opening + agg.tin - agg.tout)
+  };
+}
+async function setPlantCashOpening(payload) {
+  const d = getDb();
+  if (!payload.plant_id) throw new Error("Select a plant.");
+  const amt = money4(payload.opening_balance);
+  await d.prepare(
+    dbKind() === "mysql" ? `INSERT INTO plant_cash_opening (plant_id, opening_balance) VALUES (?, ?)
+           ON DUPLICATE KEY UPDATE opening_balance = VALUES(opening_balance)` : `INSERT INTO plant_cash_opening (plant_id, opening_balance) VALUES (?, ?)
+           ON CONFLICT(plant_id) DO UPDATE SET opening_balance = excluded.opening_balance`
+  ).run(payload.plant_id, amt);
+  return { ok: true };
+}
+async function listPlantCashEntries(payload) {
+  const d = getDb();
+  const where = ["e.plant_id = @plant_id"];
+  if (payload.from) where.push("e.date >= @from");
+  if (payload.to) where.push("e.date <= @to");
+  return await d.prepare(
+    `SELECT e.*, em.name AS employee_name
+       FROM plant_cash_entries e LEFT JOIN employees em ON em.id = e.employee_id
+       WHERE ${where.join(" AND ")} ORDER BY e.date DESC, e.id DESC`
+  ).all(payload);
+}
+async function addPlantCashEntry(p) {
+  const d = getDb();
+  if (!p.plant_id) throw new Error("Select a plant.");
+  if (!(Number(p.amount) > 0)) throw new Error("Amount must be greater than 0.");
+  const type = (p.type || "Other").trim() || "Other";
+  const direction = p.direction === "in" ? "in" : "out";
+  const employee_id = type.toLowerCase() === "advance" && p.employee_id ? Number(p.employee_id) : null;
+  const no = await nextNumber("PCB", "plant_cash_entry");
+  const info = await d.prepare(
+    `INSERT INTO plant_cash_entries (entry_no, plant_id, title, type, employee_id, amount, direction, date, remarks)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(no, p.plant_id, (p.title || "").trim(), type, employee_id, money4(p.amount), direction, p.date, p.remarks ?? "");
+  return await d.prepare(`SELECT * FROM plant_cash_entries WHERE id = ?`).get(info.lastInsertRowid);
+}
+async function deletePlantCashEntry(payload) {
+  await getDb().prepare(`DELETE FROM plant_cash_entries WHERE id = ?`).run(payload.id);
   return { ok: true };
 }
 
@@ -9580,6 +9683,11 @@ var handlers = {
   "cashbook.addTransfer": addCashTransfer,
   "cashbook.addExpense": addCashExpense,
   "cashbook.deleteEntry": deleteCashEntry,
+  "plantCash.summary": getPlantCashSummary,
+  "plantCash.setOpening": setPlantCashOpening,
+  "plantCash.entries": listPlantCashEntries,
+  "plantCash.addEntry": addPlantCashEntry,
+  "plantCash.deleteEntry": deletePlantCashEntry,
   "purchases.list": listPurchases,
   "purchases.detail": getPurchaseDetail,
   "purchases.create": createPurchase,
