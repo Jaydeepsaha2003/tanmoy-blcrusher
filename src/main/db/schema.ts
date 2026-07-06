@@ -103,6 +103,37 @@ CREATE TABLE IF NOT EXISTS destinations (
   created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
+-- Cashbook: site cash custodians (a manager or an employee) who hold petty cash
+-- and record day-to-day expenses. Assignable to multiple plants.
+CREATE TABLE IF NOT EXISTS cashbook_holders (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  name            TEXT NOT NULL,
+  employee_id     INTEGER REFERENCES employees(id),
+  opening_balance REAL NOT NULL DEFAULT 0,
+  remarks         TEXT NOT NULL DEFAULT '',
+  created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS cashbook_holder_plants (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  holder_id INTEGER NOT NULL REFERENCES cashbook_holders(id),
+  plant_id  INTEGER NOT NULL REFERENCES plants(id)
+);
+-- kind 'transfer' = cash given to the custodian (+balance); 'expense' = day-to-day
+-- spend (−balance), mirrored into plant_expenses via expense_id.
+CREATE TABLE IF NOT EXISTS cashbook_entries (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  entry_no    TEXT NOT NULL DEFAULT '',
+  holder_id   INTEGER NOT NULL REFERENCES cashbook_holders(id),
+  kind        TEXT NOT NULL DEFAULT 'expense',
+  plant_id    INTEGER REFERENCES plants(id),
+  category    TEXT NOT NULL DEFAULT '',
+  amount      REAL NOT NULL DEFAULT 0,
+  expense_id  INTEGER,
+  date        TEXT NOT NULL,
+  remarks     TEXT NOT NULL DEFAULT '',
+  created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS stock_locations (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   plant_id       INTEGER NOT NULL REFERENCES plants(id),
@@ -644,6 +675,15 @@ CREATE TABLE IF NOT EXISTS employees (
   contact        TEXT NOT NULL DEFAULT '',
   status         TEXT NOT NULL DEFAULT 'active',
   remarks        TEXT NOT NULL DEFAULT '',
+  photo          TEXT,
+  dob            TEXT,
+  joining_date   TEXT,
+  address        TEXT NOT NULL DEFAULT '',
+  aadhaar_no     TEXT NOT NULL DEFAULT '',
+  pan_no         TEXT NOT NULL DEFAULT '',
+  dl_no          TEXT NOT NULL DEFAULT '',
+  bank_account   TEXT NOT NULL DEFAULT '',
+  bank_ifsc      TEXT NOT NULL DEFAULT '',
   created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
@@ -766,6 +806,8 @@ CREATE INDEX IF NOT EXISTS idx_opening_party ON opening_balances(party_type, par
 CREATE INDEX IF NOT EXISTS idx_ratechart_loc ON rate_chart(stock_location_id);
 CREATE INDEX IF NOT EXISTS idx_transport_loc ON transport_charges(stock_location_id);
 CREATE INDEX IF NOT EXISTS idx_transport_dest ON transport_charges(destination_id);
+CREATE INDEX IF NOT EXISTS idx_cbentry_holder ON cashbook_entries(holder_id);
+CREATE INDEX IF NOT EXISTS idx_cbhplants_holder ON cashbook_holder_plants(holder_id);
 CREATE INDEX IF NOT EXISTS idx_budget_plant ON budgets(plant_id);
 CREATE INDEX IF NOT EXISTS idx_ptrans_purchase ON purchase_transporters(purchase_id);
 CREATE INDEX IF NOT EXISTS idx_ptrans_transporter ON purchase_transporters(transporter_id);

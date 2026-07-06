@@ -1772,5 +1772,32 @@ export async function getAllDues(payload: { plant_id?: number } = {}): Promise<D
       })
     }
   }
+  // Payroll: employees with outstanding wages (generated roll − paid) are payable,
+  // settled from Make Payment via wages.payEmployee.
+  const d = getDb()
+  const emps = (await d
+    .prepare(
+      `SELECT e.id, e.name, COALESCE(SUM(w.amount),0) AS gross, COALESCE(SUM(w.paid_amount),0) AS paid
+       FROM employees e JOIN wage_entries w ON w.employee_id = e.id
+       ${payload.plant_id ? 'WHERE w.plant_id = @plant_id' : ''}
+       GROUP BY e.id, e.name
+       HAVING COALESCE(SUM(w.amount),0) - COALESCE(SUM(w.paid_amount),0) > 0.005`
+    )
+    .all(payload.plant_id ? { plant_id: payload.plant_id } : {})) as {
+    id: number
+    name: string
+    gross: number
+    paid: number
+  }[]
+  for (const e of emps)
+    rows.push({
+      party_type: 'employee',
+      party_id: e.id,
+      name: e.name,
+      total_debit: roundMoney(e.paid),
+      total_credit: roundMoney(e.gross),
+      balance: roundMoney(e.gross - e.paid),
+      kind: 'payable'
+    })
   return rows
 }

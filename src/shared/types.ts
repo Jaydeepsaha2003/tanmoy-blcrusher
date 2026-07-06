@@ -27,6 +27,7 @@ export type LedgerType =
   | 'machine'
   | 'rack_vehicle'
   | 'rack_jcb'
+  | 'employee'
 export type AssetType = 'machine' | 'vehicle'
 export type ExpenseCategory =
   | 'electricity'
@@ -211,6 +212,40 @@ export interface TransportCharge {
 export interface Destination {
   id: number
   name: string
+  remarks: string
+  created_at?: string
+}
+
+/** A cashbook custodian (manager/employee) who holds site petty cash. */
+export interface CashHolder {
+  id: number
+  name: string
+  employee_id?: number | null
+  opening_balance: number
+  remarks: string
+  /** Plants this custodian handles cash for (empty = all plants). */
+  plant_ids?: number[]
+  plant_names?: string[]
+  created_at?: string
+  // computed
+  total_in?: number
+  total_expense?: number
+  balance?: number
+}
+
+/** A cashbook movement: 'transfer' funds the custodian (+); 'expense' is a spend (−). */
+export interface CashEntry {
+  id: number
+  entry_no: string
+  holder_id: number
+  kind: 'transfer' | 'expense'
+  plant_id: number | null
+  plant_name?: string | null
+  category: string
+  amount: number
+  /** For expenses: the mirrored plant_expenses row. */
+  expense_id?: number | null
+  date: string
   remarks: string
   created_at?: string
 }
@@ -1208,6 +1243,16 @@ export interface Employee {
   contact: string
   status: Status
   remarks: string
+  /** Profile: photo (data URL), key dates, address and document / bank numbers. */
+  photo?: string | null
+  dob?: string | null
+  joining_date?: string | null
+  address?: string
+  aadhaar_no?: string
+  pan_no?: string
+  dl_no?: string
+  bank_account?: string
+  bank_ifsc?: string
   created_at: string
 }
 

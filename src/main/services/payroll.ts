@@ -41,6 +41,34 @@ export async function listEmployees(payload: { plant_id?: number } = {}): Promis
     .all(payload)) as Employee[]
 }
 
+export interface EmployeeProfile {
+  photo?: string | null
+  dob?: string | null
+  joining_date?: string | null
+  address?: string
+  aadhaar_no?: string
+  pan_no?: string
+  dl_no?: string
+  bank_account?: string
+  bank_ifsc?: string
+}
+
+/** Profile field values, defaulted, for INSERT/UPDATE named params. */
+function profileFields(p: EmployeeProfile): Record<string, unknown> {
+  const s = (v?: string): string => (v ?? '').trim()
+  return {
+    photo: p.photo || null,
+    dob: p.dob || null,
+    joining_date: p.joining_date || null,
+    address: p.address ?? '',
+    aadhaar_no: s(p.aadhaar_no),
+    pan_no: s(p.pan_no).toUpperCase(),
+    dl_no: s(p.dl_no).toUpperCase(),
+    bank_account: s(p.bank_account),
+    bank_ifsc: s(p.bank_ifsc).toUpperCase()
+  }
+}
+
 export async function createEmployee(p: {
   name: string
   designation: string
@@ -52,27 +80,30 @@ export async function createEmployee(p: {
   contact: string
   status: string
   remarks: string
-}): Promise<Employee> {
+} & EmployeeProfile): Promise<Employee> {
   const d = getDb()
   if (!p.name?.trim()) throw new Error('Name is required.')
   await ensureUniqueName('employees', p.name, { label: 'An employee' })
   const info = await d
     .prepare(
-      `INSERT INTO employees (name, designation, wage_type, monthly_salary, daily_wage, ot_rate, plant_id, contact, status, remarks)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO employees (name, designation, wage_type, monthly_salary, daily_wage, ot_rate, plant_id, contact, status, remarks,
+         photo, dob, joining_date, address, aadhaar_no, pan_no, dl_no, bank_account, bank_ifsc)
+       VALUES (@name,@designation,@wage_type,@monthly_salary,@daily_wage,@ot_rate,@plant_id,@contact,@status,@remarks,
+         @photo,@dob,@joining_date,@address,@aadhaar_no,@pan_no,@dl_no,@bank_account,@bank_ifsc)`
     )
-    .run(
-      properCase(p.name),
-      properCase(p.designation),
-      p.wage_type || 'monthly',
-      Number(p.monthly_salary) || 0,
-      Number(p.daily_wage) || 0,
-      Number(p.ot_rate) || 0,
-      p.plant_id ?? null,
-      p.contact ?? '',
-      p.status || 'active',
-      p.remarks ?? ''
-    )
+    .run({
+      name: properCase(p.name),
+      designation: properCase(p.designation),
+      wage_type: p.wage_type || 'monthly',
+      monthly_salary: Number(p.monthly_salary) || 0,
+      daily_wage: Number(p.daily_wage) || 0,
+      ot_rate: Number(p.ot_rate) || 0,
+      plant_id: p.plant_id ?? null,
+      contact: p.contact ?? '',
+      status: p.status || 'active',
+      remarks: p.remarks ?? '',
+      ...profileFields(p)
+    })
   return (await d.prepare(`SELECT * FROM employees WHERE id = ?`).get(info.lastInsertRowid)) as Employee
 }
 
@@ -88,26 +119,29 @@ export async function updateEmployee(p: {
   contact: string
   status: string
   remarks: string
-}): Promise<Employee> {
+} & EmployeeProfile): Promise<Employee> {
   const d = getDb()
   if (!p.name?.trim()) throw new Error('Name is required.')
   await ensureUniqueName('employees', p.name, { id: p.id, label: 'An employee' })
   await d.prepare(
-    `UPDATE employees SET name=?, designation=?, wage_type=?, monthly_salary=?, daily_wage=?, ot_rate=?,
-       plant_id=?, contact=?, status=?, remarks=? WHERE id=?`
-  ).run(
-    properCase(p.name),
-    properCase(p.designation),
-    p.wage_type || 'monthly',
-    Number(p.monthly_salary) || 0,
-    Number(p.daily_wage) || 0,
-    Number(p.ot_rate) || 0,
-    p.plant_id ?? null,
-    p.contact ?? '',
-    p.status || 'active',
-    p.remarks ?? '',
-    p.id
-  )
+    `UPDATE employees SET name=@name, designation=@designation, wage_type=@wage_type, monthly_salary=@monthly_salary,
+       daily_wage=@daily_wage, ot_rate=@ot_rate, plant_id=@plant_id, contact=@contact, status=@status, remarks=@remarks,
+       photo=@photo, dob=@dob, joining_date=@joining_date, address=@address, aadhaar_no=@aadhaar_no,
+       pan_no=@pan_no, dl_no=@dl_no, bank_account=@bank_account, bank_ifsc=@bank_ifsc WHERE id=@id`
+  ).run({
+    id: p.id,
+    name: properCase(p.name),
+    designation: properCase(p.designation),
+    wage_type: p.wage_type || 'monthly',
+    monthly_salary: Number(p.monthly_salary) || 0,
+    daily_wage: Number(p.daily_wage) || 0,
+    ot_rate: Number(p.ot_rate) || 0,
+    plant_id: p.plant_id ?? null,
+    contact: p.contact ?? '',
+    status: p.status || 'active',
+    remarks: p.remarks ?? '',
+    ...profileFields(p)
+  })
   return (await d.prepare(`SELECT * FROM employees WHERE id = ?`).get(p.id)) as Employee
 }
 
@@ -264,5 +298,50 @@ export async function updateWageEntry(p: WageInput): Promise<WageEntry> {
 export async function deleteWageEntry(payload: { id: number }): Promise<{ ok: boolean }> {
   const d = getDb()
   await d.prepare(`DELETE FROM wage_entries WHERE id = ?`).run(payload.id)
+  return { ok: true }
+}
+
+/**
+ * Pay an employee's outstanding wages from Make Payment: allocates the amount
+ * across their unpaid/partial wage entries oldest-first, updating each entry's
+ * paid amount + status. Any excess beyond what's due is ignored.
+ */
+export async function payEmployee(p: {
+  employee_id: number
+  amount: number
+  plant_id?: number | null
+  date?: string
+  remarks?: string
+}): Promise<{ ok: boolean }> {
+  const d = getDb()
+  if (!p.employee_id) throw new Error('Select an employee.')
+  let remaining = money(Number(p.amount) || 0)
+  if (!(remaining > 0)) throw new Error('Amount must be greater than 0.')
+  await d.transaction(async () => {
+    const where = p.plant_id
+      ? `employee_id = @employee_id AND plant_id = @plant_id`
+      : `employee_id = @employee_id`
+    const rows = (await d
+      .prepare(
+        `SELECT id, amount, paid_amount FROM wage_entries
+         WHERE ${where} AND COALESCE(amount,0) - COALESCE(paid_amount,0) > 0.005
+         ORDER BY period, id`
+      )
+      .all({ employee_id: p.employee_id, plant_id: p.plant_id ?? null })) as {
+      id: number
+      amount: number
+      paid_amount: number
+    }[]
+    for (const w of rows) {
+      if (remaining <= 0.005) break
+      const due = money((w.amount || 0) - (w.paid_amount || 0))
+      const pay = Math.min(due, remaining)
+      const newPaid = money((w.paid_amount || 0) + pay)
+      await d
+        .prepare(`UPDATE wage_entries SET paid_amount = ?, payment_status = ? WHERE id = ?`)
+        .run(newPaid, derivePaymentStatus(w.amount || 0, newPaid), w.id)
+      remaining = money(remaining - pay)
+    }
+  })
   return { ok: true }
 }

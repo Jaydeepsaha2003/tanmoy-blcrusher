@@ -1107,6 +1107,52 @@ ALTER TABLE stock_locations ADD COLUMN opening_amount DOUBLE NOT NULL DEFAULT 0`
 );
 ALTER TABLE transport_charges ADD COLUMN destination_id INT;
 CREATE INDEX idx_transport_dest ON transport_charges(destination_id)`
+  },
+  {
+    // Cashbook: petty-cash custodians (managers/employees) + their funding transfers
+    // and day-to-day expenses (mirrored into plant_expenses).
+    id: '038_cashbook',
+    sql: `CREATE TABLE IF NOT EXISTS cashbook_holders (
+  id              INT AUTO_INCREMENT PRIMARY KEY,
+  name            VARCHAR(255) NOT NULL,
+  employee_id     INT,
+  opening_balance DOUBLE NOT NULL DEFAULT 0,
+  remarks         TEXT,
+  created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS cashbook_holder_plants (
+  id        INT AUTO_INCREMENT PRIMARY KEY,
+  holder_id INT NOT NULL,
+  plant_id  INT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS cashbook_entries (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  entry_no    VARCHAR(191) NOT NULL DEFAULT '',
+  holder_id   INT NOT NULL,
+  kind        VARCHAR(16) NOT NULL DEFAULT 'expense',
+  plant_id    INT,
+  category    VARCHAR(191) NOT NULL DEFAULT '',
+  amount      DOUBLE NOT NULL DEFAULT 0,
+  expense_id  INT,
+  date        VARCHAR(32) NOT NULL,
+  remarks     TEXT,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_cbentry_holder ON cashbook_entries(holder_id);
+CREATE INDEX idx_cbhplants_holder ON cashbook_holder_plants(holder_id)`
+  },
+  {
+    // Richer employee profile: photo + IDs + HR fields.
+    id: '039_employee_profile',
+    sql: `ALTER TABLE employees ADD COLUMN photo MEDIUMTEXT;
+ALTER TABLE employees ADD COLUMN dob VARCHAR(32);
+ALTER TABLE employees ADD COLUMN joining_date VARCHAR(32);
+ALTER TABLE employees ADD COLUMN address TEXT;
+ALTER TABLE employees ADD COLUMN aadhaar_no VARCHAR(64) NOT NULL DEFAULT '';
+ALTER TABLE employees ADD COLUMN pan_no VARCHAR(64) NOT NULL DEFAULT '';
+ALTER TABLE employees ADD COLUMN dl_no VARCHAR(64) NOT NULL DEFAULT '';
+ALTER TABLE employees ADD COLUMN bank_account VARCHAR(64) NOT NULL DEFAULT '';
+ALTER TABLE employees ADD COLUMN bank_ifsc VARCHAR(32) NOT NULL DEFAULT ''`
   }
 ]
 
@@ -1236,6 +1282,16 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   await addColumn('diesel_issues', 'vehicle_no', `TEXT NOT NULL DEFAULT ''`)
   // Origin→destination transport rates (destinations table comes from SCHEMA on the SQLite path).
   await addColumn('transport_charges', 'destination_id', 'INTEGER')
+  // Richer employee profile (cashbook_* tables come from SCHEMA on the SQLite path).
+  await addColumn('employees', 'photo', 'TEXT')
+  await addColumn('employees', 'dob', 'TEXT')
+  await addColumn('employees', 'joining_date', 'TEXT')
+  await addColumn('employees', 'address', `TEXT NOT NULL DEFAULT ''`)
+  await addColumn('employees', 'aadhaar_no', `TEXT NOT NULL DEFAULT ''`)
+  await addColumn('employees', 'pan_no', `TEXT NOT NULL DEFAULT ''`)
+  await addColumn('employees', 'dl_no', `TEXT NOT NULL DEFAULT ''`)
+  await addColumn('employees', 'bank_account', `TEXT NOT NULL DEFAULT ''`)
+  await addColumn('employees', 'bank_ifsc', `TEXT NOT NULL DEFAULT ''`)
 }
 
 /**

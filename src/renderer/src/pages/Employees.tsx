@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { usePersistentState } from '@/lib/persistentState'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, FileSpreadsheet } from 'lucide-react'
+import { Plus, Pencil, Trash2, FileSpreadsheet, Upload, UserRound } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { Employee } from '@shared/types'
 import { PageHeader, Page } from '@/components/layout'
@@ -28,6 +28,37 @@ import { fmtMoney, downloadExcel } from '@/lib/utils'
 
 const DESIGNATIONS = ['Operator', 'Helper', 'Driver', 'Fitter', 'Electrician', 'Supervisor', 'Manager', 'Labour']
 
+/** Read an image file and downscale it to a small JPEG data URL (keeps the DB light). */
+async function readPhoto(file: File): Promise<string> {
+  const dataUrl = await new Promise<string>((res, rej) => {
+    const r = new FileReader()
+    r.onload = () => res(String(r.result))
+    r.onerror = rej
+    r.readAsDataURL(file)
+  })
+  try {
+    const img = await new Promise<HTMLImageElement>((res, rej) => {
+      const i = new Image()
+      i.onload = () => res(i)
+      i.onerror = rej
+      i.src = dataUrl
+    })
+    const max = 400
+    const scale = Math.min(1, max / Math.max(img.width, img.height))
+    const w = Math.round(img.width * scale)
+    const h = Math.round(img.height * scale)
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return dataUrl
+    ctx.drawImage(img, 0, 0, w, h)
+    return canvas.toDataURL('image/jpeg', 0.82)
+  } catch {
+    return dataUrl
+  }
+}
+
 export function Employees(): React.JSX.Element {
   const qc = useQueryClient()
   const toast = useToast()
@@ -36,7 +67,20 @@ export function Employees(): React.JSX.Element {
   const { data: plants = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
   const [open, setOpen] = React.useState(false)
   const [form, setForm] = React.useState<any>(null)
+  const photoRef = React.useRef<HTMLInputElement>(null)
   const [q, setQ] = usePersistentState('q', '')
+
+  async function onPhoto(ev: React.ChangeEvent<HTMLInputElement>): Promise<void> {
+    const file = ev.target.files?.[0]
+    ev.target.value = ''
+    if (!file) return
+    try {
+      const url = await readPhoto(file)
+      setForm((prev: any) => ({ ...prev, photo: url }))
+    } catch {
+      toast.error('Could not read that image.')
+    }
+  }
   const [desig, setDesig] = React.useState('')
   const [status, setStatus] = React.useState('')
 
@@ -72,7 +116,7 @@ export function Employees(): React.JSX.Element {
   }
 
   function openNew(): void {
-    setForm({ name: '', designation: '', wage_type: 'monthly', monthly_salary: '', daily_wage: '', ot_rate: '', plant_id: plantId ?? null, contact: '', status: 'active', remarks: '' })
+    setForm({ name: '', designation: '', wage_type: 'monthly', monthly_salary: '', daily_wage: '', ot_rate: '', plant_id: plantId ?? null, contact: '', status: 'active', remarks: '', photo: null, dob: '', joining_date: '', address: '', aadhaar_no: '', pan_no: '', dl_no: '', bank_account: '', bank_ifsc: '' })
     setOpen(true)
   }
 
@@ -153,7 +197,7 @@ export function Employees(): React.JSX.Element {
                   <TD className="text-muted-foreground">{e.plant_name || 'Common'}</TD>
                   <TD className="capitalize text-muted-foreground">{e.status}</TD>
                   <TD className="text-right">
-                    <Button variant="ghost" size="icon" onClick={() => { setForm({ ...e, monthly_salary: e.monthly_salary || '', daily_wage: e.daily_wage || '', ot_rate: e.ot_rate || '' }); setOpen(true) }}>
+                    <Button variant="ghost" size="icon" onClick={() => { setForm({ ...e, monthly_salary: e.monthly_salary || '', daily_wage: e.daily_wage || '', ot_rate: e.ot_rate || '', dob: e.dob || '', joining_date: e.joining_date || '', address: e.address || '', aadhaar_no: e.aadhaar_no || '', pan_no: e.pan_no || '', dl_no: e.dl_no || '', bank_account: e.bank_account || '', bank_ifsc: e.bank_ifsc || '' }); setOpen(true) }}>
                       <Pencil size={15} />
                     </Button>
                     <Button variant="ghost" size="icon" onClick={() => remove(e)}>
@@ -172,6 +216,21 @@ export function Employees(): React.JSX.Element {
       {form && (
         <Modal open={open} onClose={() => setOpen(false)} title={form.id ? 'Edit Employee' : 'New Employee'} width="max-w-2xl">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="col-span-full flex items-center gap-4">
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border bg-muted">
+                {form.photo ? <img src={form.photo} alt="" className="h-full w-full object-cover" /> : <UserRound size={28} className="text-muted-foreground" />}
+              </div>
+              <div className="flex flex-col gap-2">
+                <input ref={photoRef} type="file" accept="image/*" className="hidden" onChange={onPhoto} />
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => photoRef.current?.click()}>
+                    <Upload size={14} /> {form.photo ? 'Change photo' : 'Upload photo'}
+                  </Button>
+                  {form.photo && <Button type="button" variant="ghost" size="sm" onClick={() => setForm({ ...form, photo: null })}>Remove</Button>}
+                </div>
+                <span className="text-[11px] text-muted-foreground">JPG / PNG — auto-resized to keep it small</span>
+              </div>
+            </div>
             <Field label="Name" required>
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </Field>
@@ -221,7 +280,34 @@ export function Employees(): React.JSX.Element {
                 ]}
               />
             </Field>
-            <div className="col-span-2">
+            <Field label="Date of Birth">
+              <Input type="date" value={form.dob || ''} onChange={(e) => setForm({ ...form, dob: e.target.value })} />
+            </Field>
+            <Field label="Joining Date">
+              <Input type="date" value={form.joining_date || ''} onChange={(e) => setForm({ ...form, joining_date: e.target.value })} />
+            </Field>
+            <div className="col-span-full">
+              <Field label="Address">
+                <Input value={form.address || ''} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+              </Field>
+            </div>
+            <Field label="Aadhaar No.">
+              <Input value={form.aadhaar_no || ''} onChange={(e) => setForm({ ...form, aadhaar_no: e.target.value })} />
+            </Field>
+            <Field label="PAN No.">
+              <Input value={form.pan_no || ''} onChange={(e) => setForm({ ...form, pan_no: e.target.value })} />
+            </Field>
+            <Field label="Driving Licence No.">
+              <Input value={form.dl_no || ''} onChange={(e) => setForm({ ...form, dl_no: e.target.value })} />
+            </Field>
+            <div className="hidden sm:block" />
+            <Field label="Bank A/C No.">
+              <Input value={form.bank_account || ''} onChange={(e) => setForm({ ...form, bank_account: e.target.value })} />
+            </Field>
+            <Field label="Bank IFSC">
+              <Input value={form.bank_ifsc || ''} onChange={(e) => setForm({ ...form, bank_ifsc: e.target.value })} />
+            </Field>
+            <div className="col-span-full">
               <Field label="Remarks">
                 <Input value={form.remarks} onChange={(e) => setForm({ ...form, remarks: e.target.value })} />
               </Field>

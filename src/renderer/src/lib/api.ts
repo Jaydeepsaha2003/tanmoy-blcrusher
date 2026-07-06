@@ -8,6 +8,8 @@ import type {
   RateChartRow,
   TransportCharge,
   Destination,
+  CashHolder,
+  CashEntry,
   Purchase,
   ProductionSetting,
   Production,
@@ -149,6 +151,19 @@ export const api = {
     create: (p: Partial<Destination>) => call<Destination>('destinations.create', p),
     update: (p: Partial<Destination>) => call<Destination>('destinations.update', p),
     delete: (id: number) => call<{ ok: boolean; error?: string }>('destinations.delete', { id })
+  },
+  cashbook: {
+    holders: (plant_id?: number) => call<CashHolder[]>('cashbook.holders', { plant_id }),
+    createHolder: (p: Partial<CashHolder>) => call<CashHolder>('cashbook.createHolder', p),
+    updateHolder: (p: Partial<CashHolder>) => call<CashHolder>('cashbook.updateHolder', p),
+    deleteHolder: (id: number) => call<{ ok: boolean; error?: string }>('cashbook.deleteHolder', { id }),
+    entries: (holder_id: number, from?: string, to?: string) =>
+      call<CashEntry[]>('cashbook.entries', { holder_id, from, to }),
+    addTransfer: (p: { holder_id: number; amount: number; date: string; remarks?: string }) =>
+      call<CashEntry>('cashbook.addTransfer', p),
+    addExpense: (p: { holder_id: number; plant_id: number; category: string; amount: number; date: string; remarks?: string }) =>
+      call<CashEntry>('cashbook.addExpense', p),
+    deleteEntry: (id: number) => call<{ ok: boolean }>('cashbook.deleteEntry', { id })
   },
   products: {
     list: (plant_id?: number) => call<Product[]>('products.list', { plant_id }),
@@ -441,7 +456,9 @@ export const api = {
     workingDays: (period: string) => call<{ working_days: number }>('wages.workingDays', { period }),
     create: (p: unknown) => call<WageEntry>('wages.create', p),
     update: (p: unknown) => call<WageEntry>('wages.update', p),
-    delete: (id: number) => call<{ ok: boolean }>('wages.delete', { id })
+    delete: (id: number) => call<{ ok: boolean }>('wages.delete', { id }),
+    payEmployee: (p: { employee_id: number; amount: number; plant_id?: number | null; date?: string; remarks?: string }) =>
+      call<{ ok: boolean }>('wages.payEmployee', p)
   },
   system: {
     requestDelete: (password: string) =>

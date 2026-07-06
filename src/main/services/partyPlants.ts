@@ -8,7 +8,8 @@ export const PARTY_PLANT_TABLE: Record<string, { junction: string; col: string }
   company: { junction: 'company_plants', col: 'company_id' },
   rack_vehicle: { junction: 'rack_vehicle_plants', col: 'rack_vehicle_id' },
   rack_jcb: { junction: 'rack_jcb_plants', col: 'rack_jcb_id' },
-  product: { junction: 'product_plants', col: 'product_id' }
+  product: { junction: 'product_plants', col: 'product_id' },
+  cash_holder: { junction: 'cashbook_holder_plants', col: 'holder_id' }
 }
 
 /** Resolve the requested plant set: explicit plant_ids, else the legacy single plant_id. */

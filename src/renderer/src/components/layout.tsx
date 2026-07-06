@@ -32,6 +32,7 @@ import {
   KeyRound,
   Wrench,
   Receipt,
+  Coins,
   Fuel,
   HardHat,
   Users2,
@@ -109,6 +110,7 @@ export const NAV: NavGroup[] = [
     heading: 'Accounts',
     items: [
       { to: '/plant-expenses', label: 'Plant Expenses', icon: Receipt, module: 'plantExpenses' },
+      { to: '/cashbook', label: 'Cashbook', icon: Coins, module: 'plantExpenses' },
       { to: '/budget', label: 'Budget', icon: PiggyBank, module: 'plantExpenses' },
       { to: '/payroll', label: 'Payroll', icon: HardHat, module: 'payroll' },
       { to: '/ledgers', label: 'Ledgers', icon: BookOpen, module: 'ledgers' },

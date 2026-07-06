@@ -45,7 +45,8 @@ const partyLabel: Record<LedgerType, string> = {
   business: 'Business',
   machine: 'Machine',
   rack_vehicle: 'Vehicle',
-  rack_jcb: 'JCB'
+  rack_jcb: 'JCB',
+  employee: 'Employee'
 }
 const balanceLabel: Record<LedgerType, string> = {
   customer: 'Receivable',
@@ -58,7 +59,8 @@ const balanceLabel: Record<LedgerType, string> = {
   business: 'Net (Profit / Loss)',
   machine: 'Net (Profit / Loss)',
   rack_vehicle: 'Payable',
-  rack_jcb: 'Payable'
+  rack_jcb: 'Payable',
+  employee: 'Payable'
 }
 
 /** Red/green semantics differ per ledger: dues are red, rack/plant/business profit / net receivable green-ish. */

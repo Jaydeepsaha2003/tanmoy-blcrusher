@@ -33,7 +33,8 @@ const typeLabel: Partial<Record<LedgerType, string>> = {
   transporter: 'Transporter',
   outsource: 'Outsource',
   rack_vehicle: 'Vehicle',
-  rack_jcb: 'JCB'
+  rack_jcb: 'JCB',
+  employee: 'Employee'
 }
 const labelOf = (t: LedgerType): string => typeLabel[t] ?? t
 const typeBadge: Partial<Record<LedgerType, 'default' | 'warning' | 'muted'>> = {
@@ -42,7 +43,8 @@ const typeBadge: Partial<Record<LedgerType, 'default' | 'warning' | 'muted'>> = 
   transporter: 'muted',
   outsource: 'muted',
   rack_vehicle: 'muted',
-  rack_jcb: 'muted'
+  rack_jcb: 'muted',
+  employee: 'warning'
 }
 const PAY_TYPES: { value: LedgerType; label: string }[] = [
   { value: 'supplier', label: 'Supplier' },
@@ -50,7 +52,8 @@ const PAY_TYPES: { value: LedgerType; label: string }[] = [
   { value: 'transporter', label: 'Transporter' },
   { value: 'outsource', label: 'Outsource' },
   { value: 'rack_vehicle', label: 'Vehicle' },
-  { value: 'rack_jcb', label: 'JCB' }
+  { value: 'rack_jcb', label: 'JCB' },
+  { value: 'employee', label: 'Employee' }
 ]
 
 const MODES = [
@@ -115,13 +118,19 @@ export function Payments(): React.JSX.Element {
   const pendingCount = data.filter((r) => Math.abs(r.balance) >= 0.01).length
 
   const savePayment = useMutation({
-    mutationFn: (p: any) => api.payments.add(p),
+    // Employees settle via payroll (allocated across unpaid wage entries); everyone
+    // else via the party payments ledger.
+    mutationFn: (p: any): Promise<unknown> =>
+      p.party_type === 'employee'
+        ? api.wages.payEmployee({ employee_id: p.party_id, amount: Number(p.amount), plant_id: plantId ?? null, date: p.date, remarks: p.remarks })
+        : api.payments.add(p),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['allDues'] })
       qc.invalidateQueries({ queryKey: ['ledger'] })
       qc.invalidateQueries({ queryKey: ['ledger-balances'] })
       qc.invalidateQueries({ queryKey: ['dashboard'] })
       qc.invalidateQueries({ queryKey: ['transporters'] })
+      qc.invalidateQueries({ queryKey: ['wages'] })
       setPayForm(null)
       toast.success('Payment recorded.')
     },
@@ -276,7 +285,12 @@ export function Payments(): React.JSX.Element {
                             <ArrowUpRight size={14} /> Pay
                           </Button>
                         )}
-                        <Button variant="ghost" size="icon" title="Open ledger" onClick={() => nav('/ledgers', { state: { type: r.party_type, id: r.party_id } })}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title={r.party_type === 'employee' ? 'Open payroll' : 'Open ledger'}
+                          onClick={() => (r.party_type === 'employee' ? nav('/payroll') : nav('/ledgers', { state: { type: r.party_type, id: r.party_id } }))}
+                        >
                           <BookOpen size={15} />
                         </Button>
                       </div>
@@ -296,31 +310,37 @@ export function Payments(): React.JSX.Element {
           title={payForm.party_name ? `${payForm.direction === 'in' ? 'Receive from' : 'Pay'} ${payForm.party_name}` : 'Record Payment / Receipt'}
         >
           <div className="space-y-4">
-            {/* Direction — Pay (money out) vs Receive (money in). */}
-            <Field label="Type" hint="Pay = money out · Receive = money in">
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPayForm({ ...payForm, direction: 'out' })}
-                  className={cn(
-                    'flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors',
-                    payForm.direction === 'out' ? 'border-destructive bg-destructive/10 text-destructive' : 'border-input text-muted-foreground hover:bg-accent'
-                  )}
-                >
-                  <ArrowUpRight size={16} /> Pay
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPayForm({ ...payForm, direction: 'in' })}
-                  className={cn(
-                    'flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors',
-                    payForm.direction === 'in' ? 'border-success bg-success/10 text-success' : 'border-input text-muted-foreground hover:bg-accent'
-                  )}
-                >
-                  <ArrowDownLeft size={16} /> Receive
-                </button>
+            {payForm.party_type === 'employee' ? (
+              <div className="rounded-lg bg-muted/60 px-4 py-2.5 text-sm text-muted-foreground">
+                Payroll payment — settles this employee's unpaid wages (oldest period first).
               </div>
-            </Field>
+            ) : (
+              /* Direction — Pay (money out) vs Receive (money in). */
+              <Field label="Type" hint="Pay = money out · Receive = money in">
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPayForm({ ...payForm, direction: 'out' })}
+                    className={cn(
+                      'flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors',
+                      payForm.direction === 'out' ? 'border-destructive bg-destructive/10 text-destructive' : 'border-input text-muted-foreground hover:bg-accent'
+                    )}
+                  >
+                    <ArrowUpRight size={16} /> Pay
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPayForm({ ...payForm, direction: 'in' })}
+                    className={cn(
+                      'flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors',
+                      payForm.direction === 'in' ? 'border-success bg-success/10 text-success' : 'border-input text-muted-foreground hover:bg-accent'
+                    )}
+                  >
+                    <ArrowDownLeft size={16} /> Receive
+                  </button>
+                </div>
+              </Field>
+            )}
 
             {payForm.pick && (
               <Field label="Party" hint="Search across customers, suppliers, transporters, vehicles & JCBs — any plant">

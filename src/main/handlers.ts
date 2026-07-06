@@ -7,6 +7,7 @@ import * as products from './services/products'
 import * as rates from './services/rates'
 import * as rateChart from './services/rateChart'
 import * as destinations from './services/destinations'
+import * as cashbook from './services/cashbook'
 import * as purchases from './services/purchases'
 import * as psettings from './services/productionSettings'
 import * as productions from './services/productions'
@@ -94,6 +95,14 @@ export const handlers: Record<string, (payload: any) => unknown> = {
   'destinations.create': destinations.createDestination,
   'destinations.update': destinations.updateDestination,
   'destinations.delete': destinations.deleteDestination,
+  'cashbook.holders': cashbook.listCashHolders,
+  'cashbook.createHolder': cashbook.createCashHolder,
+  'cashbook.updateHolder': cashbook.updateCashHolder,
+  'cashbook.deleteHolder': cashbook.deleteCashHolder,
+  'cashbook.entries': cashbook.listCashEntries,
+  'cashbook.addTransfer': cashbook.addCashTransfer,
+  'cashbook.addExpense': cashbook.addCashExpense,
+  'cashbook.deleteEntry': cashbook.deleteCashEntry,
 
   'purchases.list': purchases.listPurchases,
   'purchases.detail': purchases.getPurchaseDetail,
@@ -269,6 +278,7 @@ export const handlers: Record<string, (payload: any) => unknown> = {
   'wages.create': payroll.createWageEntry,
   'wages.update': payroll.updateWageEntry,
   'wages.delete': payroll.deleteWageEntry,
+  'wages.payEmployee': payroll.payEmployee,
 
   'system.requestDelete': system.requestDataDeletion,
   'system.cancelDelete': system.cancelDataDeletion,

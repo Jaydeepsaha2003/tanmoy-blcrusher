@@ -29,6 +29,7 @@ import { MachineLogs } from './pages/MachineLogs'
 import { MaintenanceParts } from './pages/MaintenanceParts'
 import { Reminders } from './pages/Reminders'
 import { PlantExpenses } from './pages/PlantExpenses'
+import { Cashbook } from './pages/Cashbook'
 import { Diesel } from './pages/Diesel'
 import { Employees } from './pages/Employees'
 import { Payroll } from './pages/Payroll'
@@ -84,6 +85,7 @@ function AppRoutes(): React.JSX.Element {
       <Route path="/maintenance" element={<Guard module="plantExpenses"><MaintenanceParts /></Guard>} />
       <Route path="/reminders" element={<Guard module="masters"><Reminders /></Guard>} />
       <Route path="/plant-expenses" element={<Guard module="plantExpenses"><PlantExpenses /></Guard>} />
+      <Route path="/cashbook" element={<Guard module="plantExpenses"><Cashbook /></Guard>} />
       <Route path="/diesel" element={<Guard module="diesel"><Diesel /></Guard>} />
       <Route path="/employees" element={<Guard module="payroll"><Employees /></Guard>} />
       <Route path="/payroll" element={<Guard module="payroll"><Payroll /></Guard>} />
