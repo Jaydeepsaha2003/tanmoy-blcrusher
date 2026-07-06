@@ -1153,6 +1153,29 @@ ALTER TABLE employees ADD COLUMN pan_no VARCHAR(64) NOT NULL DEFAULT '';
 ALTER TABLE employees ADD COLUMN dl_no VARCHAR(64) NOT NULL DEFAULT '';
 ALTER TABLE employees ADD COLUMN bank_account VARCHAR(64) NOT NULL DEFAULT '';
 ALTER TABLE employees ADD COLUMN bank_ifsc VARCHAR(32) NOT NULL DEFAULT ''`
+  },
+  {
+    // Plant-wise cashbook: per-plant opening balance + receipts/payments register.
+    id: '040_plant_cashbook',
+    sql: `CREATE TABLE IF NOT EXISTS plant_cash_opening (
+  plant_id        INT PRIMARY KEY,
+  opening_balance DOUBLE NOT NULL DEFAULT 0,
+  updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS plant_cash_entries (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  entry_no    VARCHAR(191) NOT NULL DEFAULT '',
+  plant_id    INT NOT NULL,
+  title       VARCHAR(255) NOT NULL DEFAULT '',
+  type        VARCHAR(64) NOT NULL DEFAULT 'Other',
+  employee_id INT,
+  amount      DOUBLE NOT NULL DEFAULT 0,
+  direction   VARCHAR(8) NOT NULL DEFAULT 'out',
+  date        VARCHAR(32) NOT NULL,
+  remarks     TEXT,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_pcash_plant ON plant_cash_entries(plant_id)`
   }
 ]
 

@@ -250,6 +250,30 @@ export interface CashEntry {
   created_at?: string
 }
 
+/** An entry in a plant's own cashbook. direction 'in' = received, 'out' = payment. */
+export interface PlantCashEntry {
+  id: number
+  entry_no: string
+  plant_id: number
+  title: string
+  type: string
+  employee_id?: number | null
+  employee_name?: string | null
+  amount: number
+  direction: 'in' | 'out'
+  date: string
+  remarks: string
+  created_at?: string
+}
+
+export interface PlantCashSummary {
+  plant_id: number
+  opening_balance: number
+  total_in: number
+  total_out: number
+  balance: number
+}
+
 /** Data backing the public, no-login rate page shared with a customer. */
 export interface PublicRateList {
   customer_name: string

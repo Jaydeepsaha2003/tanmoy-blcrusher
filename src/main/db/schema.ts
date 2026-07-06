@@ -134,6 +134,28 @@ CREATE TABLE IF NOT EXISTS cashbook_entries (
   created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
+-- Plant-wise cashbook: one opening balance per plant + a receipts/payments register.
+CREATE TABLE IF NOT EXISTS plant_cash_opening (
+  plant_id        INTEGER PRIMARY KEY REFERENCES plants(id),
+  opening_balance REAL NOT NULL DEFAULT 0,
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+-- direction 'in' = received (+balance); 'out' = payment (−balance). type e.g. 'Other',
+-- 'Advance' (employee_id set for an advance to a specific employee).
+CREATE TABLE IF NOT EXISTS plant_cash_entries (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  entry_no    TEXT NOT NULL DEFAULT '',
+  plant_id    INTEGER NOT NULL REFERENCES plants(id),
+  title       TEXT NOT NULL DEFAULT '',
+  type        TEXT NOT NULL DEFAULT 'Other',
+  employee_id INTEGER REFERENCES employees(id),
+  amount      REAL NOT NULL DEFAULT 0,
+  direction   TEXT NOT NULL DEFAULT 'out',
+  date        TEXT NOT NULL,
+  remarks     TEXT NOT NULL DEFAULT '',
+  created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS stock_locations (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   plant_id       INTEGER NOT NULL REFERENCES plants(id),
@@ -808,6 +830,7 @@ CREATE INDEX IF NOT EXISTS idx_transport_loc ON transport_charges(stock_location
 CREATE INDEX IF NOT EXISTS idx_transport_dest ON transport_charges(destination_id);
 CREATE INDEX IF NOT EXISTS idx_cbentry_holder ON cashbook_entries(holder_id);
 CREATE INDEX IF NOT EXISTS idx_cbhplants_holder ON cashbook_holder_plants(holder_id);
+CREATE INDEX IF NOT EXISTS idx_pcash_plant ON plant_cash_entries(plant_id);
 CREATE INDEX IF NOT EXISTS idx_budget_plant ON budgets(plant_id);
 CREATE INDEX IF NOT EXISTS idx_ptrans_purchase ON purchase_transporters(purchase_id);
 CREATE INDEX IF NOT EXISTS idx_ptrans_transporter ON purchase_transporters(transporter_id);

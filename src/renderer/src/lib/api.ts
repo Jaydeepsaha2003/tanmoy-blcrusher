@@ -10,6 +10,8 @@ import type {
   Destination,
   CashHolder,
   CashEntry,
+  PlantCashEntry,
+  PlantCashSummary,
   Purchase,
   ProductionSetting,
   Production,
@@ -164,6 +166,16 @@ export const api = {
     addExpense: (p: { holder_id: number; plant_id: number; category: string; amount: number; date: string; remarks?: string }) =>
       call<CashEntry>('cashbook.addExpense', p),
     deleteEntry: (id: number) => call<{ ok: boolean }>('cashbook.deleteEntry', { id })
+  },
+  plantCash: {
+    summary: (plant_id: number) => call<PlantCashSummary>('plantCash.summary', { plant_id }),
+    setOpening: (plant_id: number, opening_balance: number) =>
+      call<{ ok: boolean }>('plantCash.setOpening', { plant_id, opening_balance }),
+    entries: (plant_id: number, from?: string, to?: string) =>
+      call<PlantCashEntry[]>('plantCash.entries', { plant_id, from, to }),
+    addEntry: (p: { plant_id: number; title: string; type?: string; employee_id?: number | null; amount: number; direction: 'in' | 'out'; date: string; remarks?: string }) =>
+      call<PlantCashEntry>('plantCash.addEntry', p),
+    deleteEntry: (id: number) => call<{ ok: boolean }>('plantCash.deleteEntry', { id })
   },
   products: {
     list: (plant_id?: number) => call<Product[]>('products.list', { plant_id }),

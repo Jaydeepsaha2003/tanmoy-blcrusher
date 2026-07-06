@@ -103,6 +103,11 @@ export const handlers: Record<string, (payload: any) => unknown> = {
   'cashbook.addTransfer': cashbook.addCashTransfer,
   'cashbook.addExpense': cashbook.addCashExpense,
   'cashbook.deleteEntry': cashbook.deleteCashEntry,
+  'plantCash.summary': cashbook.getPlantCashSummary,
+  'plantCash.setOpening': cashbook.setPlantCashOpening,
+  'plantCash.entries': cashbook.listPlantCashEntries,
+  'plantCash.addEntry': cashbook.addPlantCashEntry,
+  'plantCash.deleteEntry': cashbook.deletePlantCashEntry,
 
   'purchases.list': purchases.listPurchases,
   'purchases.detail': purchases.getPurchaseDetail,

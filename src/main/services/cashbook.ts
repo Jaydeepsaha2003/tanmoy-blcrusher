@@ -1,5 +1,5 @@
-import { getDb, nextNumber } from '../db'
-import type { CashHolder, CashEntry } from '@shared/types'
+import { getDb, nextNumber, dbKind } from '../db'
+import type { CashHolder, CashEntry, PlantCashEntry, PlantCashSummary } from '@shared/types'
 import { properCase } from '@shared/types'
 import { plantIdSet, writePartyPlants, attachPartyPlants, plantScopeSql } from './partyPlants'
 import { createPlantExpense, deletePlantExpense } from './plantExpenses'
@@ -179,5 +179,98 @@ export async function deleteCashEntry(payload: { id: number }): Promise<{ ok: bo
   // Reverse the mirrored plant expense first, then remove the cashbook entry.
   if (e.kind === 'expense' && e.expense_id) await deletePlantExpense({ id: Number(e.expense_id) })
   await d.prepare(`DELETE FROM cashbook_entries WHERE id = ?`).run(payload.id)
+  return { ok: true }
+}
+
+/* ---------------- Plant-wise cashbook (opening + receipts/payments register) ---------------- */
+
+export async function getPlantCashSummary(payload: { plant_id: number }): Promise<PlantCashSummary> {
+  const d = getDb()
+  const op = (await d
+    .prepare(`SELECT opening_balance FROM plant_cash_opening WHERE plant_id = ?`)
+    .get(payload.plant_id)) as { opening_balance: number } | undefined
+  const agg = (await d
+    .prepare(
+      `SELECT COALESCE(SUM(CASE WHEN direction='in' THEN amount ELSE 0 END),0) AS tin,
+              COALESCE(SUM(CASE WHEN direction='out' THEN amount ELSE 0 END),0) AS tout
+       FROM plant_cash_entries WHERE plant_id = ?`
+    )
+    .get(payload.plant_id)) as { tin: number; tout: number }
+  const opening = money(op?.opening_balance || 0)
+  return {
+    plant_id: payload.plant_id,
+    opening_balance: opening,
+    total_in: money(agg.tin),
+    total_out: money(agg.tout),
+    balance: money(opening + agg.tin - agg.tout)
+  }
+}
+
+export async function setPlantCashOpening(payload: {
+  plant_id: number
+  opening_balance: number
+}): Promise<{ ok: boolean }> {
+  const d = getDb()
+  if (!payload.plant_id) throw new Error('Select a plant.')
+  const amt = money(payload.opening_balance)
+  await d
+    .prepare(
+      dbKind() === 'mysql'
+        ? `INSERT INTO plant_cash_opening (plant_id, opening_balance) VALUES (?, ?)
+           ON DUPLICATE KEY UPDATE opening_balance = VALUES(opening_balance)`
+        : `INSERT INTO plant_cash_opening (plant_id, opening_balance) VALUES (?, ?)
+           ON CONFLICT(plant_id) DO UPDATE SET opening_balance = excluded.opening_balance`
+    )
+    .run(payload.plant_id, amt)
+  return { ok: true }
+}
+
+export async function listPlantCashEntries(payload: {
+  plant_id: number
+  from?: string
+  to?: string
+}): Promise<PlantCashEntry[]> {
+  const d = getDb()
+  const where = ['e.plant_id = @plant_id']
+  if (payload.from) where.push('e.date >= @from')
+  if (payload.to) where.push('e.date <= @to')
+  return (await d
+    .prepare(
+      `SELECT e.*, em.name AS employee_name
+       FROM plant_cash_entries e LEFT JOIN employees em ON em.id = e.employee_id
+       WHERE ${where.join(' AND ')} ORDER BY e.date DESC, e.id DESC`
+    )
+    .all(payload)) as PlantCashEntry[]
+}
+
+export async function addPlantCashEntry(p: {
+  plant_id: number
+  title: string
+  type?: string
+  employee_id?: number | null
+  amount: number
+  direction: 'in' | 'out'
+  date: string
+  remarks?: string
+}): Promise<PlantCashEntry> {
+  const d = getDb()
+  if (!p.plant_id) throw new Error('Select a plant.')
+  if (!(Number(p.amount) > 0)) throw new Error('Amount must be greater than 0.')
+  const type = (p.type || 'Other').trim() || 'Other'
+  const direction = p.direction === 'in' ? 'in' : 'out'
+  // Employee only makes sense for an advance.
+  const employee_id = type.toLowerCase() === 'advance' && p.employee_id ? Number(p.employee_id) : null
+  const no = await nextNumber('PCB', 'plant_cash_entry')
+  const info = await d
+    .prepare(
+      `INSERT INTO plant_cash_entries (entry_no, plant_id, title, type, employee_id, amount, direction, date, remarks)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(no, p.plant_id, (p.title || '').trim(), type, employee_id, money(p.amount), direction, p.date, p.remarks ?? '')
+  return (await d.prepare(`SELECT * FROM plant_cash_entries WHERE id = ?`).get(info.lastInsertRowid)) as PlantCashEntry
+}
+
+export async function deletePlantCashEntry(payload: { id: number }): Promise<{ ok: boolean }> {
+  await getDb().prepare(`DELETE FROM plant_cash_entries WHERE id = ?`).run(payload.id)
   return { ok: true }
 }
