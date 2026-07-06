@@ -71597,7 +71597,7 @@ function ProductionEntry() {
             children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.001", value: form.quantity, onChange: (e3) => setForm({ ...form, quantity: e3.target.value }) })
           }
         ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.remarks || "", onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) }) })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sm:col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.remarks || "", onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) }) })
       ] }),
       preview.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { className: "mt-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "pt-4", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-2 flex items-center gap-2 text-sm font-semibold", children: [
@@ -74522,8 +74522,8 @@ function Assets() {
           }
         ),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Status", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.status || "active", onChange: (v2) => setForm({ ...form, status: v2 }), options: [{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Available at plants", hint: "Tick the plants that use this machine. Leave all unticked to share it across every plant.", children: /* @__PURE__ */ jsxRuntimeExports.jsx(PlantPicker, { plants, selected: form.plant_ids ?? [], onToggle: (id2) => setForm({ ...form, plant_ids: togglePlant(form.plant_ids ?? [], id2) }) }) }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.remarks || "", onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) }) })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sm:col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Available at plants", hint: "Tick the plants that use this machine. Leave all unticked to share it across every plant.", children: /* @__PURE__ */ jsxRuntimeExports.jsx(PlantPicker, { plants, selected: form.plant_ids ?? [], onToggle: (id2) => setForm({ ...form, plant_ids: togglePlant(form.plant_ids ?? [], id2) }) }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sm:col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.remarks || "", onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) }) })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 flex justify-end gap-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setOpen(false), children: "Cancel" }),
@@ -76467,7 +76467,7 @@ function PlantExpenses() {
             }
           ) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Amount", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.amount, onChange: (e3) => setForm({ ...form, amount: e3.target.value }) }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Parts / Work done (optional)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Textarea, { value: form.parts || "", onChange: (e3) => setForm({ ...form, parts: e3.target.value }), placeholder: "e.g. Jaw plate, bearings, hydraulic hose…" }) }) })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sm:col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Parts / Work done (optional)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Textarea, { value: form.parts || "", onChange: (e3) => setForm({ ...form, parts: e3.target.value }), placeholder: "e.g. Jaw plate, bearings, hydraulic hose…" }) }) })
         ] }),
         isRent && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
           form.category === "equipment_rent" ? /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Equipment", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.title || "", onChange: (e3) => setForm({ ...form, title: e3.target.value }), placeholder: "e.g. Excavator, JCB" }) }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Vehicle", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -77212,7 +77212,7 @@ function Diesel() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: pForm.date, onChange: (e3) => setPForm({ ...pForm, date: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Amount Paid", hint: "Sets payment status automatically", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: pForm.paid_amount, onChange: (e3) => setPForm({ ...pForm, paid_amount: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Payment Status", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-9 items-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: payBadge$2[derivePaymentStatus(pAmount, Number(pForm.paid_amount) || 0)], children: derivePaymentStatus(pAmount, Number(pForm.paid_amount) || 0) }) }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: pForm.remarks || "", onChange: (e3) => setPForm({ ...pForm, remarks: e3.target.value }) }) }) })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sm:col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: pForm.remarks || "", onChange: (e3) => setPForm({ ...pForm, remarks: e3.target.value }) }) }) })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 flex justify-end gap-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setPForm(null), children: "Cancel" }),
@@ -77765,7 +77765,7 @@ function Payroll() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Payment Date", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: form.date, onChange: (e3) => setForm({ ...form, date: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Amount Paid", hint: "Sets payment status automatically", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: form.paid_amount, onChange: (e3) => setForm({ ...form, paid_amount: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Payment Status", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-9 items-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: payBadge$1[derivePaymentStatus(net, Number(form.paid_amount) || 0)], children: derivePaymentStatus(net, Number(form.paid_amount) || 0) }) }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.remarks, onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) }) })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sm:col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.remarks, onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) }) })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/60 px-4 py-2.5 text-sm", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
@@ -78717,7 +78717,7 @@ function RackDetail() {
                 placeholder: "Select product…"
               }
             ) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-2 -mt-1", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex items-center gap-2 text-sm text-muted-foreground", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sm:col-span-2 -mt-1", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex items-center gap-2 text-sm text-muted-foreground", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx("input", { type: "checkbox", className: "h-4 w-4", checked: !!loadingForm.outsourced, onChange: (e3) => setLoadingForm({ ...loadingForm, outsourced: e3.target.checked, product_name: "" }) }),
               "Outsourced material (bought-in directly — does ",
               /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: "not" }),
@@ -78745,7 +78745,7 @@ function RackDetail() {
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Rate per m³ (transport)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: loadingForm.rate, onChange: (e3) => setLoadingForm({ ...loadingForm, rate: e3.target.value }), placeholder: "Optional" }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Diesel (litres, optional)", hint: Number(loadingForm.diesel_litres) > 0 ? `In stock: ${fmtQty(loadDieselQuote?.available ?? 0)} L` : "Drawn from the plant’s diesel stock (FIFO)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: loadingForm.diesel_litres, onChange: (e3) => setLoadingForm({ ...loadingForm, diesel_litres: e3.target.value }) }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Diesel Cost (FIFO)", hint: "Valued at the oldest stock's rate first", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: Number(loadingForm.diesel_litres) > 0 ? `₹${fmtMoney(loadDieselQuote?.amount ?? 0)}` : "—", disabled: true }) }),
-            Number(loadingForm.diesel_litres) > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex cursor-pointer items-center gap-2 text-sm", children: [
+            Number(loadingForm.diesel_litres) > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sm:col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex cursor-pointer items-center gap-2 text-sm", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx("input", { type: "checkbox", className: "h-4 w-4", checked: !!loadingForm.diesel_charged, onChange: (e3) => setLoadingForm({ ...loadingForm, diesel_charged: e3.target.checked }) }),
               "Charge this diesel (",
               `₹${fmtMoney(loadDieselQuote?.amount ?? 0)}`,
@@ -79061,7 +79061,7 @@ function RackDetail() {
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Truck No.", hint: "Truck delivering to the customer", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: saleForm.truck_no || "", onChange: (e3) => setSaleForm({ ...saleForm, truck_no: e3.target.value }), placeholder: "e.g. JH-01-AB-1234" }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Challan No.", hint: saleForm.id ? "Delivery note" : "Blank = auto-generate", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: saleForm.challan_no || "", onChange: (e3) => setSaleForm({ ...saleForm, challan_no: e3.target.value }), placeholder: "Auto-generate" }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: saleForm.date, onChange: (e3) => setSaleForm({ ...saleForm, date: e3.target.value }) }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: saleForm.remarks || "", onChange: (e3) => setSaleForm({ ...saleForm, remarks: e3.target.value }) }) }) })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sm:col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: saleForm.remarks || "", onChange: (e3) => setSaleForm({ ...saleForm, remarks: e3.target.value }) }) }) })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 space-y-3", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
@@ -90398,7 +90398,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-BBHN4ALm.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-DPb_3eGG.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
