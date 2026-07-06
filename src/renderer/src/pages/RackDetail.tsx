@@ -821,7 +821,7 @@ export function RackDetail(): React.JSX.Element {
                 />
               )}
             </Field>
-            <div className="col-span-2 -mt-1">
+            <div className="sm:col-span-2 -mt-1">
               <label className="flex items-center gap-2 text-sm text-muted-foreground">
                 <input type="checkbox" className="h-4 w-4" checked={!!loadingForm.outsourced} onChange={(e) =>
                   setLoadingForm({ ...loadingForm, outsourced: e.target.checked, product_name: '' })} />
@@ -866,7 +866,7 @@ export function RackDetail(): React.JSX.Element {
               <Input value={Number(loadingForm.diesel_litres) > 0 ? `₹${fmtMoney(loadDieselQuote?.amount ?? 0)}` : '—'} disabled />
             </Field>
             {Number(loadingForm.diesel_litres) > 0 && (
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <label className="flex cursor-pointer items-center gap-2 text-sm">
                   <input type="checkbox" className="h-4 w-4" checked={!!loadingForm.diesel_charged} onChange={(e) =>
                     setLoadingForm({ ...loadingForm, diesel_charged: e.target.checked })} />
@@ -1188,7 +1188,7 @@ export function RackDetail(): React.JSX.Element {
               <Input type="date" value={saleForm.date} onChange={(e) =>
                 setSaleForm({ ...saleForm, date: e.target.value })} />
             </Field>
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <Field label="Remarks">
                 <Input value={saleForm.remarks || ''} onChange={(e) =>
                   setSaleForm({ ...saleForm, remarks: e.target.value })} />

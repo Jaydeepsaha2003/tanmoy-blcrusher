@@ -194,7 +194,7 @@ export function ProductionEntry(): React.JSX.Element {
             >
               <Input type="number" step="0.001" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
             </Field>
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <Field label="Remarks">
                 <Input value={form.remarks || ''} onChange={(e) => setForm({ ...form, remarks: e.target.value })} />
               </Field>

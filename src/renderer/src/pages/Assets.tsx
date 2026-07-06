@@ -267,12 +267,12 @@ export function Assets(): React.JSX.Element {
           <Field label="Status">
             <SearchSelect value={form.status || 'active'} onChange={(v) => setForm({ ...form, status: v as Asset['status'] })} options={[{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }]} />
           </Field>
-          <div className="col-span-2">
+          <div className="sm:col-span-2">
             <Field label="Available at plants" hint="Tick the plants that use this machine. Leave all unticked to share it across every plant.">
               <PlantPicker plants={plants} selected={form.plant_ids ?? []} onToggle={(id) => setForm({ ...form, plant_ids: togglePlant(form.plant_ids ?? [], id) })} />
             </Field>
           </div>
-          <div className="col-span-2">
+          <div className="sm:col-span-2">
             <Field label="Remarks">
               <Input value={form.remarks || ''} onChange={(e) => setForm({ ...form, remarks: e.target.value })} />
             </Field>

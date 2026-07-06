@@ -251,7 +251,7 @@ export function Payroll(): React.JSX.Element {
                 </Badge>
               </div>
             </Field>
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <Field label="Remarks">
                 <Input value={form.remarks} onChange={(e) => setForm({ ...form, remarks: e.target.value })} />
               </Field>

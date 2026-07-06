@@ -400,7 +400,7 @@ export function PlantExpenses(): React.JSX.Element {
                 <Field label="Amount" required>
                   <Input type="number" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
                 </Field>
-                <div className="col-span-2">
+                <div className="sm:col-span-2">
                   <Field label="Parts / Work done (optional)">
                     <Textarea value={form.parts || ''} onChange={(e) => setForm({ ...form, parts: e.target.value })} placeholder="e.g. Jaw plate, bearings, hydraulic hose…" />
                   </Field>
