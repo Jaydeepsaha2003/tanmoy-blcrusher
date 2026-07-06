@@ -595,6 +595,9 @@ video {
 .col-span-2 {
   grid-column: span 2 / span 2;
 }
+.col-span-full {
+  grid-column: 1 / -1;
+}
 .mx-1 {
   margin-left: 0.25rem;
   margin-right: 0.25rem;
@@ -710,6 +713,9 @@ video {
 .h-2 {
   height: 0.5rem;
 }
+.h-20 {
+  height: 5rem;
+}
 .h-4 {
   height: 1rem;
 }
@@ -733,6 +739,9 @@ video {
 }
 .max-h-80 {
   max-height: 20rem;
+}
+.max-h-\[50vh\] {
+  max-height: 50vh;
 }
 .min-h-\[68px\] {
   min-height: 68px;

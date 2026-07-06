@@ -11332,6 +11332,16 @@ const api = {
     update: (p2) => call("destinations.update", p2),
     delete: (id2) => call("destinations.delete", { id: id2 })
   },
+  cashbook: {
+    holders: (plant_id) => call("cashbook.holders", { plant_id }),
+    createHolder: (p2) => call("cashbook.createHolder", p2),
+    updateHolder: (p2) => call("cashbook.updateHolder", p2),
+    deleteHolder: (id2) => call("cashbook.deleteHolder", { id: id2 }),
+    entries: (holder_id, from, to) => call("cashbook.entries", { holder_id, from, to }),
+    addTransfer: (p2) => call("cashbook.addTransfer", p2),
+    addExpense: (p2) => call("cashbook.addExpense", p2),
+    deleteEntry: (id2) => call("cashbook.deleteEntry", { id: id2 })
+  },
   products: {
     list: (plant_id) => call("products.list", { plant_id }),
     create: (p2) => call("products.create", p2),
@@ -11553,7 +11563,8 @@ const api = {
     workingDays: (period) => call("wages.workingDays", { period }),
     create: (p2) => call("wages.create", p2),
     update: (p2) => call("wages.update", p2),
-    delete: (id2) => call("wages.delete", { id: id2 })
+    delete: (id2) => call("wages.delete", { id: id2 }),
+    payEmployee: (p2) => call("wages.payEmployee", p2)
   },
   system: {
     requestDelete: (password) => call("system.requestDelete", { password }),
@@ -12473,6 +12484,22 @@ const Mountain = createLucideIcon("Mountain", [
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
+const NotebookText = createLucideIcon("NotebookText", [
+  ["path", { d: "M2 6h4", key: "aawbzj" }],
+  ["path", { d: "M2 10h4", key: "l0bgd4" }],
+  ["path", { d: "M2 14h4", key: "1gsvsf" }],
+  ["path", { d: "M2 18h4", key: "1bu2t1" }],
+  ["rect", { width: "16", height: "20", x: "4", y: "2", rx: "2", key: "1nb95v" }],
+  ["path", { d: "M9.5 8h5", key: "11mslq" }],
+  ["path", { d: "M9.5 12H16", key: "ktog6x" }],
+  ["path", { d: "M9.5 16H14", key: "p1seyn" }]
+]);
+/**
+ * @license lucide-react v0.468.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
 const PackageCheck = createLucideIcon("PackageCheck", [
   ["path", { d: "m16 16 2 2 4-4", key: "gfu2re" }],
   [
@@ -12955,6 +12982,16 @@ const UserCog = createLucideIcon("UserCog", [
   ["path", { d: "m16.8 12.3-.4-1", key: "vqeiwj" }],
   ["path", { d: "m14.3 16.6 1-.4", key: "1qlj63" }],
   ["path", { d: "m20.7 13.8 1-.4", key: "1v5t8k" }]
+]);
+/**
+ * @license lucide-react v0.468.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const UserRound = createLucideIcon("UserRound", [
+  ["circle", { cx: "12", cy: "8", r: "5", key: "1hypcn" }],
+  ["path", { d: "M20 21a8 8 0 0 0-16 0", key: "rfgkzh" }]
 ]);
 /**
  * @license lucide-react v0.468.0 - ISC
@@ -46900,6 +46937,7 @@ const NAV = [
     heading: "Accounts",
     items: [
       { to: "/plant-expenses", label: "Plant Expenses", icon: Receipt, module: "plantExpenses" },
+      { to: "/cashbook", label: "Cashbook", icon: Coins, module: "plantExpenses" },
       { to: "/budget", label: "Budget", icon: PiggyBank, module: "plantExpenses" },
       { to: "/payroll", label: "Payroll", icon: HardHat, module: "payroll" },
       { to: "/ledgers", label: "Ledgers", icon: BookOpen, module: "ledgers" },
@@ -76493,6 +76531,242 @@ function clean$3(f2) {
   for (const [k2, v2] of Object.entries(f2)) if (v2 != null && v2 !== "") out[k2] = v2;
   return out;
 }
+function Cashbook() {
+  const qc2 = useQueryClient();
+  const toast = useToast();
+  const { plantId } = usePlant();
+  const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
+  const { data: employees = [] } = useQuery({ queryKey: ["employees", "all"], queryFn: () => api.employees.list() });
+  const { data: holders = [] } = useQuery({ queryKey: ["cashHolders", plantId], queryFn: () => api.cashbook.holders(plantId) });
+  const [hForm, setHForm] = reactExports.useState(null);
+  const [entriesFor, setEntriesFor] = reactExports.useState(null);
+  const totalInHand = holders.reduce((s2, h2) => s2 + (h2.balance ?? 0), 0);
+  const saveHolder = useMutation({
+    mutationFn: (p2) => p2.id ? api.cashbook.updateHolder(p2) : api.cashbook.createHolder(p2),
+    onSuccess: () => {
+      qc2.invalidateQueries({ queryKey: ["cashHolders"] });
+      setHForm(null);
+      toast.success("Cash holder saved.");
+    },
+    onError: (e3) => toast.error(e3.message)
+  });
+  async function removeHolder(h2) {
+    if (!await confirmDialog({ title: "Delete cash holder", message: `Delete "${h2.name}"?` })) return;
+    const res = await api.cashbook.deleteHolder(h2.id);
+    if (res.ok) {
+      qc2.invalidateQueries({ queryKey: ["cashHolders"] });
+      toast.success("Deleted.");
+    } else toast.error(res.error || "Could not delete.");
+  }
+  const plantNames = (ids) => (ids ?? []).length ? (ids ?? []).map((id2) => plants.find((p2) => p2.id === id2)?.name ?? "").filter(Boolean).join(", ") : "All plants";
+  function newHolder() {
+    setHForm({ name: "", employee_id: null, opening_balance: "", remarks: "", plant_ids: plantId ? [plantId] : [] });
+  }
+  function togglePlant(id2) {
+    const cur = hForm.plant_ids ?? [];
+    setHForm({ ...hForm, plant_ids: cur.includes(id2) ? cur.filter((x2) => x2 !== id2) : [...cur, id2] });
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      PageHeader,
+      {
+        title: "Cashbook",
+        description: "Site petty-cash custodians — fund them, log day-to-day expenses (posted to the plant's expense ledger) and track each person's cash in hand",
+        actions: /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { onClick: newHolder, disabled: !plants.length, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 16 }),
+          " New Cash Holder"
+        ] })
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(Page, { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-5 grid grid-cols-1 gap-4 sm:grid-cols-3", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "flex items-center gap-3.5 p-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Coins, { size: 21 }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: "Total Cash in Hand" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "tnum text-xl font-bold text-primary", children: fmtMoney(totalInHand) })
+          ] })
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "flex items-center gap-3.5 p-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-11 w-11 items-center justify-center rounded-xl bg-success/10 text-success", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowDownLeft, { size: 21 }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: "Total Transferred In" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "tnum text-xl font-bold text-success", children: fmtMoney(holders.reduce((s2, h2) => s2 + (h2.total_in ?? 0), 0)) })
+          ] })
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "flex items-center gap-3.5 p-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-11 w-11 items-center justify-center rounded-xl bg-destructive/10 text-destructive", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowUpRight, { size: 21 }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children: "Total Expenses" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "tnum text-xl font-bold text-destructive", children: fmtMoney(holders.reduce((s2, h2) => s2 + (h2.total_expense ?? 0), 0)) })
+          ] })
+        ] }) })
+      ] }),
+      holders.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No cash holders yet. Add a manager or employee who handles site petty cash." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Cash Holder" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plants" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Opening" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Transferred In" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Expenses" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Cash in Hand" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Actions" })
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: holders.map((h2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "font-medium", children: h2.name }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: plantNames(h2.plant_ids) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right", children: fmtMoney(h2.opening_balance) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right text-success", children: fmtMoney(h2.total_in) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "tnum text-right text-destructive", children: fmtMoney(h2.total_expense) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: `tnum text-right font-semibold ${(h2.balance ?? 0) < 0 ? "text-destructive" : ""}`, children: fmtMoney(h2.balance) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-end gap-2", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { variant: "outline", size: "sm", onClick: () => setEntriesFor(h2), children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(NotebookText, { size: 14 }),
+              " Cashbook"
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => setHForm({ ...h2, opening_balance: h2.opening_balance ?? "", plant_ids: h2.plant_ids ?? [] }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => removeHolder(h2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
+          ] }) })
+        ] }, h2.id)) })
+      ] })
+    ] }),
+    hForm && /* @__PURE__ */ jsxRuntimeExports.jsx(Modal, { open: true, onClose: () => setHForm(null), title: hForm.id ? `Edit ${hForm.name}` : "New Cash Holder", width: "max-w-lg", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Link an employee", hint: "Optional — pick an employee, or just type a name below for a manager", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        SearchSelect,
+        {
+          value: hForm.employee_id ?? "",
+          onChange: (v2) => {
+            const id2 = v2 ? Number(v2) : null;
+            const emp = employees.find((e3) => e3.id === id2);
+            setHForm({ ...hForm, employee_id: id2, name: emp ? emp.name : hForm.name });
+          },
+          options: [{ value: "", label: "— None (type a name) —" }, ...employees.map((e3) => ({ value: e3.id, label: `${e3.name}${e3.designation ? ` · ${e3.designation}` : ""}` }))],
+          placeholder: "Select employee…"
+        }
+      ) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Name", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: hForm.name, onChange: (e3) => setHForm({ ...hForm, name: e3.target.value }), placeholder: "e.g. Site Manager / person's name" }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Opening Balance (₹)", hint: "Cash already in hand when you start tracking", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", value: hForm.opening_balance, onChange: (e3) => setHForm({ ...hForm, opening_balance: e3.target.value }), placeholder: "0.00" }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plants", hint: "Plants this person handles cash for — leave all unticked for every plant", children: /* @__PURE__ */ jsxRuntimeExports.jsx(PlantCheckboxes, { plants, selected: hForm.plant_ids ?? [], onToggle: togglePlant }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: hForm.remarks || "", onChange: (e3) => setHForm({ ...hForm, remarks: e3.target.value }) }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-end gap-2 pt-1", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setHForm(null), children: "Cancel" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: () => saveHolder.mutate({ ...hForm, opening_balance: Number(hForm.opening_balance) || 0 }), disabled: !hForm.name?.trim(), children: "Save" })
+      ] })
+    ] }) }),
+    entriesFor && /* @__PURE__ */ jsxRuntimeExports.jsx(EntriesModal, { holder: entriesFor, plants, onClose: () => setEntriesFor(null), onChanged: () => qc2.invalidateQueries({ queryKey: ["cashHolders"] }) })
+  ] });
+}
+function EntriesModal({
+  holder,
+  plants,
+  onClose,
+  onChanged
+}) {
+  const qc2 = useQueryClient();
+  const toast = useToast();
+  const [form, setForm] = reactExports.useState(null);
+  const { data: entries = [] } = useQuery({ queryKey: ["cashEntries", holder.id], queryFn: () => api.cashbook.entries(holder.id) });
+  const holderPlants = (holder.plant_ids ?? []).length ? plants.filter((p2) => (holder.plant_ids ?? []).includes(p2.id)) : plants;
+  const totalIn = entries.filter((e3) => e3.kind === "transfer").reduce((s2, e3) => s2 + e3.amount, 0);
+  const totalOut = entries.filter((e3) => e3.kind === "expense").reduce((s2, e3) => s2 + e3.amount, 0);
+  const balance = (holder.opening_balance || 0) + totalIn - totalOut;
+  const refresh = () => {
+    qc2.invalidateQueries({ queryKey: ["cashEntries", holder.id] });
+    onChanged();
+  };
+  const save = useMutation({
+    mutationFn: (p2) => p2.kind === "transfer" ? api.cashbook.addTransfer({ holder_id: holder.id, amount: Number(p2.amount), date: p2.date, remarks: p2.remarks }) : api.cashbook.addExpense({ holder_id: holder.id, plant_id: Number(p2.plant_id), category: p2.category, amount: Number(p2.amount), date: p2.date, remarks: p2.remarks }),
+    onSuccess: () => {
+      refresh();
+      setForm(null);
+      toast.success("Entry recorded.");
+    },
+    onError: (e3) => toast.error(e3.message)
+  });
+  async function remove(e3) {
+    if (!await confirmDialog({ title: "Delete entry", message: `Delete this ${e3.kind}?${e3.kind === "expense" ? " The linked plant expense will be removed too." : ""}` })) return;
+    await api.cashbook.deleteEntry(e3.id);
+    refresh();
+    toast.success("Deleted.");
+  }
+  function startTransfer() {
+    setForm({ kind: "transfer", amount: "", date: today(), remarks: "" });
+  }
+  function startExpense() {
+    setForm({ kind: "expense", plant_id: holderPlants[0]?.id, category: "", amount: "", date: today(), remarks: "" });
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { open: true, onClose, title: `Cashbook — ${holder.name}`, width: "max-w-3xl", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex flex-wrap items-center gap-3 rounded-lg bg-muted/60 px-4 py-3", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-sm", children: [
+        "Cash in hand: ",
+        /* @__PURE__ */ jsxRuntimeExports.jsx("b", { className: balance < 0 ? "text-destructive" : "text-primary", children: fmtMoney(balance) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-xs text-muted-foreground", children: [
+        "Opening ",
+        fmtMoney(holder.opening_balance),
+        " + In ",
+        fmtMoney(totalIn),
+        " − Expenses ",
+        fmtMoney(totalOut)
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ml-auto flex gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { size: "sm", variant: "outline", className: "text-success", onClick: startTransfer, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowDownLeft, { size: 14 }),
+          " Add Transfer"
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { size: "sm", variant: "outline", className: "text-destructive", onClick: startExpense, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowUpRight, { size: 14 }),
+          " Add Expense"
+        ] })
+      ] })
+    ] }),
+    form && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 rounded-lg border p-4", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-3 text-sm font-semibold", children: form.kind === "transfer" ? "Transfer cash to this person" : "Record a day-to-day expense" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-3 sm:grid-cols-2", children: [
+        form.kind === "expense" && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Plant", hint: "Which plant's expense ledger this hits", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.plant_id || "", onChange: (v2) => setForm({ ...form, plant_id: Number(v2) }), options: holderPlants.map((p2) => ({ value: p2.id, label: p2.name })), placeholder: "Select plant…" }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Category", hint: "e.g. Tea, Labour, Repair, Transport", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.category, onChange: (e3) => setForm({ ...form, category: e3.target.value }), placeholder: "Category" }) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Amount (₹)", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", step: "0.01", autoFocus: true, value: form.amount, onChange: (e3) => setForm({ ...form, amount: e3.target.value }), placeholder: "0.00" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: form.date, onChange: (e3) => setForm({ ...form, date: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", className: form.kind === "expense" ? "sm:col-span-2" : void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.remarks, onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3 flex justify-end gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", size: "sm", onClick: () => setForm(null), children: "Cancel" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Button,
+          {
+            size: "sm",
+            onClick: () => save.mutate(form),
+            disabled: !(Number(form.amount) > 0) || form.kind === "expense" && (!form.plant_id || !form.category.trim()),
+            children: form.kind === "transfer" ? "Save Transfer" : "Save Expense"
+          }
+        )
+      ] })
+    ] }),
+    entries.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyState, { message: "No entries yet. Transfer cash in, then log expenses as they happen." }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "max-h-[50vh] overflow-y-auto", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Table$1, { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(THead, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Date" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Type" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Plant · Category" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { children: "Remarks" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right", children: "Amount" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TH, { className: "text-right" })
+      ] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(TBody, { children: entries.map((e3) => /* @__PURE__ */ jsxRuntimeExports.jsxs(TR, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "whitespace-nowrap", children: fmtDate(e3.date) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: e3.kind === "transfer" ? /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "success", children: "Transfer In" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "destructive", children: "Expense" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: e3.kind === "expense" ? [e3.plant_name, e3.category].filter(Boolean).join(" · ") : "—" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-muted-foreground", children: e3.remarks || "-" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: `tnum text-right font-semibold ${e3.kind === "transfer" ? "text-success" : "text-destructive"}`, children: [
+          e3.kind === "transfer" ? "+" : "−",
+          fmtMoney(e3.amount)
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => remove(e3), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 14, className: "text-destructive" }) }) })
+      ] }, e3.id)) })
+    ] }) })
+  ] });
+}
 const payBadge$2 = {
   paid: "success",
   partial: "warning",
@@ -76825,6 +77099,35 @@ function clean$2(f2) {
   return out;
 }
 const DESIGNATIONS = ["Operator", "Helper", "Driver", "Fitter", "Electrician", "Supervisor", "Manager", "Labour"];
+async function readPhoto(file) {
+  const dataUrl = await new Promise((res, rej) => {
+    const r2 = new FileReader();
+    r2.onload = () => res(String(r2.result));
+    r2.onerror = rej;
+    r2.readAsDataURL(file);
+  });
+  try {
+    const img = await new Promise((res, rej) => {
+      const i2 = new Image();
+      i2.onload = () => res(i2);
+      i2.onerror = rej;
+      i2.src = dataUrl;
+    });
+    const max2 = 400;
+    const scale = Math.min(1, max2 / Math.max(img.width, img.height));
+    const w2 = Math.round(img.width * scale);
+    const h2 = Math.round(img.height * scale);
+    const canvas = document.createElement("canvas");
+    canvas.width = w2;
+    canvas.height = h2;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return dataUrl;
+    ctx.drawImage(img, 0, 0, w2, h2);
+    return canvas.toDataURL("image/jpeg", 0.82);
+  } catch {
+    return dataUrl;
+  }
+}
 function Employees() {
   const qc2 = useQueryClient();
   const toast = useToast();
@@ -76833,7 +77136,19 @@ function Employees() {
   const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
   const [open2, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState(null);
+  const photoRef = reactExports.useRef(null);
   const [q2, setQ] = usePersistentState("q", "");
+  async function onPhoto(ev) {
+    const file = ev.target.files?.[0];
+    ev.target.value = "";
+    if (!file) return;
+    try {
+      const url = await readPhoto(file);
+      setForm((prev) => ({ ...prev, photo: url }));
+    } catch {
+      toast.error("Could not read that image.");
+    }
+  }
   const [desig, setDesig] = reactExports.useState("");
   const [status, setStatus] = reactExports.useState("");
   const desigs = reactExports.useMemo(() => [...new Set(data.map((e3) => e3.designation).filter(Boolean))], [data]);
@@ -76865,7 +77180,7 @@ function Employees() {
     } else toast.error(res.error || "Could not delete.");
   }
   function openNew() {
-    setForm({ name: "", designation: "", wage_type: "monthly", monthly_salary: "", daily_wage: "", ot_rate: "", plant_id: plantId ?? null, contact: "", status: "active", remarks: "" });
+    setForm({ name: "", designation: "", wage_type: "monthly", monthly_salary: "", daily_wage: "", ot_rate: "", plant_id: plantId ?? null, contact: "", status: "active", remarks: "", photo: null, dob: "", joining_date: "", address: "", aadhaar_no: "", pan_no: "", dl_no: "", bank_account: "", bank_ifsc: "" });
     setOpen(true);
   }
   function exportExcel() {
@@ -76957,7 +77272,7 @@ function Employees() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "capitalize text-muted-foreground", children: e3.status }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(TD, { className: "text-right", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => {
-              setForm({ ...e3, monthly_salary: e3.monthly_salary || "", daily_wage: e3.daily_wage || "", ot_rate: e3.ot_rate || "" });
+              setForm({ ...e3, monthly_salary: e3.monthly_salary || "", daily_wage: e3.daily_wage || "", ot_rate: e3.ot_rate || "", dob: e3.dob || "", joining_date: e3.joining_date || "", address: e3.address || "", aadhaar_no: e3.aadhaar_no || "", pan_no: e3.pan_no || "", dl_no: e3.dl_no || "", bank_account: e3.bank_account || "", bank_ifsc: e3.bank_ifsc || "" });
               setOpen(true);
             }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", onClick: () => remove(e3), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "text-destructive" }) })
@@ -76967,6 +77282,21 @@ function Employees() {
     ] }) }),
     form && /* @__PURE__ */ jsxRuntimeExports.jsxs(Modal, { open: open2, onClose: () => setOpen(false), title: form.id ? "Edit Employee" : "New Employee", width: "max-w-2xl", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "col-span-full flex items-center gap-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border bg-muted", children: form.photo ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: form.photo, alt: "", className: "h-full w-full object-cover" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(UserRound, { size: 28, className: "text-muted-foreground" }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col gap-2", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("input", { ref: photoRef, type: "file", accept: "image/*", className: "hidden", onChange: onPhoto }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { type: "button", variant: "outline", size: "sm", onClick: () => photoRef.current?.click(), children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Upload, { size: 14 }),
+                " ",
+                form.photo ? "Change photo" : "Upload photo"
+              ] }),
+              form.photo && /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { type: "button", variant: "ghost", size: "sm", onClick: () => setForm({ ...form, photo: null }), children: "Remove" })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11px] text-muted-foreground", children: "JPG / PNG — auto-resized to keep it small" })
+          ] })
+        ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Name", required: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.name, onChange: (e3) => setForm({ ...form, name: e3.target.value }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs(Field, { label: "Designation", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { list: "desigs", value: form.designation, onChange: (e3) => setForm({ ...form, designation: e3.target.value }), placeholder: "Operator, Helper…" }),
@@ -77005,7 +77335,16 @@ function Employees() {
             ]
           }
         ) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.remarks, onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) }) })
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Date of Birth", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: form.dob || "", onChange: (e3) => setForm({ ...form, dob: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Joining Date", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "date", value: form.joining_date || "", onChange: (e3) => setForm({ ...form, joining_date: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-full", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Address", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.address || "", onChange: (e3) => setForm({ ...form, address: e3.target.value }) }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Aadhaar No.", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.aadhaar_no || "", onChange: (e3) => setForm({ ...form, aadhaar_no: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "PAN No.", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.pan_no || "", onChange: (e3) => setForm({ ...form, pan_no: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Driving Licence No.", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.dl_no || "", onChange: (e3) => setForm({ ...form, dl_no: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "hidden sm:block" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Bank A/C No.", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.bank_account || "", onChange: (e3) => setForm({ ...form, bank_account: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Bank IFSC", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.bank_ifsc || "", onChange: (e3) => setForm({ ...form, bank_ifsc: e3.target.value }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-full", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Remarks", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: form.remarks, onChange: (e3) => setForm({ ...form, remarks: e3.target.value }) }) }) })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 flex justify-end gap-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setOpen(false), children: "Cancel" }),
@@ -89853,7 +90192,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-B6UllBL1.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-DjHA8Dwt.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
@@ -92495,7 +92834,8 @@ const partyLabel = {
   business: "Business",
   machine: "Machine",
   rack_vehicle: "Vehicle",
-  rack_jcb: "JCB"
+  rack_jcb: "JCB",
+  employee: "Employee"
 };
 const balanceLabel = {
   customer: "Receivable",
@@ -92508,7 +92848,8 @@ const balanceLabel = {
   business: "Net (Profit / Loss)",
   machine: "Net (Profit / Loss)",
   rack_vehicle: "Payable",
-  rack_jcb: "Payable"
+  rack_jcb: "Payable",
+  employee: "Payable"
 };
 function balanceClass(t3, v2) {
   if (t3 === "rack" || t3 === "plant" || t3 === "business" || t3 === "machine") return v2 >= 0 ? "text-success" : "text-destructive";
@@ -93085,7 +93426,8 @@ const typeLabel$1 = {
   transporter: "Transporter",
   outsource: "Outsource",
   rack_vehicle: "Vehicle",
-  rack_jcb: "JCB"
+  rack_jcb: "JCB",
+  employee: "Employee"
 };
 const labelOf = (t3) => typeLabel$1[t3] ?? t3;
 const typeBadge$1 = {
@@ -93094,7 +93436,8 @@ const typeBadge$1 = {
   transporter: "muted",
   outsource: "muted",
   rack_vehicle: "muted",
-  rack_jcb: "muted"
+  rack_jcb: "muted",
+  employee: "warning"
 };
 const PAY_TYPES = [
   { value: "supplier", label: "Supplier" },
@@ -93102,7 +93445,8 @@ const PAY_TYPES = [
   { value: "transporter", label: "Transporter" },
   { value: "outsource", label: "Outsource" },
   { value: "rack_vehicle", label: "Vehicle" },
-  { value: "rack_jcb", label: "JCB" }
+  { value: "rack_jcb", label: "JCB" },
+  { value: "employee", label: "Employee" }
 ];
 const MODES = [
   { value: "cash", label: "Cash" },
@@ -93155,13 +93499,16 @@ function Payments() {
   const totalPayable = data.filter((r2) => r2.kind === "payable" && r2.balance > 0).reduce((s2, r2) => s2 + r2.balance, 0);
   const pendingCount = data.filter((r2) => Math.abs(r2.balance) >= 0.01).length;
   const savePayment = useMutation({
-    mutationFn: (p2) => api.payments.add(p2),
+    // Employees settle via payroll (allocated across unpaid wage entries); everyone
+    // else via the party payments ledger.
+    mutationFn: (p2) => p2.party_type === "employee" ? api.wages.payEmployee({ employee_id: p2.party_id, amount: Number(p2.amount), plant_id: plantId ?? null, date: p2.date, remarks: p2.remarks }) : api.payments.add(p2),
     onSuccess: () => {
       qc2.invalidateQueries({ queryKey: ["allDues"] });
       qc2.invalidateQueries({ queryKey: ["ledger"] });
       qc2.invalidateQueries({ queryKey: ["ledger-balances"] });
       qc2.invalidateQueries({ queryKey: ["dashboard"] });
       qc2.invalidateQueries({ queryKey: ["transporters"] });
+      qc2.invalidateQueries({ queryKey: ["wages"] });
       setPayForm(null);
       toast.success("Payment recorded.");
     },
@@ -93305,7 +93652,16 @@ function Payments() {
                 /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowUpRight, { size: 14 }),
                 " Pay"
               ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Open ledger", onClick: () => nav("/ledgers", { state: { type: r2.party_type, id: r2.party_id } }), children: /* @__PURE__ */ jsxRuntimeExports.jsx(BookOpen, { size: 15 }) })
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                Button,
+                {
+                  variant: "ghost",
+                  size: "icon",
+                  title: r2.party_type === "employee" ? "Open payroll" : "Open ledger",
+                  onClick: () => r2.party_type === "employee" ? nav("/payroll") : nav("/ledgers", { state: { type: r2.party_type, id: r2.party_id } }),
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(BookOpen, { size: 15 })
+                }
+              )
             ] }) })
           ] }, `${r2.party_type}-${r2.party_id}`);
         }) })
@@ -93318,38 +93674,41 @@ function Payments() {
         onClose: () => setPayForm(null),
         title: payForm.party_name ? `${payForm.direction === "in" ? "Receive from" : "Pay"} ${payForm.party_name}` : "Record Payment / Receipt",
         children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Type", hint: "Pay = money out · Receive = money in", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-2", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              "button",
-              {
-                type: "button",
-                onClick: () => setPayForm({ ...payForm, direction: "out" }),
-                className: cn(
-                  "flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors",
-                  payForm.direction === "out" ? "border-destructive bg-destructive/10 text-destructive" : "border-input text-muted-foreground hover:bg-accent"
-                ),
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowUpRight, { size: 16 }),
-                  " Pay"
-                ]
-              }
-            ),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              "button",
-              {
-                type: "button",
-                onClick: () => setPayForm({ ...payForm, direction: "in" }),
-                className: cn(
-                  "flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors",
-                  payForm.direction === "in" ? "border-success bg-success/10 text-success" : "border-input text-muted-foreground hover:bg-accent"
-                ),
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowDownLeft, { size: 16 }),
-                  " Receive"
-                ]
-              }
-            )
-          ] }) }),
+          payForm.party_type === "employee" ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-lg bg-muted/60 px-4 py-2.5 text-sm text-muted-foreground", children: "Payroll payment — settles this employee's unpaid wages (oldest period first)." }) : (
+            /* Direction — Pay (money out) vs Receive (money in). */
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Type", hint: "Pay = money out · Receive = money in", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "button",
+                {
+                  type: "button",
+                  onClick: () => setPayForm({ ...payForm, direction: "out" }),
+                  className: cn(
+                    "flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors",
+                    payForm.direction === "out" ? "border-destructive bg-destructive/10 text-destructive" : "border-input text-muted-foreground hover:bg-accent"
+                  ),
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowUpRight, { size: 16 }),
+                    " Pay"
+                  ]
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "button",
+                {
+                  type: "button",
+                  onClick: () => setPayForm({ ...payForm, direction: "in" }),
+                  className: cn(
+                    "flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors",
+                    payForm.direction === "in" ? "border-success bg-success/10 text-success" : "border-input text-muted-foreground hover:bg-accent"
+                  ),
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowDownLeft, { size: 16 }),
+                    " Receive"
+                  ]
+                }
+              )
+            ] }) })
+          ),
           payForm.pick && /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Party", hint: "Search across customers, suppliers, transporters, vehicles & JCBs — any plant", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
             SearchSelect,
             {
@@ -94611,6 +94970,7 @@ function AppRoutes() {
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/maintenance", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "plantExpenses", children: /* @__PURE__ */ jsxRuntimeExports.jsx(MaintenanceParts, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/reminders", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "masters", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Reminders, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/plant-expenses", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "plantExpenses", children: /* @__PURE__ */ jsxRuntimeExports.jsx(PlantExpenses, {}) }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/cashbook", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "plantExpenses", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Cashbook, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/diesel", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "diesel", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Diesel, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/employees", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "payroll", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Employees, {}) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/payroll", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Guard, { module: "payroll", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Payroll, {}) }) }),
