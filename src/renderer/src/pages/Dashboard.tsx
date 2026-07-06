@@ -19,7 +19,7 @@ import {
   UserSquare2,
   Coins,
   ArrowUpFromLine,
-  Scale
+  Banknote
 } from 'lucide-react'
 import {
   BarChart,
@@ -174,7 +174,6 @@ export function Dashboard(): React.JSX.Element {
           const recv = data.billReceivable
           const pay = data.billsPayable
           const net = recv - pay
-          const ob = data.openingBalance
           // A negative receivable isn't money you'll get — it's advances customers
           // have paid you; flip the framing so it reads correctly.
           const recvIsAdvance = recv < -0.005
@@ -206,12 +205,12 @@ export function Dashboard(): React.JSX.Element {
                 hint={net < 0 ? 'Net payable — you owe' : 'Net receivable — you’ll get'}
               />
               <Stat
-                icon={Scale}
-                label="Opening Balance"
-                value={fmtMoney(Math.abs(ob))}
-                tone={ob < 0 ? 'destructive' : 'success'}
-                valueTone={ob < 0 ? 'destructive' : 'success'}
-                hint={`Carried forward (${ob < 0 ? 'Cr' : 'Dr'}) — already in the figures`}
+                icon={Banknote}
+                label="Cash in Hand"
+                value={fmtMoney(data.cashInHand)}
+                tone={data.cashInHand < 0 ? 'destructive' : 'default'}
+                valueTone={data.cashInHand < 0 ? 'destructive' : undefined}
+                hint="Plant cashbook — opening + received − payments"
               />
             </div>
           )

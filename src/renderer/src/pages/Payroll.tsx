@@ -59,10 +59,12 @@ export function Payroll(): React.JSX.Element {
     (a, w) => {
       a.gross += w.amount
       a.paid += w.paid_amount
+      a.adv += w.advance || 0
       return a
     },
-    { gross: 0, paid: 0 }
+    { gross: 0, paid: 0, adv: 0 }
   )
+  const outstanding = round2(totals.gross - totals.paid - totals.adv)
 
   const save = useMutation({
     mutationFn: (p: any) => (p.id ? api.wages.update(p) : api.wages.create(p)),
@@ -147,10 +149,11 @@ export function Payroll(): React.JSX.Element {
         }
       />
       <Page>
-        <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Card><CardContent className="p-4"><div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Net Wages</div><div className="tnum mt-1 text-lg font-bold">{fmtMoney(totals.gross)}</div></CardContent></Card>
           <Card><CardContent className="p-4"><div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Paid</div><div className="tnum mt-1 text-lg font-bold text-success">{fmtMoney(totals.paid)}</div></CardContent></Card>
-          <Card><CardContent className="p-4"><div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Outstanding</div><div className="tnum mt-1 text-lg font-bold text-destructive">{fmtMoney(totals.gross - totals.paid)}</div></CardContent></Card>
+          <Card><CardContent className="p-4"><div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Advances</div><div className="tnum mt-1 text-lg font-bold text-warning">{fmtMoney(totals.adv)}</div></CardContent></Card>
+          <Card><CardContent className="p-4"><div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Outstanding</div><div className="tnum mt-1 text-lg font-bold text-destructive">{fmtMoney(outstanding)}</div></CardContent></Card>
         </div>
 
         <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -172,6 +175,7 @@ export function Payroll(): React.JSX.Element {
                 <TH className="text-right">Earned</TH>
                 <TH className="text-right">OT</TH>
                 <TH className="text-right">Net</TH>
+                <TH className="text-right">Advance</TH>
                 <TH>Payment</TH>
                 <TH className="text-right">Actions</TH>
               </TR>
@@ -186,7 +190,8 @@ export function Payroll(): React.JSX.Element {
                   <TD className="tnum text-right">{fmtMoney(w.earned)}</TD>
                   <TD className="tnum text-right text-muted-foreground">{w.ot_amount ? fmtMoney(w.ot_amount) : '-'}</TD>
                   <TD className="tnum text-right font-semibold">{fmtMoney(w.amount)}</TD>
-                  <TD><Badge variant={payBadge[w.payment_status]}>{w.payment_status}</Badge></TD>
+                  <TD className="tnum text-right text-warning">{w.advance ? fmtMoney(w.advance) : '-'}</TD>
+                  <TD>{(() => { const s = derivePaymentStatus(w.amount, round2(w.paid_amount + (w.advance || 0))); return <Badge variant={payBadge[s]}>{s}</Badge> })()}</TD>
                   <TD className="text-right">
                     <Button variant="ghost" size="icon" onClick={() => setForm({ ...w, ot_rate: w.ot_rate || '', deduction: w.deduction || '', paid_amount: w.paid_amount || '', days_worked: w.days_worked })}><Pencil size={15} /></Button>
                     <Button variant="ghost" size="icon" onClick={() => remove(w)}><Trash2 size={15} className="text-destructive" /></Button>

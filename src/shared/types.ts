@@ -1303,6 +1303,8 @@ export interface WageEntry {
   amount: number
   payment_status: PaymentStatus
   paid_amount: number
+  /** Cash advances given to this employee for this month (plant cashbook), netted off the due. */
+  advance?: number
   date: string
   remarks: string
   created_at: string
@@ -1335,6 +1337,8 @@ export interface DashboardData {
   rackProfit: number
   /** Net carried-forward opening balance (customers Dr − suppliers/outsource Cr). */
   openingBalance: number
+  /** Cash in hand from the plant-wise cashbook (opening + received − payments). */
+  cashInHand: number
   /** Unpaid on this period's direct sales (excludes opening balance). */
   billReceivable: number
   /** Unpaid on this period's supplier/diesel/outsource bills (excludes opening). */

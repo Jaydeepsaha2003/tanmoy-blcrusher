@@ -196,7 +196,11 @@ export async function listWageEntries(filter: WageFilter = {}): Promise<WageEntr
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''
   return (await d
     .prepare(
-      `SELECT w.*, e.name AS employee_name, e.designation, a.name AS asset_name
+      `SELECT w.*, e.name AS employee_name, e.designation, a.name AS asset_name,
+              (SELECT COALESCE(SUM(pce.amount),0) FROM plant_cash_entries pce
+                 WHERE pce.type='Advance' AND pce.direction='out'
+                   AND pce.employee_id = w.employee_id AND pce.plant_id = w.plant_id
+                   AND SUBSTR(pce.date,1,7) = w.period) AS advance
        FROM wage_entries w
        JOIN employees e ON e.id = w.employee_id
        LEFT JOIN assets a ON a.id = w.asset_id
@@ -321,25 +325,37 @@ export async function payEmployee(p: {
     const where = p.plant_id
       ? `employee_id = @employee_id AND plant_id = @plant_id`
       : `employee_id = @employee_id`
+    // Each entry's still-due nets off cash advances already given for that month.
     const rows = (await d
       .prepare(
-        `SELECT id, amount, paid_amount FROM wage_entries
-         WHERE ${where} AND COALESCE(amount,0) - COALESCE(paid_amount,0) > 0.005
-         ORDER BY period, id`
+        `SELECT w.id, w.amount, w.paid_amount,
+                (SELECT COALESCE(SUM(pce.amount),0) FROM plant_cash_entries pce
+                   WHERE pce.type='Advance' AND pce.direction='out'
+                     AND pce.employee_id = w.employee_id AND pce.plant_id = w.plant_id
+                     AND SUBSTR(pce.date,1,7) = w.period) AS advance
+         FROM wage_entries w
+         WHERE ${where} AND COALESCE(w.amount,0) - COALESCE(w.paid_amount,0)
+               - (SELECT COALESCE(SUM(pce.amount),0) FROM plant_cash_entries pce
+                    WHERE pce.type='Advance' AND pce.direction='out'
+                      AND pce.employee_id = w.employee_id AND pce.plant_id = w.plant_id
+                      AND SUBSTR(pce.date,1,7) = w.period) > 0.005
+         ORDER BY w.period, w.id`
       )
       .all({ employee_id: p.employee_id, plant_id: p.plant_id ?? null })) as {
       id: number
       amount: number
       paid_amount: number
+      advance: number
     }[]
     for (const w of rows) {
       if (remaining <= 0.005) break
-      const due = money((w.amount || 0) - (w.paid_amount || 0))
+      const due = money((w.amount || 0) - (w.paid_amount || 0) - (w.advance || 0))
       const pay = Math.min(due, remaining)
       const newPaid = money((w.paid_amount || 0) + pay)
+      // Status reflects payments + advances already given for the month.
       await d
         .prepare(`UPDATE wage_entries SET paid_amount = ?, payment_status = ? WHERE id = ?`)
-        .run(newPaid, derivePaymentStatus(w.amount || 0, newPaid), w.id)
+        .run(newPaid, derivePaymentStatus(w.amount || 0, money(newPaid + (w.advance || 0))), w.id)
       remaining = money(remaining - pay)
     }
   })

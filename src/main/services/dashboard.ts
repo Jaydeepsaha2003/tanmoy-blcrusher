@@ -179,6 +179,16 @@ export async function getDashboard(payload: { plant_id?: number } = {}): Promise
   // inside Receivable / Payable above, so the UI must NOT add it to Net again.
   // Each opening row is attributed to its own plant_id; for a single plant we count
   // only that plant's rows, for All Plants we count every row.
+  // Cash in hand from the plant-wise cashbook: opening + received − payments.
+  const cashInHand = money(
+    (await d
+      .prepare(
+        `SELECT (SELECT COALESCE(SUM(opening_balance),0) FROM plant_cash_opening${plWhere})
+              + (SELECT COALESCE(SUM(CASE WHEN direction='in' THEN amount ELSE -amount END),0) FROM plant_cash_entries${plWhere}) AS q`
+      )
+      .get()) as { q: number }
+  )
+
   const obAnd = pid ? ` AND ob.plant_id = ${pid}` : ''
   const openingBalance = money(
     (await d
@@ -234,6 +244,7 @@ export async function getDashboard(payload: { plant_id?: number } = {}): Promise
     rackTransportCost,
     rackProfit,
     openingBalance,
+    cashInHand,
     billReceivable,
     billsPayable,
     topCustomers,

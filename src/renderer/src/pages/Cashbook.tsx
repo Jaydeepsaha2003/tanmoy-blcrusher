@@ -84,6 +84,10 @@ function PlantCashbook({ plants, employees }: { plants: Plant[]; employees: Empl
   function refresh(): void {
     qc.invalidateQueries({ queryKey: ['plantCash'] })
     qc.invalidateQueries({ queryKey: ['plantCashEntries'] })
+    // Advances net against payroll + Make Payment dues, and cash-in-hand feeds the dashboard.
+    qc.invalidateQueries({ queryKey: ['wages'] })
+    qc.invalidateQueries({ queryKey: ['allDues'] })
+    qc.invalidateQueries({ queryKey: ['dashboard'] })
   }
   const saveOpening = useMutation({
     mutationFn: () => api.plantCash.setOpening(plant!, Number(openingForm) || 0),

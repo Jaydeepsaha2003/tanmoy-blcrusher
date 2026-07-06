@@ -1772,32 +1772,51 @@ export async function getAllDues(payload: { plant_id?: number } = {}): Promise<D
       })
     }
   }
-  // Payroll: employees with outstanding wages (generated roll − paid) are payable,
-  // settled from Make Payment via wages.payEmployee.
+  // Payroll: employees with outstanding wages (generated roll − paid − cash advances
+  // for that month) are payable, settled from Make Payment via wages.payEmployee.
   const d = getDb()
-  const emps = (await d
+  const wrows = (await d
     .prepare(
-      `SELECT e.id, e.name, COALESCE(SUM(w.amount),0) AS gross, COALESCE(SUM(w.paid_amount),0) AS paid
-       FROM employees e JOIN wage_entries w ON w.employee_id = e.id
+      `SELECT w.employee_id, e.name, w.plant_id, w.period,
+              COALESCE(SUM(w.amount),0) AS gross, COALESCE(SUM(w.paid_amount),0) AS paid,
+              (SELECT COALESCE(SUM(pce.amount),0) FROM plant_cash_entries pce
+                 WHERE pce.type='Advance' AND pce.direction='out'
+                   AND pce.employee_id = w.employee_id AND pce.plant_id = w.plant_id
+                   AND SUBSTR(pce.date,1,7) = w.period) AS adv
+       FROM wage_entries w JOIN employees e ON e.id = w.employee_id
        ${payload.plant_id ? 'WHERE w.plant_id = @plant_id' : ''}
-       GROUP BY e.id, e.name
-       HAVING COALESCE(SUM(w.amount),0) - COALESCE(SUM(w.paid_amount),0) > 0.005`
+       GROUP BY w.employee_id, e.name, w.plant_id, w.period`
     )
     .all(payload.plant_id ? { plant_id: payload.plant_id } : {})) as {
-    id: number
+    employee_id: number
     name: string
+    plant_id: number
+    period: string
     gross: number
     paid: number
+    adv: number
   }[]
-  for (const e of emps)
-    rows.push({
-      party_type: 'employee',
-      party_id: e.id,
-      name: e.name,
-      total_debit: roundMoney(e.paid),
-      total_credit: roundMoney(e.gross),
-      balance: roundMoney(e.gross - e.paid),
-      kind: 'payable'
-    })
+  // Accumulate per employee: outstanding nets each month's advances (never below 0).
+  const byEmp = new Map<number, { name: string; gross: number; settled: number; out: number }>()
+  for (const r of wrows) {
+    const applied = Math.min(r.adv, Math.max(0, r.gross - r.paid))
+    const out = Math.max(0, r.gross - r.paid - r.adv)
+    const acc = byEmp.get(r.employee_id) ?? { name: r.name, gross: 0, settled: 0, out: 0 }
+    acc.gross += r.gross
+    acc.settled += r.paid + applied
+    acc.out += out
+    byEmp.set(r.employee_id, acc)
+  }
+  for (const [id, a] of byEmp)
+    if (a.out > 0.005)
+      rows.push({
+        party_type: 'employee',
+        party_id: id,
+        name: a.name,
+        total_debit: roundMoney(a.settled),
+        total_credit: roundMoney(a.gross),
+        balance: roundMoney(a.out),
+        kind: 'payable'
+      })
   return rows
 }
