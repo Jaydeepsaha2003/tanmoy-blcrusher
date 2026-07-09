@@ -71945,6 +71945,15 @@ function RateChart() {
   const formLocations = locations.filter((l2) => !plantId || l2.plant_id === plantId);
   const [rateForm, setRateForm] = reactExports.useState(null);
   const [tForm, setTForm] = reactExports.useState(null);
+  const [finder, setFinder] = usePersistentState("finder", { origin: "", dest: "", product: "" });
+  const finderOrigin = finder.origin ? Number(finder.origin) : null;
+  const hasQuery = !!(finder.origin || finder.dest || finder.product);
+  const productMatches = rows.filter(
+    (r2) => (!finderOrigin || r2.stock_location_id === finderOrigin) && (!finder.product || r2.product_name === finder.product)
+  );
+  const transportMatches = transport.filter(
+    (t3) => (!finderOrigin || t3.stock_location_id === finderOrigin) && (!finder.dest || (t3.destination_name ?? "") === finder.dest || t3.destination_id == null)
+  );
   const vehicleOptions = reactExports.useMemo(() => {
     const seen2 = /* @__PURE__ */ new Set();
     const out = [];
@@ -71998,6 +72007,108 @@ function RateChart() {
     ),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Page, { children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs(Card, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(CardHeader, { className: "flex-row items-center justify-between", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(CardTitle, { className: "flex items-center gap-2", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Search, { size: 18 }),
+            " Rate Finder"
+          ] }),
+          hasQuery && /* @__PURE__ */ jsxRuntimeExports.jsxs(Button, { size: "sm", variant: "ghost", onClick: () => setFinder({ origin: "", dest: "", product: "" }), children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(X$1, { size: 15 }),
+            " Clear"
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-3", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Origin (Location)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
+              {
+                value: finder.origin,
+                onChange: (v2) => setFinder({ ...finder, origin: v2 }),
+                options: [{ value: "", label: "Any origin" }, ...formLocations.map((l2) => ({ value: l2.id, label: `${l2.plant_name} · ${l2.name}` }))],
+                placeholder: "Any origin"
+              }
+            ) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Destination", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
+              {
+                value: finder.dest,
+                onChange: (v2) => setFinder({ ...finder, dest: v2 }),
+                options: [{ value: "", label: "Any destination" }, ...destinations.map((d2) => ({ value: d2.name, label: d2.name }))],
+                placeholder: "Any destination"
+              }
+            ) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Product", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SearchSelect,
+              {
+                value: finder.product,
+                onChange: (v2) => setFinder({ ...finder, product: v2 }),
+                options: [{ value: "", label: "Any product" }, ...products.map((p2) => ({ value: p2.name, label: p2.name }))],
+                placeholder: "Any product"
+              }
+            ) })
+          ] }),
+          !hasQuery ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm text-muted-foreground", children: "Pick an origin, destination and/or product to see the matching product and transport rates." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border bg-muted/20 p-4", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-2 flex items-center gap-2 text-sm font-semibold", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Tags, { size: 15 }),
+                " Product Rate"
+              ] }),
+              productMatches.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted-foreground", children: "No product rate for this selection." }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "divide-y", children: productMatches.map((r2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "py-2 first:pt-0 last:pb-0", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between gap-2", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "font-medium", children: [
+                    r2.product_name,
+                    " ",
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "muted", children: r2.uom })
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-xs text-muted-foreground", children: [
+                    r2.plant_name,
+                    " · ",
+                    r2.stock_location_name
+                  ] })
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-1 grid grid-cols-3 gap-2 text-sm", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] text-muted-foreground", children: "Wholesale" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "tnum font-medium", children: fmtMoney(r2.rate_wholesale) })
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] text-muted-foreground", children: "Retail" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "tnum font-medium", children: fmtMoney(r2.rate_retail) })
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[11px] text-muted-foreground", children: "Customer" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "tnum font-medium", children: fmtMoney(r2.rate_customer) })
+                  ] })
+                ] })
+              ] }, r2.id)) })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border bg-muted/20 p-4", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-2 flex items-center gap-2 text-sm font-semibold", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Truck, { size: 15 }),
+                " Transport Rate",
+                finder.dest && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "font-normal text-muted-foreground", children: [
+                  "→ ",
+                  finder.dest
+                ] })
+              ] }),
+              transportMatches.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted-foreground", children: "No transport rate for this selection." }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "divide-y", children: transportMatches.map((t3) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between gap-2 py-2 text-sm first:pt-0 last:pb-0", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-medium", children: t3.vehicle_type }),
+                  " ",
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "muted", children: basisLabel[t3.basis] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-xs text-muted-foreground", children: [
+                    t3.stock_location_name,
+                    " → ",
+                    t3.destination_name ?? "Any destination"
+                  ] })
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tnum font-semibold", children: fmtMoney(t3.charge) })
+              ] }, t3.id)) })
+            ] })
+          ] })
+        ] })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(Card, { className: "mt-6", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs(CardHeader, { className: "flex-row items-center justify-between", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs(CardTitle, { className: "flex items-center gap-2", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Tags, { size: 18 }),
@@ -90347,7 +90458,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-B5CftQxZ.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-GoMeGFC8.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
