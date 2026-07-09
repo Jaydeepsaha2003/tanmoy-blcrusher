@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Tags, Truck } from 'lucide-react'
+import { Plus, Pencil, Trash2, Tags, Truck, Search, X } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { RateChartRow, TransportCharge, Uom, TransportBasis } from '@shared/types'
 import { UOMS } from '@shared/types'
@@ -27,6 +27,7 @@ import {
 import { useToast } from '@/components/toast'
 import { confirmDialog } from '@/components/confirm'
 import { usePlant } from '@/lib/plant'
+import { usePersistentState } from '@/lib/persistentState'
 import { fmtMoney } from '@/lib/utils'
 
 const LORRY_TYPES = ['Tractor', 'Tipper', 'Dumper', '6 Wheeler', '10 Wheeler', '12 Wheeler', '14 Wheeler', 'Truck']
@@ -46,6 +47,21 @@ export function RateChart(): React.JSX.Element {
 
   const [rateForm, setRateForm] = React.useState<Partial<RateChartRow> | null>(null)
   const [tForm, setTForm] = React.useState<Partial<TransportCharge> | null>(null)
+
+  // Rate finder — pick origin / destination / product to see the applicable rates.
+  const [finder, setFinder] = usePersistentState('finder', { origin: '', dest: '', product: '' })
+  const finderOrigin = finder.origin ? Number(finder.origin) : null
+  const hasQuery = !!(finder.origin || finder.dest || finder.product)
+  const productMatches = rows.filter(
+    (r) =>
+      (!finderOrigin || r.stock_location_id === finderOrigin) &&
+      (!finder.product || r.product_name === finder.product)
+  )
+  const transportMatches = transport.filter(
+    (t) =>
+      (!finderOrigin || t.stock_location_id === finderOrigin) &&
+      (!finder.dest || (t.destination_name ?? '') === finder.dest || t.destination_id == null)
+  )
 
   // Existing + preset vehicle/lorry types for the creatable dropdown (deduped, case-insensitive).
   const vehicleOptions = React.useMemo(() => {
@@ -104,8 +120,103 @@ export function RateChart(): React.JSX.Element {
         description="Product rates per location (Wholesale / Retail / Customer) and origin → destination transport rates by vehicle type"
       />
       <Page>
-        {/* Product rates */}
+        {/* Rate finder */}
         <Card>
+          <CardHeader className="flex-row items-center justify-between">
+            <CardTitle className="flex items-center gap-2"><Search size={18} /> Rate Finder</CardTitle>
+            {hasQuery && (
+              <Button size="sm" variant="ghost" onClick={() => setFinder({ origin: '', dest: '', product: '' })}>
+                <X size={15} /> Clear
+              </Button>
+            )}
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <Field label="Origin (Location)">
+                <SearchSelect
+                  value={finder.origin}
+                  onChange={(v) => setFinder({ ...finder, origin: v })}
+                  options={[{ value: '', label: 'Any origin' }, ...formLocations.map((l) => ({ value: l.id, label: `${l.plant_name} · ${l.name}` }))]}
+                  placeholder="Any origin"
+                />
+              </Field>
+              <Field label="Destination">
+                <SearchSelect
+                  value={finder.dest}
+                  onChange={(v) => setFinder({ ...finder, dest: v })}
+                  options={[{ value: '', label: 'Any destination' }, ...destinations.map((d) => ({ value: d.name, label: d.name }))]}
+                  placeholder="Any destination"
+                />
+              </Field>
+              <Field label="Product">
+                <SearchSelect
+                  value={finder.product}
+                  onChange={(v) => setFinder({ ...finder, product: v })}
+                  options={[{ value: '', label: 'Any product' }, ...products.map((p) => ({ value: p.name, label: p.name }))]}
+                  placeholder="Any product"
+                />
+              </Field>
+            </div>
+
+            {!hasQuery ? (
+              <p className="mt-4 text-sm text-muted-foreground">
+                Pick an origin, destination and/or product to see the matching product and transport rates.
+              </p>
+            ) : (
+              <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {/* Product rate results */}
+                <div className="rounded-xl border bg-muted/20 p-4">
+                  <div className="mb-2 flex items-center gap-2 text-sm font-semibold"><Tags size={15} /> Product Rate</div>
+                  {productMatches.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No product rate for this selection.</p>
+                  ) : (
+                    <div className="divide-y">
+                      {productMatches.map((r) => (
+                        <div key={r.id} className="py-2 first:pt-0 last:pb-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium">{r.product_name} <Badge variant="muted">{r.uom}</Badge></span>
+                            <span className="text-xs text-muted-foreground">{r.plant_name} · {r.stock_location_name}</span>
+                          </div>
+                          <div className="mt-1 grid grid-cols-3 gap-2 text-sm">
+                            <div><div className="text-[11px] text-muted-foreground">Wholesale</div><div className="tnum font-medium">{fmtMoney(r.rate_wholesale)}</div></div>
+                            <div><div className="text-[11px] text-muted-foreground">Retail</div><div className="tnum font-medium">{fmtMoney(r.rate_retail)}</div></div>
+                            <div><div className="text-[11px] text-muted-foreground">Customer</div><div className="tnum font-medium">{fmtMoney(r.rate_customer)}</div></div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Transport rate results */}
+                <div className="rounded-xl border bg-muted/20 p-4">
+                  <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                    <Truck size={15} /> Transport Rate
+                    {finder.dest && <span className="font-normal text-muted-foreground">→ {finder.dest}</span>}
+                  </div>
+                  {transportMatches.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No transport rate for this selection.</p>
+                  ) : (
+                    <div className="divide-y">
+                      {transportMatches.map((t) => (
+                        <div key={t.id} className="flex items-center justify-between gap-2 py-2 text-sm first:pt-0 last:pb-0">
+                          <div>
+                            <span className="font-medium">{t.vehicle_type}</span> <Badge variant="muted">{basisLabel[t.basis]}</Badge>
+                            <div className="text-xs text-muted-foreground">{t.stock_location_name} → {t.destination_name ?? 'Any destination'}</div>
+                          </div>
+                          <span className="tnum font-semibold">{fmtMoney(t.charge)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Product rates */}
+        <Card className="mt-6">
           <CardHeader className="flex-row items-center justify-between">
             <CardTitle className="flex items-center gap-2"><Tags size={18} /> Product Rates</CardTitle>
             <Button
