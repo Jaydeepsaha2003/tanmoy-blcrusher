@@ -187,6 +187,7 @@ export function UsersPage(): React.JSX.Element {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Username" hint="letters, numbers, . _ -">
                 <Input
+                  noCaps
                   value={form.username}
                   disabled={!!form.id}
                   placeholder="e.g. ramesh"

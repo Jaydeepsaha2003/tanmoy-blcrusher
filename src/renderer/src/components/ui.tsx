@@ -37,34 +37,84 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 Button.displayName = 'Button'
 
 /* ---------------- Input ---------------- */
-export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
-  ({ className, ...props }, ref) => (
-    <input
-      ref={ref}
-      className={cn(
-        'flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1 text-sm shadow-sm transition-all placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-50',
-        className
-      )}
-      {...props}
-    />
-  )
+// Business data is stored UPPERCASE app-wide (see properCase). Text inputs
+// auto-uppercase as you type so what you enter matches what's stored — except
+// case-sensitive kinds (password/email/…) and anything opting out via noCaps.
+const NO_CAPS_TYPES = new Set([
+  'password',
+  'email',
+  'number',
+  'date',
+  'time',
+  'datetime-local',
+  'month',
+  'week',
+  'file',
+  'color',
+  'range',
+  'checkbox',
+  'radio',
+  'hidden'
+])
+export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+  /** Opt out of automatic UPPERCASE (e.g. usernames, credentials). */
+  noCaps?: boolean
+}
+export const Input = React.forwardRef<HTMLInputElement, InputProps>(
+  ({ className, noCaps, onChange, type, ...props }, ref) => {
+    const upper = !noCaps && !NO_CAPS_TYPES.has(type ?? 'text')
+    const handleChange =
+      upper && onChange
+        ? (e: React.ChangeEvent<HTMLInputElement>) => {
+            const up = e.target.value.toUpperCase()
+            if (up !== e.target.value) e.target.value = up
+            onChange(e)
+          }
+        : onChange
+    return (
+      <input
+        ref={ref}
+        type={type}
+        onChange={handleChange}
+        className={cn(
+          'flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1 text-sm shadow-sm transition-all placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-50',
+          className
+        )}
+        {...props}
+      />
+    )
+  }
 )
 Input.displayName = 'Input'
 
 /* ---------------- Textarea ---------------- */
-export const Textarea = React.forwardRef<
-  HTMLTextAreaElement,
-  React.TextareaHTMLAttributes<HTMLTextAreaElement>
->(({ className, ...props }, ref) => (
-  <textarea
-    ref={ref}
-    className={cn(
-      'flex min-h-[68px] w-full rounded-lg border border-input bg-card px-3 py-2 text-sm shadow-sm transition-all placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-50',
-      className
-    )}
-    {...props}
-  />
-))
+export interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
+  /** Opt out of automatic UPPERCASE. */
+  noCaps?: boolean
+}
+export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
+  ({ className, noCaps, onChange, ...props }, ref) => {
+    const handleChange =
+      !noCaps && onChange
+        ? (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+            const up = e.target.value.toUpperCase()
+            if (up !== e.target.value) e.target.value = up
+            onChange(e)
+          }
+        : onChange
+    return (
+      <textarea
+        ref={ref}
+        onChange={handleChange}
+        className={cn(
+          'flex min-h-[68px] w-full rounded-lg border border-input bg-card px-3 py-2 text-sm shadow-sm transition-all placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-50',
+          className
+        )}
+        {...props}
+      />
+    )
+  }
+)
 Textarea.displayName = 'Textarea'
 
 /* ---------------- Select (native) ---------------- */
@@ -148,7 +198,7 @@ export function SearchSelect({
               <input
                 autoFocus
                 value={q}
-                onChange={(e) => setQ(e.target.value)}
+                onChange={(e) => setQ(creatable ? e.target.value.toUpperCase() : e.target.value)}
                 placeholder="Search…"
                 className="w-full bg-transparent text-sm outline-none"
               />

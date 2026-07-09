@@ -41,6 +41,7 @@ export function Login({ onSuccess }: { onSuccess: (user: User) => void }): React
           <UserIcon className="absolute left-3 top-2.5 text-muted-foreground" size={16} />
           <Input
             autoFocus
+            noCaps
             className="pl-9"
             placeholder="e.g. admin"
             value={username}
