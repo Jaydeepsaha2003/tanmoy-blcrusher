@@ -1,8 +1,8 @@
 import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Tags, Truck, MapPin } from 'lucide-react'
+import { Plus, Pencil, Trash2, Tags, Truck } from 'lucide-react'
 import { api } from '@/lib/api'
-import type { RateChartRow, TransportCharge, Destination, Uom, TransportBasis } from '@shared/types'
+import type { RateChartRow, TransportCharge, Uom, TransportBasis } from '@shared/types'
 import { UOMS } from '@shared/types'
 import { PageHeader, Page } from '@/components/layout'
 import {
@@ -46,7 +46,19 @@ export function RateChart(): React.JSX.Element {
 
   const [rateForm, setRateForm] = React.useState<Partial<RateChartRow> | null>(null)
   const [tForm, setTForm] = React.useState<Partial<TransportCharge> | null>(null)
-  const [destForm, setDestForm] = React.useState<Partial<Destination> | null>(null)
+
+  // Existing + preset vehicle/lorry types for the creatable dropdown (deduped, case-insensitive).
+  const vehicleOptions = React.useMemo(() => {
+    const seen = new Set<string>()
+    const out: { value: string; label: string }[] = []
+    for (const name of [...transport.map((t) => t.vehicle_type), ...LORRY_TYPES]) {
+      const key = (name || '').trim().toLowerCase()
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      out.push({ value: name, label: name })
+    }
+    return out
+  }, [transport])
 
   const saveRate = useMutation({
     mutationFn: (p: Partial<RateChartRow>) => (p.id ? api.rateChart.update(p) : api.rateChart.create(p)),
@@ -61,18 +73,11 @@ export function RateChart(): React.JSX.Element {
     mutationFn: (p: Partial<TransportCharge>) =>
       p.id ? api.transportCharges.update(p) : api.transportCharges.create(p),
     onSuccess: () => {
+      // A new destination may have been created inline — refresh both lists.
       qc.invalidateQueries({ queryKey: ['transportCharges'] })
+      qc.invalidateQueries({ queryKey: ['destinations'] })
       setTForm(null)
       toast.success('Transport rate saved.')
-    },
-    onError: (e: Error) => toast.error(e.message)
-  })
-  const saveDest = useMutation({
-    mutationFn: (p: Partial<Destination>) => (p.id ? api.destinations.update(p) : api.destinations.create(p)),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['destinations'] })
-      setDestForm(null)
-      toast.success('Destination saved.')
     },
     onError: (e: Error) => toast.error(e.message)
   })
@@ -89,17 +94,8 @@ export function RateChart(): React.JSX.Element {
     qc.invalidateQueries({ queryKey: ['transportCharges'] })
     toast.success('Transport rate deleted.')
   }
-  async function removeDest(x: Destination): Promise<void> {
-    if (!(await confirmDialog({ title: 'Delete destination', message: `Delete "${x.name}"?` }))) return
-    const res = await api.destinations.delete(x.id)
-    if (res.ok) {
-      qc.invalidateQueries({ queryKey: ['destinations'] })
-      toast.success('Destination deleted.')
-    } else toast.error(res.error || 'Could not delete destination.')
-  }
 
   const noPlants = locations.length === 0
-  const destName = (id?: number | null): string => destinations.find((d) => d.id === id)?.name ?? ''
 
   return (
     <>
@@ -177,7 +173,7 @@ export function RateChart(): React.JSX.Element {
             <Button
               size="sm"
               disabled={noPlants}
-              onClick={() => setTForm({ vehicle_type: '', stock_location_id: formLocations[0]?.id, destination_id: null, basis: 'trip', charge: 0 })}
+              onClick={() => setTForm({ vehicle_type: '', stock_location_id: formLocations[0]?.id, destination_name: '', basis: 'trip', charge: 0 })}
             >
               <Plus size={15} /> New Rate
             </Button>
@@ -208,45 +204,8 @@ export function RateChart(): React.JSX.Element {
                       <TD><Badge variant="muted">{basisLabel[t.basis]}</Badge></TD>
                       <TD className="tnum text-right">{fmtMoney(t.charge)}</TD>
                       <TD className="text-right">
-                        <Button variant="ghost" size="icon" onClick={() => setTForm(t)}><Pencil size={15} /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => setTForm({ ...t, destination_name: t.destination_name ?? '' })}><Pencil size={15} /></Button>
                         <Button variant="ghost" size="icon" onClick={() => removeTransport(t)}><Trash2 size={15} className="text-destructive" /></Button>
-                      </TD>
-                    </TR>
-                  ))}
-                </TBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Destinations master */}
-        <Card className="mt-6">
-          <CardHeader className="flex-row items-center justify-between">
-            <CardTitle className="flex items-center gap-2"><MapPin size={18} /> Destinations</CardTitle>
-            <Button size="sm" onClick={() => setDestForm({ name: '', remarks: '' })}>
-              <Plus size={15} /> New Destination
-            </Button>
-          </CardHeader>
-          <CardContent>
-            {destinations.length === 0 ? (
-              <EmptyState message="No destinations yet. Add the places you deliver to, then use them in transport rates." />
-            ) : (
-              <Table>
-                <THead>
-                  <TR>
-                    <TH>Destination</TH>
-                    <TH>Remarks</TH>
-                    <TH className="text-right">Actions</TH>
-                  </TR>
-                </THead>
-                <TBody>
-                  {destinations.map((x) => (
-                    <TR key={x.id}>
-                      <TD className="font-medium">{x.name}</TD>
-                      <TD className="text-muted-foreground">{x.remarks || '-'}</TD>
-                      <TD className="text-right">
-                        <Button variant="ghost" size="icon" onClick={() => setDestForm(x)}><Pencil size={15} /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => removeDest(x)}><Trash2 size={15} className="text-destructive" /></Button>
                       </TD>
                     </TR>
                   ))}
@@ -299,17 +258,23 @@ export function RateChart(): React.JSX.Element {
               <Field label="Origin (Location)">
                 <SearchSelect value={tForm.stock_location_id || ''} onChange={(v) => setTForm({ ...tForm, stock_location_id: Number(v) })} options={formLocations.map((l) => ({ value: l.id, label: `${l.plant_name} · ${l.name}` }))} placeholder="Select…" />
               </Field>
-              <Field label="Destination" hint="Leave as “Any” for a general origin charge">
+              <Field label="Destination" hint="Pick one, or type a new place to add it. Leave as “Any” for a general origin charge.">
                 <SearchSelect
-                  value={tForm.destination_id ?? ''}
-                  onChange={(v) => setTForm({ ...tForm, destination_id: v ? Number(v) : null })}
-                  options={[{ value: '', label: 'Any destination' }, ...destinations.map((d) => ({ value: d.id, label: d.name }))]}
+                  creatable
+                  value={tForm.destination_name || ''}
+                  onChange={(v) => setTForm({ ...tForm, destination_name: v })}
+                  options={[{ value: '', label: 'Any destination' }, ...destinations.map((d) => ({ value: d.name, label: d.name }))]}
                   placeholder="Any destination"
                 />
               </Field>
-              <Field label="Vehicle / Lorry Type">
-                <Input list="lorry-types" value={tForm.vehicle_type || ''} onChange={(e) => setTForm({ ...tForm, vehicle_type: e.target.value })} placeholder="e.g. 10 Wheeler" />
-                <datalist id="lorry-types">{LORRY_TYPES.map((v) => <option key={v} value={v} />)}</datalist>
+              <Field label="Vehicle / Lorry Type" hint="Pick one, or type a new type to add it.">
+                <SearchSelect
+                  creatable
+                  value={tForm.vehicle_type || ''}
+                  onChange={(v) => setTForm({ ...tForm, vehicle_type: v })}
+                  options={vehicleOptions}
+                  placeholder="e.g. 10 Wheeler"
+                />
               </Field>
               <Field label="Basis">
                 <SearchSelect value={tForm.basis || 'trip'} onChange={(v) => setTForm({ ...tForm, basis: v as TransportBasis })} options={[{ value: 'trip', label: 'Per Trip' }, { value: 'cm', label: 'Per m³' }, { value: 'ton', label: 'Per Ton' }]} />
@@ -320,30 +285,12 @@ export function RateChart(): React.JSX.Element {
             </div>
             {tForm.stock_location_id && tForm.vehicle_type?.trim() && (
               <div className="rounded-lg bg-muted/60 px-4 py-2 text-sm text-muted-foreground">
-                {formLocations.find((l) => l.id === tForm.stock_location_id)?.name} → <b className="text-foreground">{tForm.destination_id ? destName(tForm.destination_id) : 'Any destination'}</b> · {tForm.vehicle_type} · {basisLabel[tForm.basis || 'trip']} · <b className="text-foreground">{fmtMoney(tForm.charge)}</b>
+                {formLocations.find((l) => l.id === tForm.stock_location_id)?.name} → <b className="text-foreground">{tForm.destination_name?.trim() || 'Any destination'}</b> · {tForm.vehicle_type} · {basisLabel[tForm.basis || 'trip']} · <b className="text-foreground">{fmtMoney(tForm.charge)}</b>
               </div>
             )}
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="outline" onClick={() => setTForm(null)}>Cancel</Button>
               <Button onClick={() => saveTransport.mutate(tForm)} disabled={!tForm.vehicle_type?.trim() || !tForm.stock_location_id}>Save</Button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* Destination modal */}
-      {destForm && (
-        <Modal open onClose={() => setDestForm(null)} title={destForm.id ? 'Edit Destination' : 'New Destination'}>
-          <div className="space-y-4">
-            <Field label="Destination Name">
-              <Input value={destForm.name || ''} onChange={(e) => setDestForm({ ...destForm, name: e.target.value })} placeholder="e.g. Guwahati, Silchar, Site A" />
-            </Field>
-            <Field label="Remarks" hint="Optional">
-              <Input value={destForm.remarks || ''} onChange={(e) => setDestForm({ ...destForm, remarks: e.target.value })} />
-            </Field>
-            <div className="flex justify-end gap-2 pt-1">
-              <Button variant="outline" onClick={() => setDestForm(null)}>Cancel</Button>
-              <Button onClick={() => saveDest.mutate(destForm)} disabled={!destForm.name?.trim()}>Save</Button>
             </div>
           </div>
         </Modal>

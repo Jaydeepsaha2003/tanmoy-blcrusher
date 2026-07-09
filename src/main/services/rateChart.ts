@@ -1,4 +1,4 @@
-import { getDb } from '../db'
+import { getDb, type Db } from '../db'
 import type { RateChartRow, TransportCharge, Uom, TransportBasis } from '@shared/types'
 import { properCase } from '@shared/types'
 
@@ -78,6 +78,29 @@ export async function deleteRateChart(payload: { id: number }): Promise<{ ok: bo
 
 /* ---------------- Transport charges (vehicle × location) ---------------- */
 
+/**
+ * Resolve the destination for a transport rate. The rate form sends a destination
+ * NAME (chosen from, or typed into, the dropdown); if that name isn't a known
+ * destination yet, it is created on the fly so it persists for future rates.
+ * An empty name means "any destination". Falls back to an explicit id if given.
+ */
+async function resolveDestinationId(
+  d: Db,
+  p: { destination_id?: number | null; destination_name?: string | null }
+): Promise<number | null> {
+  if (p.destination_name !== undefined && p.destination_name !== null) {
+    const name = properCase(p.destination_name)
+    if (!name) return null
+    const existing = (await d
+      .prepare(`SELECT id FROM destinations WHERE LOWER(name) = LOWER(?)`)
+      .get(name)) as { id: number } | undefined
+    if (existing) return existing.id
+    const info = await d.prepare(`INSERT INTO destinations (name, remarks) VALUES (?, ?)`).run(name, '')
+    return Number(info.lastInsertRowid)
+  }
+  return p.destination_id ? Number(p.destination_id) : null
+}
+
 export async function listTransportCharges(payload: { plant_id?: number } = {}): Promise<TransportCharge[]> {
   const d = getDb()
   const clause = payload.plant_id ? 'WHERE l.plant_id = @plant_id' : ''
@@ -100,12 +123,13 @@ export async function createTransportCharge(p: TransportCharge): Promise<Transpo
   if (!vehicle) throw new Error('Enter a vehicle / lorry type.')
   if (!p.stock_location_id) throw new Error('Select a location.')
   const basis: TransportBasis = VALID_BASIS.includes(p.basis) ? p.basis : 'trip'
+  const destination_id = await resolveDestinationId(d, p)
   const info = await d
     .prepare(
       `INSERT INTO transport_charges (vehicle_type, stock_location_id, destination_id, basis, charge, updated_at)
        VALUES (?, ?, ?, ?, ?, ?)`
     )
-    .run(vehicle, p.stock_location_id, p.destination_id ? Number(p.destination_id) : null, basis, money(p.charge), nowIso())
+    .run(vehicle, p.stock_location_id, destination_id, basis, money(p.charge), nowIso())
   return (await d.prepare(`SELECT * FROM transport_charges WHERE id = ?`).get(info.lastInsertRowid)) as TransportCharge
 }
 
@@ -115,11 +139,12 @@ export async function updateTransportCharge(p: TransportCharge): Promise<Transpo
   const vehicle = properCase(p.vehicle_type)
   if (!vehicle) throw new Error('Enter a vehicle / lorry type.')
   const basis: TransportBasis = VALID_BASIS.includes(p.basis) ? p.basis : 'trip'
+  const destination_id = await resolveDestinationId(d, p)
   await d
     .prepare(
       `UPDATE transport_charges SET vehicle_type=?, stock_location_id=?, destination_id=?, basis=?, charge=?, updated_at=? WHERE id=?`
     )
-    .run(vehicle, p.stock_location_id, p.destination_id ? Number(p.destination_id) : null, basis, money(p.charge), nowIso(), p.id)
+    .run(vehicle, p.stock_location_id, destination_id, basis, money(p.charge), nowIso(), p.id)
   return (await d.prepare(`SELECT * FROM transport_charges WHERE id = ?`).get(p.id)) as TransportCharge
 }
 
