@@ -46523,31 +46523,67 @@ const Button = reactExports.forwardRef(
   ({ className, variant, size, ...props }, ref) => /* @__PURE__ */ jsxRuntimeExports.jsx("button", { ref, className: cn(buttonVariants({ variant, size, className })), ...props })
 );
 Button.displayName = "Button";
+const NO_CAPS_TYPES = /* @__PURE__ */ new Set([
+  "password",
+  "email",
+  "number",
+  "date",
+  "time",
+  "datetime-local",
+  "month",
+  "week",
+  "file",
+  "color",
+  "range",
+  "checkbox",
+  "radio",
+  "hidden"
+]);
 const Input = reactExports.forwardRef(
-  ({ className, ...props }, ref) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "input",
-    {
-      ref,
-      className: cn(
-        "flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1 text-sm shadow-sm transition-all placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-50",
-        className
-      ),
-      ...props
-    }
-  )
+  ({ className, noCaps, onChange, type, ...props }, ref) => {
+    const upper = !noCaps && !NO_CAPS_TYPES.has(type ?? "text");
+    const handleChange = upper && onChange ? (e3) => {
+      const up = e3.target.value.toUpperCase();
+      if (up !== e3.target.value) e3.target.value = up;
+      onChange(e3);
+    } : onChange;
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "input",
+      {
+        ref,
+        type,
+        onChange: handleChange,
+        className: cn(
+          "flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1 text-sm shadow-sm transition-all placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-50",
+          className
+        ),
+        ...props
+      }
+    );
+  }
 );
 Input.displayName = "Input";
-const Textarea = reactExports.forwardRef(({ className, ...props }, ref) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-  "textarea",
-  {
-    ref,
-    className: cn(
-      "flex min-h-[68px] w-full rounded-lg border border-input bg-card px-3 py-2 text-sm shadow-sm transition-all placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-50",
-      className
-    ),
-    ...props
+const Textarea = reactExports.forwardRef(
+  ({ className, noCaps, onChange, ...props }, ref) => {
+    const handleChange = !noCaps && onChange ? (e3) => {
+      const up = e3.target.value.toUpperCase();
+      if (up !== e3.target.value) e3.target.value = up;
+      onChange(e3);
+    } : onChange;
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "textarea",
+      {
+        ref,
+        onChange: handleChange,
+        className: cn(
+          "flex min-h-[68px] w-full rounded-lg border border-input bg-card px-3 py-2 text-sm shadow-sm transition-all placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-50",
+          className
+        ),
+        ...props
+      }
+    );
   }
-));
+);
 Textarea.displayName = "Textarea";
 const Select = reactExports.forwardRef(({ className, children, ...props }, ref) => /* @__PURE__ */ jsxRuntimeExports.jsx(
   "select",
@@ -46613,7 +46649,7 @@ function SearchSelect({
           {
             autoFocus: true,
             value: q2,
-            onChange: (e3) => setQ(e3.target.value),
+            onChange: (e3) => setQ(creatable ? e3.target.value.toUpperCase() : e3.target.value),
             placeholder: "Search…",
             className: "w-full bg-transparent text-sm outline-none"
           }
@@ -47335,6 +47371,7 @@ function Login({ onSuccess }) {
         Input,
         {
           autoFocus: true,
+          noCaps: true,
           className: "pl-9",
           placeholder: "e.g. admin",
           value: username,
@@ -90458,7 +90495,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-GoMeGFC8.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-DP3xhUzL.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
@@ -95080,6 +95117,7 @@ function UsersPage() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Username", hint: "letters, numbers, . _ -", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
           Input,
           {
+            noCaps: true,
             value: form.username,
             disabled: !!form.id,
             placeholder: "e.g. ramesh",
