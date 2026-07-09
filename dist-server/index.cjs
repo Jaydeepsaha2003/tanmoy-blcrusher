@@ -3714,6 +3714,17 @@ async function deleteRateChart(payload) {
   await getDb().prepare(`DELETE FROM rate_chart WHERE id = ?`).run(payload.id);
   return { ok: true };
 }
+async function resolveDestinationId(d, p) {
+  if (p.destination_name !== void 0 && p.destination_name !== null) {
+    const name = properCase(p.destination_name);
+    if (!name) return null;
+    const existing = await d.prepare(`SELECT id FROM destinations WHERE LOWER(name) = LOWER(?)`).get(name);
+    if (existing) return existing.id;
+    const info = await d.prepare(`INSERT INTO destinations (name, remarks) VALUES (?, ?)`).run(name, "");
+    return Number(info.lastInsertRowid);
+  }
+  return p.destination_id ? Number(p.destination_id) : null;
+}
 async function listTransportCharges(payload = {}) {
   const d = getDb();
   const clause = payload.plant_id ? "WHERE l.plant_id = @plant_id" : "";
@@ -3733,10 +3744,11 @@ async function createTransportCharge(p) {
   if (!vehicle) throw new Error("Enter a vehicle / lorry type.");
   if (!p.stock_location_id) throw new Error("Select a location.");
   const basis = VALID_BASIS.includes(p.basis) ? p.basis : "trip";
+  const destination_id = await resolveDestinationId(d, p);
   const info = await d.prepare(
     `INSERT INTO transport_charges (vehicle_type, stock_location_id, destination_id, basis, charge, updated_at)
        VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(vehicle, p.stock_location_id, p.destination_id ? Number(p.destination_id) : null, basis, money(p.charge), nowIso2());
+  ).run(vehicle, p.stock_location_id, destination_id, basis, money(p.charge), nowIso2());
   return await d.prepare(`SELECT * FROM transport_charges WHERE id = ?`).get(info.lastInsertRowid);
 }
 async function updateTransportCharge(p) {
@@ -3745,9 +3757,10 @@ async function updateTransportCharge(p) {
   const vehicle = properCase(p.vehicle_type);
   if (!vehicle) throw new Error("Enter a vehicle / lorry type.");
   const basis = VALID_BASIS.includes(p.basis) ? p.basis : "trip";
+  const destination_id = await resolveDestinationId(d, p);
   await d.prepare(
     `UPDATE transport_charges SET vehicle_type=?, stock_location_id=?, destination_id=?, basis=?, charge=?, updated_at=? WHERE id=?`
-  ).run(vehicle, p.stock_location_id, p.destination_id ? Number(p.destination_id) : null, basis, money(p.charge), nowIso2(), p.id);
+  ).run(vehicle, p.stock_location_id, destination_id, basis, money(p.charge), nowIso2(), p.id);
   return await d.prepare(`SELECT * FROM transport_charges WHERE id = ?`).get(p.id);
 }
 async function deleteTransportCharge(payload) {
