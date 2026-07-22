@@ -77932,8 +77932,8 @@ function Racks() {
   const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
   const [filter, setFilter] = usePersistentState("filter", {});
   const { data = [] } = useQuery({
-    queryKey: ["racks", filter],
-    queryFn: () => api.racks.list(filter.status ? { status: filter.status } : {})
+    queryKey: ["racks", filter, plantId],
+    queryFn: () => api.racks.list({ ...filter.status ? { status: filter.status } : {}, ...plantId ? { plant_id: plantId } : {} })
   });
   const [open2, setOpen] = reactExports.useState(false);
   const [form, setForm] = reactExports.useState({});
@@ -90501,7 +90501,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-0g7551t1.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-Cd9aOreB.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
@@ -93810,7 +93810,7 @@ function Payments() {
   const savePayment = useMutation({
     // Employees settle via payroll (allocated across unpaid wage entries); everyone
     // else via the party payments ledger.
-    mutationFn: (p2) => p2.party_type === "employee" ? api.wages.payEmployee({ employee_id: p2.party_id, amount: Number(p2.amount), plant_id: plantId ?? null, date: p2.date, remarks: p2.remarks }) : api.payments.add(p2),
+    mutationFn: (p2) => p2.party_type === "employee" ? api.wages.payEmployee({ employee_id: p2.party_id, amount: Number(p2.amount), plant_id: plantId ?? null, date: p2.date, remarks: p2.remarks }) : api.payments.add({ ...p2, plant_id: plantId ?? null }),
     onSuccess: () => {
       qc2.invalidateQueries({ queryKey: ["allDues"] });
       qc2.invalidateQueries({ queryKey: ["ledger"] });

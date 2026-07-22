@@ -955,6 +955,7 @@ CREATE TABLE IF NOT EXISTS payments (
   ref        TEXT NOT NULL DEFAULT '',
   date       TEXT NOT NULL,
   remarks    TEXT NOT NULL DEFAULT '',
+  plant_id   INTEGER,
   created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
@@ -2211,6 +2212,12 @@ CREATE INDEX idx_pcash_plant ON plant_cash_entries(plant_id)`
     // NULL/empty = all plants (unrestricted). Admins are always unrestricted.
     id: "041_user_plant_ids",
     sql: `ALTER TABLE users ADD COLUMN plant_ids TEXT`
+  },
+  {
+    // Plant-scope a payment (the plant active when it was recorded; NULL = common).
+    // Lets party ledgers, dues and payment history be viewed per plant.
+    id: "042_payment_plant_id",
+    sql: `ALTER TABLE payments ADD COLUMN plant_id INT`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -2323,6 +2330,7 @@ async function sqliteLegacyMigrate(adapter2) {
   await addColumn("employees", "bank_account", `TEXT NOT NULL DEFAULT ''`);
   await addColumn("employees", "bank_ifsc", `TEXT NOT NULL DEFAULT ''`);
   await addColumn("users", "plant_ids", "TEXT");
+  await addColumn("payments", "plant_id", "INTEGER");
 }
 async function importProductsFromSettings(adapter2) {
   const all = (await adapter2.exec(`SELECT id, name FROM products ORDER BY id`, void 0, null)).rows;
@@ -6221,6 +6229,24 @@ async function deleteCompany(payload) {
 }
 
 // src/main/services/racks.ts
+function rackScopeIds(filterPlantId) {
+  const scope = currentPlantScope();
+  if (filterPlantId) {
+    const pid = Number(filterPlantId);
+    return scope.length && !scope.includes(pid) ? [-1] : [pid];
+  }
+  return scope;
+}
+function rackPlantClause(alias, ids) {
+  const list = ids.map(Number).join(",");
+  return `(${alias}.plant_id IN (${list}) OR EXISTS (SELECT 1 FROM rack_loadings rl WHERE rl.rack_id = ${alias}.id AND rl.plant_id IN (${list})))`;
+}
+async function assertRackInScope(d, rackId) {
+  const ids = currentPlantScope();
+  if (!ids.length) return;
+  const row = await d.prepare(`SELECT r.id FROM racks r WHERE r.id = ? AND ${rackPlantClause("r", ids)}`).get(rackId);
+  if (!row) throw new Error("You do not have access to that rack.");
+}
 async function rackDiesel(d, plantId, dieselLitres, exclude) {
   const dl = dieselLitres == null || dieselLitres === "" ? null : Number(dieselLitres);
   if (!dl || !(dl > 0)) return { litres: null, amount: null };
@@ -6285,6 +6311,8 @@ async function listRacks(filter = {}) {
     where.push("r.date <= @to");
     params.to = filter.to;
   }
+  const scopeIds = rackScopeIds(filter.plant_id);
+  if (scopeIds.length) where.push(rackPlantClause("r", scopeIds));
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const rows = await d.prepare(`SELECT r.*, ${RACK_AGG} FROM racks r ${clause} ORDER BY r.date DESC, r.id DESC`).all(params);
   return rows.map(decorate);
@@ -6354,6 +6382,7 @@ async function deleteRack(payload) {
 }
 async function getRackDetail(payload) {
   const d = getDb();
+  await assertRackInScope(d, payload.id);
   const rack = await getRack(d, payload.id);
   const loadings = await d.prepare(
     `SELECT rl.*, p.name AS plant_name, t.name AS transporter_name, r.rack_no
@@ -6757,6 +6786,8 @@ async function listExpenses(filter = {}) {
     where.push("e.date <= @to");
     params.to = filter.to;
   }
+  const scopeIds = rackScopeIds(filter.plant_id);
+  if (scopeIds.length) where.push(rackPlantClause("r", scopeIds));
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
   return await d.prepare(
     `SELECT e.*, r.rack_no
@@ -6813,6 +6844,7 @@ async function getSaleDetail(payload) {
   const d = getDb();
   const sale = await d.prepare(`SELECT * FROM rack_sales WHERE id = ?`).get(payload.id);
   if (!sale) return null;
+  await assertRackInScope(d, sale.rack_id);
   sale.transporters = await d.prepare(
     `SELECT rst.*, t.name AS transporter_name, rv.vehicle_no AS rack_vehicle_no,
               COALESCE(t.name, rv.vehicle_no) AS carrier_name
@@ -6944,6 +6976,8 @@ async function listSales(filter = {}) {
     where.push("rs.date <= @to");
     params.to = filter.to;
   }
+  const scopeIds = rackScopeIds(filter.plant_id);
+  if (scopeIds.length) where.push(rackPlantClause("r", scopeIds));
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
   return await d.prepare(
     `SELECT rs.*, c.name AS customer_name, r.rack_no
@@ -7210,8 +7244,8 @@ async function addPayment(p) {
   if (!(Number(p.amount) > 0)) throw new Error("Amount must be greater than 0.");
   await partyName(p.party_type, p.party_id);
   const info = await d.prepare(
-    `INSERT INTO payments (party_type, party_id, direction, amount, mode, ref, date, remarks)
-       VALUES (@party_type,@party_id,@direction,@amount,@mode,@ref,@date,@remarks)`
+    `INSERT INTO payments (party_type, party_id, direction, amount, mode, ref, date, remarks, plant_id)
+       VALUES (@party_type,@party_id,@direction,@amount,@mode,@ref,@date,@remarks,@plant_id)`
   ).run({
     party_type: p.party_type,
     party_id: p.party_id,
@@ -7220,7 +7254,8 @@ async function addPayment(p) {
     mode: p.mode || "cash",
     ref: p.ref ?? "",
     date: p.date,
-    remarks: p.remarks ?? ""
+    remarks: p.remarks ?? "",
+    plant_id: p.plant_id ? Number(p.plant_id) : null
   });
   return await d.prepare(`SELECT * FROM payments WHERE id = ?`).get(info.lastInsertRowid);
 }
@@ -7244,6 +7279,12 @@ async function listPayments(filter = {}) {
     where.push("pay.date <= @to");
     params.to = filter.to;
   }
+  if (filter.plant_id) {
+    where.push("(pay.plant_id = @plant_id OR pay.plant_id IS NULL)");
+    params.plant_id = Number(filter.plant_id);
+  }
+  const scope = currentPlantScope();
+  if (scope.length) where.push(`(pay.plant_id IN (${scope.map(Number).join(",")}) OR pay.plant_id IS NULL)`);
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
   return await d.prepare(
     `SELECT pay.*, COALESCE(c.name, s.name, t.name, o.name, rv.vehicle_no, rj.name) AS party_name
@@ -7729,7 +7770,7 @@ async function buildEntries(partyType, partyId, plantId) {
   }
   if (partyType === "outsource") {
     const exp = await d.prepare(
-      `SELECT expense_no, date, created_at, category, amount, paid_amount
+      `SELECT expense_no, date, created_at, category, amount, paid_amount, plant_id
          FROM plant_expenses WHERE outsource_id = ?`
     ).all(partyId);
     for (const x of exp) {
@@ -7740,7 +7781,8 @@ async function buildEntries(partyType, partyId, plantId) {
           particulars: `Outsourced \u2014 ${x.category}`,
           ref: x.expense_no,
           debit: 0,
-          credit: x.amount
+          credit: x.amount,
+          plant_id: x.plant_id
         });
       if (x.paid_amount > 0)
         entries.push({
@@ -7749,11 +7791,12 @@ async function buildEntries(partyType, partyId, plantId) {
           particulars: `Paid against bill`,
           ref: x.expense_no,
           debit: x.paid_amount,
-          credit: 0
+          credit: 0,
+          plant_id: x.plant_id
         });
     }
     const mach = await d.prepare(
-      `SELECT pu.purchase_no, pu.date, pu.created_at, COALESCE(pm.amount,0) AS amount, a.name AS aname
+      `SELECT pu.purchase_no, pu.date, pu.created_at, COALESCE(pm.amount,0) AS amount, a.name AS aname, pu.plant_id
          FROM purchase_machines pm JOIN purchases pu ON pu.id = pm.purchase_id
          JOIN assets a ON a.id = pm.asset_id WHERE pm.outsource_id = ?`
     ).all(partyId);
@@ -7765,10 +7808,11 @@ async function buildEntries(partyType, partyId, plantId) {
           particulars: `Machine hire \u2014 ${x.aname}`,
           ref: x.purchase_no,
           debit: 0,
-          credit: x.amount
+          credit: x.amount,
+          plant_id: x.plant_id
         });
     const dmach = await d.prepare(
-      `SELECT di.dispatch_no, di.date, di.created_at, COALESCE(dm.amount,0) AS amount, a.name AS aname
+      `SELECT di.dispatch_no, di.date, di.created_at, COALESCE(dm.amount,0) AS amount, a.name AS aname, di.plant_id
          FROM dispatch_machines dm JOIN dispatches di ON di.id = dm.dispatch_id
          JOIN assets a ON a.id = dm.asset_id WHERE dm.outsource_id = ?`
     ).all(partyId);
@@ -7780,11 +7824,13 @@ async function buildEntries(partyType, partyId, plantId) {
           particulars: `Machine hire \u2014 ${x.aname}`,
           ref: x.dispatch_no,
           debit: 0,
-          credit: x.amount
+          credit: x.amount,
+          plant_id: x.plant_id
         });
     const rsmach = await d.prepare(
-      `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rsm.amount,0) AS amount, a.name AS aname
+      `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rsm.amount,0) AS amount, a.name AS aname, r.plant_id
          FROM rack_sale_machines rsm JOIN rack_sales rs ON rs.id = rsm.rack_sale_id
+         JOIN racks r ON r.id = rs.rack_id
          JOIN assets a ON a.id = rsm.asset_id WHERE rsm.outsource_id = ?`
     ).all(partyId);
     for (const x of rsmach)
@@ -7795,12 +7841,13 @@ async function buildEntries(partyType, partyId, plantId) {
           particulars: `Machine hire \u2014 ${x.aname}`,
           ref: x.sale_no,
           debit: 0,
-          credit: x.amount
+          credit: x.amount,
+          plant_id: x.plant_id
         });
     const osale = await d.prepare(
       `SELECT dispatch_no, date, created_at, product_name, uom,
                 COALESCE(sale_quantity, quantity) AS qty,
-                ROUND(COALESCE(buy_rate,0) * COALESCE(sale_quantity, quantity), 2) AS amount
+                ROUND(COALESCE(buy_rate,0) * COALESCE(sale_quantity, quantity), 2) AS amount, plant_id
          FROM dispatches
          WHERE outsourced = 1 AND outsource_id = ? AND COALESCE(buy_rate,0) > 0`
     ).all(partyId);
@@ -7814,7 +7861,8 @@ async function buildEntries(partyType, partyId, plantId) {
           qty: x.qty,
           uom: x.uom,
           debit: 0,
-          credit: x.amount
+          credit: x.amount,
+          plant_id: x.plant_id
         });
   }
   if (partyType === "customer") {
@@ -7827,7 +7875,7 @@ async function buildEntries(partyType, partyId, plantId) {
           (COALESCE(amount,0)
             + CASE WHEN transport_billed=1 THEN transport_charge ELSE 0 END
             + CASE WHEN other_billed=1 THEN other_charge ELSE 0 END) AS billed,
-          paid_amount
+          paid_amount, plant_id
          FROM dispatches WHERE customer_id = ? AND to_plant_id IS NULL`
     ).all(partyId);
     const uomLabel = (u) => u === "CM" ? "m\xB3" : u === "TON" ? "Ton" : u === "CFT" ? "CFT" : u;
@@ -7847,7 +7895,8 @@ async function buildEntries(partyType, partyId, plantId) {
           qty: x.quantity,
           uom: x.uom,
           debit: x.billed,
-          credit: 0
+          credit: 0,
+          plant_id: x.plant_id
         });
       }
       if (x.paid_amount > 0)
@@ -7857,12 +7906,13 @@ async function buildEntries(partyType, partyId, plantId) {
           particulars: `Received against sale`,
           ref: x.dispatch_no,
           debit: 0,
-          credit: x.paid_amount
+          credit: x.paid_amount,
+          plant_id: x.plant_id
         });
     }
     const sales = await d.prepare(
       `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rs.amount,0) AS amount,
-                rs.product_name, rs.quantity, rs.uom, r.rack_no
+                rs.product_name, rs.quantity, rs.uom, r.rack_no, r.plant_id
          FROM rack_sales rs JOIN racks r ON r.id = rs.rack_id
          WHERE rs.customer_id = ? AND rs.amount IS NOT NULL`
     ).all(partyId);
@@ -7875,13 +7925,14 @@ async function buildEntries(partyType, partyId, plantId) {
         qty: x.quantity,
         uom: x.uom,
         debit: x.amount,
-        credit: 0
+        credit: 0,
+        plant_id: x.plant_id
       });
   }
   if (partyType === "supplier") {
     const purchases = await d.prepare(
       `SELECT purchase_no, date, created_at, COALESCE(amount,0) AS amount, paid_amount, quantity, uom,
-                COALESCE(material_type,'raw') AS material_type, product_name
+                COALESCE(material_type,'raw') AS material_type, product_name, plant_id
          FROM purchases WHERE supplier_id = ? AND linked_dispatch_id IS NULL`
     ).all(partyId);
     for (const x of purchases) {
@@ -7894,7 +7945,8 @@ async function buildEntries(partyType, partyId, plantId) {
           qty: x.quantity,
           uom: x.uom,
           debit: 0,
-          credit: x.amount
+          credit: x.amount,
+          plant_id: x.plant_id
         });
       if (x.paid_amount > 0)
         entries.push({
@@ -7903,11 +7955,12 @@ async function buildEntries(partyType, partyId, plantId) {
           particulars: `Paid against bill`,
           ref: x.purchase_no,
           debit: x.paid_amount,
-          credit: 0
+          credit: 0,
+          plant_id: x.plant_id
         });
     }
     const diesel = await d.prepare(
-      `SELECT purchase_no, date, created_at, COALESCE(amount,0) AS amount, paid_amount, litres
+      `SELECT purchase_no, date, created_at, COALESCE(amount,0) AS amount, paid_amount, litres, plant_id
          FROM diesel_purchases WHERE supplier_id = ?`
     ).all(partyId);
     for (const x of diesel) {
@@ -7920,7 +7973,8 @@ async function buildEntries(partyType, partyId, plantId) {
           qty: x.litres,
           uom: "L",
           debit: 0,
-          credit: x.amount
+          credit: x.amount,
+          plant_id: x.plant_id
         });
       if (x.paid_amount > 0)
         entries.push({
@@ -7929,14 +7983,15 @@ async function buildEntries(partyType, partyId, plantId) {
           particulars: `Paid against diesel bill`,
           ref: x.purchase_no,
           debit: x.paid_amount,
-          credit: 0
+          credit: 0,
+          plant_id: x.plant_id
         });
     }
   }
   if (partyType === "transporter") {
     const loadings = await d.prepare(
       `SELECT rl.loading_no, rl.date, rl.created_at, COALESCE(rl.amount,0) AS amount,
-                COALESCE(rl.diesel_amount,0) AS diesel, COALESCE(rl.diesel_charged,0) AS diesel_charged, rl.total_cm, rl.trips, r.rack_no
+                COALESCE(rl.diesel_amount,0) AS diesel, COALESCE(rl.diesel_charged,0) AS diesel_charged, rl.total_cm, rl.trips, r.rack_no, rl.plant_id
          FROM rack_loadings rl JOIN racks r ON r.id = rl.rack_id
          WHERE rl.transporter_id = ?`
     ).all(partyId);
@@ -7948,7 +8003,8 @@ async function buildEntries(partyType, partyId, plantId) {
           particulars: `Transport \u2014 ${x.trips} trips, ${x.total_cm} m\xB3 \xB7 Rack ${x.rack_no}`,
           ref: x.loading_no,
           debit: 0,
-          credit: x.amount
+          credit: x.amount,
+          plant_id: x.plant_id
         });
       if (x.diesel > 0 && x.diesel_charged)
         entries.push({
@@ -7957,12 +8013,13 @@ async function buildEntries(partyType, partyId, plantId) {
           particulars: `Diesel issued (deduction)`,
           ref: x.loading_no,
           debit: x.diesel,
-          credit: 0
+          credit: 0,
+          plant_id: x.plant_id
         });
     }
     const unloadings = await d.prepare(
       `SELECT ru.unloading_no, ru.date, ru.created_at, COALESCE(ru.amount,0) AS amount,
-                COALESCE(ru.diesel_amount,0) AS diesel, COALESCE(ru.diesel_charged,0) AS diesel_charged, ru.total_cm, ru.trips, r.rack_no
+                COALESCE(ru.diesel_amount,0) AS diesel, COALESCE(ru.diesel_charged,0) AS diesel_charged, ru.total_cm, ru.trips, r.rack_no, r.plant_id
          FROM rack_unloadings ru JOIN racks r ON r.id = ru.rack_id
          WHERE ru.transporter_id = ?`
     ).all(partyId);
@@ -7974,7 +8031,8 @@ async function buildEntries(partyType, partyId, plantId) {
           particulars: `Unloading transport \u2014 ${x.trips} trips, ${x.total_cm} m\xB3 \xB7 Rack ${x.rack_no}`,
           ref: x.unloading_no,
           debit: 0,
-          credit: x.amount
+          credit: x.amount,
+          plant_id: x.plant_id
         });
       if (x.diesel > 0 && x.diesel_charged)
         entries.push({
@@ -7983,11 +8041,12 @@ async function buildEntries(partyType, partyId, plantId) {
           particulars: `Diesel issued (deduction)`,
           ref: x.unloading_no,
           debit: x.diesel,
-          credit: 0
+          credit: 0,
+          plant_id: x.plant_id
         });
     }
     const sales = await d.prepare(
-      `SELECT dispatch_no, date, created_at, product_name, COALESCE(transport_charge,0) AS charge
+      `SELECT dispatch_no, date, created_at, product_name, COALESCE(transport_charge,0) AS charge, plant_id
          FROM dispatches WHERE transporter_id = ? AND COALESCE(transport_charge,0) > 0`
     ).all(partyId);
     for (const x of sales)
@@ -7997,10 +8056,11 @@ async function buildEntries(partyType, partyId, plantId) {
         particulars: `Transport \u2014 direct sale ${x.product_name}`,
         ref: x.dispatch_no,
         debit: 0,
-        credit: x.charge
+        credit: x.charge,
+        plant_id: x.plant_id
       });
     const pin = await d.prepare(
-      `SELECT pu.purchase_no, pu.date, pu.created_at, COALESCE(pt.charge,0) AS charge, COALESCE(pt.vehicle_no,'') AS vno
+      `SELECT pu.purchase_no, pu.date, pu.created_at, COALESCE(pt.charge,0) AS charge, COALESCE(pt.vehicle_no,'') AS vno, pu.plant_id
          FROM purchase_transporters pt JOIN purchases pu ON pu.id = pt.purchase_id
          WHERE pt.transporter_id = ?`
     ).all(partyId);
@@ -8012,10 +8072,11 @@ async function buildEntries(partyType, partyId, plantId) {
           particulars: `Transport \u2014 purchase inward${x.vno ? ` (${x.vno})` : ""}`,
           ref: x.purchase_no,
           debit: 0,
-          credit: x.charge
+          credit: x.charge,
+          plant_id: x.plant_id
         });
     const dtin = await d.prepare(
-      `SELECT di.dispatch_no, di.date, di.created_at, COALESCE(dt.charge,0) AS charge, COALESCE(dt.vehicle_no,'') AS vno
+      `SELECT di.dispatch_no, di.date, di.created_at, COALESCE(dt.charge,0) AS charge, COALESCE(dt.vehicle_no,'') AS vno, di.plant_id
          FROM dispatch_transporters dt JOIN dispatches di ON di.id = dt.dispatch_id
          WHERE dt.transporter_id = ?`
     ).all(partyId);
@@ -8027,12 +8088,14 @@ async function buildEntries(partyType, partyId, plantId) {
           particulars: `Transport \u2014 direct sale${x.vno ? ` (${x.vno})` : ""}`,
           ref: x.dispatch_no,
           debit: 0,
-          credit: x.charge
+          credit: x.charge,
+          plant_id: x.plant_id
         });
     const rstin = await d.prepare(
       `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rst.charge,0) AS charge, COALESCE(rst.vehicle_no,'') AS vno,
-                COALESCE(rst.diesel_amount,0) AS diesel, COALESCE(rst.diesel_charged,0) AS diesel_charged
+                COALESCE(rst.diesel_amount,0) AS diesel, COALESCE(rst.diesel_charged,0) AS diesel_charged, r.plant_id
          FROM rack_sale_transporters rst JOIN rack_sales rs ON rs.id = rst.rack_sale_id
+         JOIN racks r ON r.id = rs.rack_id
          WHERE rst.transporter_id = ?`
     ).all(partyId);
     for (const x of rstin) {
@@ -8043,7 +8106,8 @@ async function buildEntries(partyType, partyId, plantId) {
           particulars: `Transport \u2014 rack sale${x.vno ? ` (${x.vno})` : ""}`,
           ref: x.sale_no,
           debit: 0,
-          credit: x.charge
+          credit: x.charge,
+          plant_id: x.plant_id
         });
       if (x.diesel > 0 && x.diesel_charged)
         entries.push({
@@ -8052,11 +8116,12 @@ async function buildEntries(partyType, partyId, plantId) {
           particulars: `Diesel issued (deduction)`,
           ref: x.sale_no,
           debit: x.diesel,
-          credit: 0
+          credit: 0,
+          plant_id: x.plant_id
         });
     }
     const dsl = await d.prepare(
-      `SELECT issue_no, date, created_at, COALESCE(litres,0) AS litres, COALESCE(amount,0) AS amount
+      `SELECT issue_no, date, created_at, COALESCE(litres,0) AS litres, COALESCE(amount,0) AS amount, plant_id
          FROM diesel_issues WHERE transporter_id = ? AND charged = 1 AND COALESCE(amount,0) > 0`
     ).all(partyId);
     for (const x of dsl)
@@ -8066,14 +8131,15 @@ async function buildEntries(partyType, partyId, plantId) {
         particulars: `Diesel issued \u2014 ${x.litres} L`,
         ref: x.issue_no,
         debit: x.amount,
-        credit: 0
+        credit: 0,
+        plant_id: x.plant_id
       });
   }
   if (partyType === "rack_vehicle") {
     const unl = await d.prepare(
       `SELECT ru.unloading_no, ru.date, ru.created_at, COALESCE(ru.amount,0) AS amount,
                 COALESCE(ru.diesel_amount,0) AS diesel, COALESCE(ru.diesel_charged,0) AS diesel_charged,
-                ru.qty_cm, ru.trips, r.rack_no
+                ru.qty_cm, ru.trips, r.rack_no, r.plant_id
          FROM rack_unloadings ru JOIN racks r ON r.id = ru.rack_id WHERE ru.rack_vehicle_id = ?`
     ).all(partyId);
     for (const x of unl) {
@@ -8084,14 +8150,15 @@ async function buildEntries(partyType, partyId, plantId) {
           particulars: `Unloading \u2014 ${x.trips} trips, ${x.qty_cm} m\xB3 \xB7 Rack ${x.rack_no}`,
           ref: x.unloading_no,
           debit: 0,
-          credit: x.amount
+          credit: x.amount,
+          plant_id: x.plant_id
         });
       if (x.diesel > 0 && x.diesel_charged)
-        entries.push({ date: x.date, created_at: x.created_at, particulars: `Diesel issued (deduction)`, ref: x.unloading_no, debit: x.diesel, credit: 0 });
+        entries.push({ date: x.date, created_at: x.created_at, particulars: `Diesel issued (deduction)`, ref: x.unloading_no, debit: x.diesel, credit: 0, plant_id: x.plant_id });
     }
     const st = await d.prepare(
       `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rst.charge,0) AS charge,
-                COALESCE(rst.diesel_amount,0) AS diesel, COALESCE(rst.diesel_charged,0) AS diesel_charged, r.rack_no
+                COALESCE(rst.diesel_amount,0) AS diesel, COALESCE(rst.diesel_charged,0) AS diesel_charged, r.rack_no, r.plant_id
          FROM rack_sale_transporters rst JOIN rack_sales rs ON rs.id = rst.rack_sale_id
          JOIN racks r ON r.id = rs.rack_id WHERE rst.rack_vehicle_id = ?`
     ).all(partyId);
@@ -8103,10 +8170,11 @@ async function buildEntries(partyType, partyId, plantId) {
           particulars: `Sale transport \xB7 Rack ${x.rack_no}`,
           ref: x.sale_no,
           debit: 0,
-          credit: x.charge
+          credit: x.charge,
+          plant_id: x.plant_id
         });
       if (x.diesel > 0 && x.diesel_charged)
-        entries.push({ date: x.date, created_at: x.created_at, particulars: `Diesel issued (deduction)`, ref: x.sale_no, debit: x.diesel, credit: 0 });
+        entries.push({ date: x.date, created_at: x.created_at, particulars: `Diesel issued (deduction)`, ref: x.sale_no, debit: x.diesel, credit: 0, plant_id: x.plant_id });
     }
   }
   if (partyType === "rack_jcb") {
@@ -8114,7 +8182,7 @@ async function buildEntries(partyType, partyId, plantId) {
     const unl = await d.prepare(
       `SELECT ru.unloading_no, ru.date, ru.created_at, COALESCE(ru.amount,0) AS amount,
                 COALESCE(ru.diesel_amount,0) AS diesel, COALESCE(ru.diesel_charged,0) AS diesel_charged,
-                ru.qty_cm, ru.trips, ru.work_type, r.rack_no
+                ru.qty_cm, ru.trips, ru.work_type, r.rack_no, r.plant_id
          FROM rack_unloadings ru JOIN racks r ON r.id = ru.rack_id WHERE ru.rack_jcb_id = ?`
     ).all(partyId);
     for (const x of unl) {
@@ -8125,10 +8193,11 @@ async function buildEntries(partyType, partyId, plantId) {
           particulars: `JCB ${wLabel[x.work_type ?? "unloading"] ?? "work"} \u2014 ${x.trips} \xB7 Rack ${x.rack_no}`,
           ref: x.unloading_no,
           debit: 0,
-          credit: x.amount
+          credit: x.amount,
+          plant_id: x.plant_id
         });
       if (x.diesel > 0 && x.diesel_charged)
-        entries.push({ date: x.date, created_at: x.created_at, particulars: `Diesel issued (deduction)`, ref: x.unloading_no, debit: x.diesel, credit: 0 });
+        entries.push({ date: x.date, created_at: x.created_at, particulars: `Diesel issued (deduction)`, ref: x.unloading_no, debit: x.diesel, credit: 0, plant_id: x.plant_id });
     }
   }
   const payments = await getDb().prepare(`SELECT * FROM payments WHERE party_type = ? AND party_id = ?`).all(partyType, partyId);
@@ -8141,13 +8210,15 @@ async function buildEntries(partyType, partyId, plantId) {
       ref: p.ref || `PAY-${p.id}`,
       debit: received ? 0 : p.amount,
       credit: received ? p.amount : 0,
-      payment_id: p.id
+      payment_id: p.id,
+      plant_id: p.plant_id ?? null
     });
   }
-  entries.sort(
+  const scoped = plantId ? entries.filter((e) => e.plant_id == null || e.plant_id === plantId) : entries;
+  scoped.sort(
     (a, b) => a.date === b.date ? a.created_at.localeCompare(b.created_at) : a.date.localeCompare(b.date)
   );
-  return entries;
+  return scoped;
 }
 function runningSign(partyType) {
   return partyType === "customer" || partyType === "company" ? 1 : -1;
