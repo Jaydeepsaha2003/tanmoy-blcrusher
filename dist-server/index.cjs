@@ -186,6 +186,7 @@ CREATE TABLE IF NOT EXISTS users (
   access_level  TEXT NOT NULL DEFAULT 'view',
   modules       TEXT NOT NULL DEFAULT '[]',
   edit_modules  TEXT NOT NULL DEFAULT '[]',
+  plant_ids     TEXT NOT NULL DEFAULT '[]',
   active        INTEGER NOT NULL DEFAULT 1,
   created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
@@ -2204,6 +2205,12 @@ CREATE TABLE IF NOT EXISTS plant_cash_entries (
   created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_pcash_plant ON plant_cash_entries(plant_id)`
+  },
+  {
+    // Plant-wise user access. JSON array of plant ids a staff user may access;
+    // NULL/empty = all plants (unrestricted). Admins are always unrestricted.
+    id: "041_user_plant_ids",
+    sql: `ALTER TABLE users ADD COLUMN plant_ids TEXT`
   }
 ];
 async function sqliteLegacyMigrate(adapter2) {
@@ -2315,6 +2322,7 @@ async function sqliteLegacyMigrate(adapter2) {
   await addColumn("employees", "dl_no", `TEXT NOT NULL DEFAULT ''`);
   await addColumn("employees", "bank_account", `TEXT NOT NULL DEFAULT ''`);
   await addColumn("employees", "bank_ifsc", `TEXT NOT NULL DEFAULT ''`);
+  await addColumn("users", "plant_ids", "TEXT");
 }
 async function importProductsFromSettings(adapter2) {
   const all = (await adapter2.exec(`SELECT id, name FROM products ORDER BY id`, void 0, null)).rows;
@@ -2574,6 +2582,10 @@ function runWithUser(user, fn) {
 function getCurrentUser() {
   return store.getStore() ?? null;
 }
+function currentPlantScope() {
+  const u = getCurrentUser();
+  return u && u.role !== "admin" && Array.isArray(u.plant_ids) ? u.plant_ids : [];
+}
 
 // src/shared/types.ts
 var TON_PER_CM = 1.6;
@@ -2712,6 +2724,15 @@ function canEditModule(user, key) {
   if (moduleDef(key)?.adminOnly) return false;
   return Array.isArray(user.edit_modules) && user.edit_modules.includes(key);
 }
+function plantScopeViolation(user, payload) {
+  if (!user || user.role === "admin") return false;
+  const scope = user.plant_ids;
+  if (!Array.isArray(scope) || scope.length === 0) return false;
+  if (!payload || typeof payload !== "object") return false;
+  const pid = payload.plant_id;
+  if (pid == null || pid === "") return false;
+  return !scope.map(Number).includes(Number(pid));
+}
 function can(user, method) {
   if (!user) return false;
   if (PUBLIC_METHODS.has(method) || SELF_METHODS.has(method)) return true;
@@ -2733,6 +2754,23 @@ function parseModuleList(raw) {
     return [];
   }
 }
+function parsePlantIds(raw) {
+  try {
+    const arr = JSON.parse(raw || "[]");
+    return Array.isArray(arr) ? sanitizePlantIds(arr) : [];
+  } catch {
+    return [];
+  }
+}
+function sanitizePlantIds(v) {
+  if (!Array.isArray(v)) return [];
+  const out = /* @__PURE__ */ new Set();
+  for (const x of v) {
+    const n = Number(x);
+    if (Number.isInteger(n) && n > 0) out.add(n);
+  }
+  return Array.from(out);
+}
 function toUser(row) {
   return {
     id: row.id,
@@ -2742,6 +2780,8 @@ function toUser(row) {
     access_level: row.access_level,
     modules: parseModuleList(row.modules),
     edit_modules: parseModuleList(row.edit_modules),
+    // Admins are always unrestricted regardless of any stored value.
+    plant_ids: row.role === "admin" ? [] : parsePlantIds(row.plant_ids),
     active: row.active,
     created_at: row.created_at
   };
@@ -2781,6 +2821,14 @@ async function authenticate(username, password) {
   if (!row || !verifyPassword(password, row.password_hash)) return null;
   return toUser(row);
 }
+async function buildPlantIds(role, plantIds) {
+  if (role === "admin") return [];
+  const wanted = sanitizePlantIds(plantIds);
+  if (wanted.length === 0) return [];
+  const rows = await getDb().prepare(`SELECT id FROM plants`).all();
+  const real = new Set(rows.map((r) => r.id));
+  return wanted.filter((id) => real.has(id));
+}
 async function createUser(p) {
   const d = getDb();
   const username = (p.username || "").trim().toLowerCase();
@@ -2794,9 +2842,10 @@ async function createUser(p) {
   if (exists) throw new Error("That username is already taken.");
   const role = p.role === "admin" ? "admin" : "staff";
   const access = buildAccess(role, p.modules, p.edit_modules ?? []);
+  const plantIds = await buildPlantIds(role, p.plant_ids);
   const info = await d.prepare(
-    `INSERT INTO users (username, name, password_hash, role, access_level, modules, edit_modules, active)
-       VALUES (@username,@name,@password_hash,@role,@access_level,@modules,@edit_modules,@active)`
+    `INSERT INTO users (username, name, password_hash, role, access_level, modules, edit_modules, plant_ids, active)
+       VALUES (@username,@name,@password_hash,@role,@access_level,@modules,@edit_modules,@plant_ids,@active)`
   ).run({
     username,
     name: properCase(p.name) || username,
@@ -2805,6 +2854,7 @@ async function createUser(p) {
     access_level: access.accessLevel,
     modules: JSON.stringify(access.modules),
     edit_modules: JSON.stringify(access.editModules),
+    plant_ids: JSON.stringify(plantIds),
     active: p.active === false ? 0 : 1
   });
   return toUser(await d.prepare(`SELECT * FROM users WHERE id = ?`).get(Number(info.lastInsertRowid)));
@@ -2828,13 +2878,14 @@ async function updateUser(p) {
     throw new Error("This is the last active admin \u2014 keep at least one admin account.");
   }
   const access = buildAccess(role, p.modules, p.edit_modules ?? []);
+  const plantIds = await buildPlantIds(role, p.plant_ids);
   const passwordHash = p.password && p.password.length > 0 ? hashPassword(p.password) : old.password_hash;
   if (p.password && p.password.length > 0 && p.password.length < 4) {
     throw new Error("Password must be at least 4 characters.");
   }
   await d.prepare(
     `UPDATE users SET username=@username, name=@name, password_hash=@password_hash,
-       role=@role, access_level=@access_level, modules=@modules, edit_modules=@edit_modules, active=@active WHERE id=@id`
+       role=@role, access_level=@access_level, modules=@modules, edit_modules=@edit_modules, plant_ids=@plant_ids, active=@active WHERE id=@id`
   ).run({
     id: p.id,
     username,
@@ -2844,6 +2895,7 @@ async function updateUser(p) {
     access_level: access.accessLevel,
     modules: JSON.stringify(access.modules),
     edit_modules: JSON.stringify(access.editModules),
+    plant_ids: JSON.stringify(plantIds),
     active
   });
   return toUser(await d.prepare(`SELECT * FROM users WHERE id = ?`).get(p.id));
@@ -3190,7 +3242,9 @@ function round2(n) {
 
 // src/main/services/plants.ts
 async function listPlants() {
-  return await getDb().prepare(`SELECT * FROM plants ORDER BY name`).all();
+  const all = await getDb().prepare(`SELECT * FROM plants ORDER BY name`).all();
+  const scope = currentPlantScope();
+  return scope.length === 0 ? all : all.filter((p) => scope.includes(p.id));
 }
 function posOr(value, fallback) {
   const n = Number(value);
@@ -10011,6 +10065,9 @@ app2.post("/api/call", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Not authenticated." });
     if (!can(user, method)) {
       return res.status(403).json({ error: "You do not have permission to do that." });
+    }
+    if (plantScopeViolation(user, payload)) {
+      return res.status(403).json({ error: "You do not have access to that plant." });
     }
     const fn = handlers[method];
     if (!fn) return res.status(400).json({ error: `Unknown API method: ${method}` });

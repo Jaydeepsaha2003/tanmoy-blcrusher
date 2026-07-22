@@ -47236,7 +47236,13 @@ function MenuSearch() {
 }
 function PlantSwitcher() {
   const { plantId, setPlantId } = usePlant();
+  const { user } = usePerms();
   const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
+  const restricted = !!user && user.role !== "admin" && (user.plant_ids?.length ?? 0) > 0;
+  reactExports.useEffect(() => {
+    if (!restricted || plants.length === 0) return;
+    if (!plantId || !plants.some((p2) => p2.id === plantId)) setPlantId(plants[0].id);
+  }, [restricted, plants, plantId, setPlantId]);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       Factory,
@@ -47252,7 +47258,7 @@ function PlantSwitcher() {
         onChange: (e3) => setPlantId(e3.target.value ? Number(e3.target.value) : void 0),
         className: "h-8 rounded-md border border-input bg-background pl-8 pr-3 text-sm font-medium shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "All Plants" }),
+          !restricted && /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "All Plants" }),
           plants.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p2.id, children: p2.name }, p2.id))
         ]
       }
@@ -90495,7 +90501,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-DP3xhUzL.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-0g7551t1.js"), true ? [] : void 0, import.meta.url)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
@@ -95009,6 +95015,7 @@ function UsersPage() {
   const toast = useToast();
   const { user: me2 } = usePerms();
   const { data: users = [] } = useQuery({ queryKey: ["users"], queryFn: api.users.list });
+  const { data: plants = [] } = useQuery({ queryKey: ["plants"], queryFn: api.plants.list });
   const [form, setForm] = reactExports.useState(null);
   const save = useMutation({
     mutationFn: (f2) => f2.id ? api.users.update(f2) : api.users.create(f2),
@@ -95020,7 +95027,7 @@ function UsersPage() {
     onError: (e3) => toast.error(e3.message)
   });
   function openNew() {
-    setForm({ username: "", name: "", password: "", role: "staff", modules: [], edit_modules: [] });
+    setForm({ username: "", name: "", password: "", role: "staff", modules: [], edit_modules: [], plant_ids: [] });
   }
   function openEdit(u2) {
     setForm({
@@ -95030,8 +95037,14 @@ function UsersPage() {
       password: "",
       role: u2.role,
       modules: u2.modules,
-      edit_modules: u2.edit_modules
+      edit_modules: u2.edit_modules,
+      plant_ids: u2.plant_ids ?? []
     });
+  }
+  function togglePlant(id2) {
+    if (!form) return;
+    const plant_ids = form.plant_ids.includes(id2) ? form.plant_ids.filter((x2) => x2 !== id2) : [...form.plant_ids, id2];
+    setForm({ ...form, plant_ids });
   }
   async function remove(u2) {
     const ok2 = await confirmDialog({ title: "Delete user", message: `Delete user "${u2.username}"?` });
@@ -95094,7 +95107,15 @@ function UsersPage() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(ShieldCheck, { size: 12, className: "mr-1 inline" }),
           "Admin"
         ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "muted", children: "Staff" }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-sm text-muted-foreground", children: u2.role === "admin" ? "Everything" : `${u2.modules.length} module${u2.modules.length === 1 ? "" : "s"} · ${u2.edit_modules.length} editable` }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-sm text-muted-foreground", children: u2.role === "admin" ? "Everything" : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          u2.modules.length,
+          " module",
+          u2.modules.length === 1 ? "" : "s",
+          " · ",
+          u2.edit_modules.length,
+          " editable",
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs", children: u2.plant_ids && u2.plant_ids.length > 0 ? `${u2.plant_ids.length} plant${u2.plant_ids.length === 1 ? "" : "s"}` : "All plants" })
+        ] }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { children: u2.active ? /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "success", children: "Active" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "destructive", children: "Disabled" }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TD, { className: "text-right", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-end gap-1.5", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "icon", title: "Edit", onClick: () => openEdit(u2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { size: 15 }) }),
@@ -95139,6 +95160,18 @@ function UsersPage() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Role", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SearchSelect, { value: form.role, onChange: (v2) => setForm({ ...form, role: v2 }), options: [{ value: "staff", label: "Staff (scoped access)" }, { value: "admin", label: "Admin (full access)" }] }) })
       ] }),
       form.role === "staff" && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-1.5 flex items-center gap-2 text-sm font-medium text-foreground/80", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Factory, { size: 15 }),
+            " Plant access"
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(PlantCheckboxes, { plants, selected: form.plant_ids, onToggle: togglePlant }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs text-muted-foreground", children: [
+            "Tick the plants this user may work in. They'll only see those plants in the switcher and every plant dropdown, and can't open another plant's data.",
+            " ",
+            /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: "Select none = access to all plants." })
+          ] })
+        ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-1.5 flex items-center gap-2 text-sm font-medium text-foreground/80", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(UserCog, { size: 15 }),
