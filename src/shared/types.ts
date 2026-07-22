@@ -768,6 +768,8 @@ export interface PaymentEntry {
   ref: string
   date: string
   remarks: string
+  /** Plant the payment was recorded under (null = common / all plants). */
+  plant_id?: number | null
   created_at: string
 }
 

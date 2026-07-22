@@ -123,7 +123,7 @@ export function Payments(): React.JSX.Element {
     mutationFn: (p: any): Promise<unknown> =>
       p.party_type === 'employee'
         ? api.wages.payEmployee({ employee_id: p.party_id, amount: Number(p.amount), plant_id: plantId ?? null, date: p.date, remarks: p.remarks })
-        : api.payments.add(p),
+        : api.payments.add({ ...p, plant_id: plantId ?? null }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['allDues'] })
       qc.invalidateQueries({ queryKey: ['ledger'] })

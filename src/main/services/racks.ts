@@ -20,7 +20,40 @@ import { toCm, properCase } from '@shared/types'
 import { addMovement, finishedBalance } from './movements'
 import { plantUomFactors } from './plants'
 import { dieselFifoCost, type DieselSource } from './diesel'
+import { currentPlantScope } from '../context'
 import type { Db } from '../db'
+
+/**
+ * Which plant ids to scope rack reads to. A rack belongs to a plant if it was
+ * loaded from there (authoritative) or its source plant is set to it.
+ *   - unrestricted user + no plant filter → [] (no scoping, all racks)
+ *   - explicit active plant → that plant (empty if it's outside a restricted set)
+ *   - restricted user + no explicit plant → their whole plant set
+ */
+function rackScopeIds(filterPlantId?: number | null): number[] {
+  const scope = currentPlantScope()
+  if (filterPlantId) {
+    const pid = Number(filterPlantId)
+    return scope.length && !scope.includes(pid) ? [-1] : [pid]
+  }
+  return scope
+}
+
+/** SQL predicate: rack (alias) is loaded from — or sourced to — one of these plants. */
+function rackPlantClause(alias: string, ids: number[]): string {
+  const list = ids.map(Number).join(',')
+  return `(${alias}.plant_id IN (${list}) OR EXISTS (SELECT 1 FROM rack_loadings rl WHERE rl.rack_id = ${alias}.id AND rl.plant_id IN (${list})))`
+}
+
+/** Block a plant-restricted user from opening a rack outside their plants. */
+async function assertRackInScope(d: Db, rackId: number): Promise<void> {
+  const ids = currentPlantScope()
+  if (!ids.length) return
+  const row = (await d
+    .prepare(`SELECT r.id FROM racks r WHERE r.id = ? AND ${rackPlantClause('r', ids)}`)
+    .get(rackId)) as { id: number } | undefined
+  if (!row) throw new Error('You do not have access to that rack.')
+}
 
 /**
  * FIFO-cost the diesel issued on a rack loading/unloading and draw it from the plant's
@@ -97,6 +130,7 @@ export interface RackFilter {
   status?: RackStatus
   from?: string
   to?: string
+  plant_id?: number
 }
 
 export async function listRacks(filter: RackFilter = {}): Promise<Rack[]> {
@@ -115,6 +149,8 @@ export async function listRacks(filter: RackFilter = {}): Promise<Rack[]> {
     where.push('r.date <= @to')
     params.to = filter.to
   }
+  const scopeIds = rackScopeIds(filter.plant_id)
+  if (scopeIds.length) where.push(rackPlantClause('r', scopeIds))
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''
   const rows = (await d
     .prepare(`SELECT r.*, ${RACK_AGG} FROM racks r ${clause} ORDER BY r.date DESC, r.id DESC`)
@@ -212,6 +248,7 @@ export async function deleteRack(payload: { id: number }): Promise<{ ok: boolean
 
 export async function getRackDetail(payload: { id: number }): Promise<RackDetailData> {
   const d = getDb()
+  await assertRackInScope(d, payload.id)
   const rack = await getRack(d, payload.id)
   const loadings = (await d
     .prepare(
@@ -777,6 +814,7 @@ export interface ExpenseFilter {
   expense_type?: string
   from?: string
   to?: string
+  plant_id?: number
 }
 
 export async function listExpenses(filter: ExpenseFilter = {}): Promise<RackExpense[]> {
@@ -799,6 +837,8 @@ export async function listExpenses(filter: ExpenseFilter = {}): Promise<RackExpe
     where.push('e.date <= @to')
     params.to = filter.to
   }
+  const scopeIds = rackScopeIds(filter.plant_id)
+  if (scopeIds.length) where.push(rackPlantClause('r', scopeIds))
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''
   return (await d
     .prepare(
@@ -896,6 +936,7 @@ export async function getSaleDetail(payload: { id: number }): Promise<RackSale |
   const d = getDb()
   const sale = (await d.prepare(`SELECT * FROM rack_sales WHERE id = ?`).get(payload.id)) as RackSale | undefined
   if (!sale) return null
+  await assertRackInScope(d, sale.rack_id)
   sale.transporters = (await d
     .prepare(
       `SELECT rst.*, t.name AS transporter_name, rv.vehicle_no AS rack_vehicle_no,
@@ -1043,6 +1084,7 @@ export interface SaleFilter {
   product_name?: string
   from?: string
   to?: string
+  plant_id?: number
 }
 
 export async function listSales(filter: SaleFilter = {}): Promise<RackSale[]> {
@@ -1069,6 +1111,8 @@ export async function listSales(filter: SaleFilter = {}): Promise<RackSale[]> {
     where.push('rs.date <= @to')
     params.to = filter.to
   }
+  const scopeIds = rackScopeIds(filter.plant_id)
+  if (scopeIds.length) where.push(rackPlantClause('r', scopeIds))
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''
   return (await d
     .prepare(

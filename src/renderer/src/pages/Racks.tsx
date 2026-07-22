@@ -48,8 +48,8 @@ export function Racks(): React.JSX.Element {
   const { data: plants = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
   const [filter, setFilter] = usePersistentState<{ status?: string }>('filter', {})
   const { data = [] } = useQuery({
-    queryKey: ['racks', filter],
-    queryFn: () => api.racks.list(filter.status ? { status: filter.status } : {})
+    queryKey: ['racks', filter, plantId],
+    queryFn: () => api.racks.list({ ...(filter.status ? { status: filter.status } : {}), ...(plantId ? { plant_id: plantId } : {}) })
   })
 
   const [open, setOpen] = React.useState(false)

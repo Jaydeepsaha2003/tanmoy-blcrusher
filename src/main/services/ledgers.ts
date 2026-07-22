@@ -1,4 +1,5 @@
 import { getDb } from '../db'
+import { currentPlantScope } from '../context'
 import type {
   PartyType,
   LedgerType,
@@ -120,6 +121,8 @@ export interface PaymentInput {
   ref: string
   date: string
   remarks: string
+  /** Plant the payment is recorded under (the active plant); null = common. */
+  plant_id?: number | null
 }
 
 export async function addPayment(p: PaymentInput): Promise<PaymentEntry> {
@@ -130,8 +133,8 @@ export async function addPayment(p: PaymentInput): Promise<PaymentEntry> {
   await partyName(p.party_type, p.party_id) // validates existence
   const info = await d
     .prepare(
-      `INSERT INTO payments (party_type, party_id, direction, amount, mode, ref, date, remarks)
-       VALUES (@party_type,@party_id,@direction,@amount,@mode,@ref,@date,@remarks)`
+      `INSERT INTO payments (party_type, party_id, direction, amount, mode, ref, date, remarks, plant_id)
+       VALUES (@party_type,@party_id,@direction,@amount,@mode,@ref,@date,@remarks,@plant_id)`
     )
     .run({
       party_type: p.party_type,
@@ -141,7 +144,8 @@ export async function addPayment(p: PaymentInput): Promise<PaymentEntry> {
       mode: p.mode || 'cash',
       ref: p.ref ?? '',
       date: p.date,
-      remarks: p.remarks ?? ''
+      remarks: p.remarks ?? '',
+      plant_id: p.plant_id ? Number(p.plant_id) : null
     })
   return (await d
     .prepare(`SELECT * FROM payments WHERE id = ?`)
@@ -153,6 +157,7 @@ export interface PaymentFilter {
   party_id?: number
   from?: string
   to?: string
+  plant_id?: number
 }
 
 export async function listPayments(filter: PaymentFilter = {}): Promise<PaymentEntry[]> {
@@ -175,6 +180,14 @@ export async function listPayments(filter: PaymentFilter = {}): Promise<PaymentE
     where.push('pay.date <= @to')
     params.to = filter.to
   }
+  // The active plant narrows to that plant's payments + common (unattributed) ones.
+  if (filter.plant_id) {
+    where.push('(pay.plant_id = @plant_id OR pay.plant_id IS NULL)')
+    params.plant_id = Number(filter.plant_id)
+  }
+  // Defense-in-depth: a plant-restricted user never sees payments outside their plants.
+  const scope = currentPlantScope()
+  if (scope.length) where.push(`(pay.plant_id IN (${scope.map(Number).join(',')}) OR pay.plant_id IS NULL)`)
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''
   return (await d
     .prepare(
@@ -210,6 +223,8 @@ interface RawEntry {
   debit: number
   credit: number
   payment_id?: number
+  /** Plant this line belongs to (null/undefined = common — shown in every plant view). */
+  plant_id?: number | null
 }
 
 /**
@@ -877,7 +892,7 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
     // Expenses attributed to the outsource vendor are payable to them; settlements come via payments.
     const exp = (await d
       .prepare(
-        `SELECT expense_no, date, created_at, category, amount, paid_amount
+        `SELECT expense_no, date, created_at, category, amount, paid_amount, plant_id
          FROM plant_expenses WHERE outsource_id = ?`
       )
       .all(partyId)) as {
@@ -887,6 +902,7 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
       category: string
       amount: number
       paid_amount: number
+      plant_id: number
     }[]
     for (const x of exp) {
       if (x.amount > 0)
@@ -896,7 +912,8 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
           particulars: `Outsourced — ${x.category}`,
           ref: x.expense_no,
           debit: 0,
-          credit: x.amount
+          credit: x.amount,
+          plant_id: x.plant_id
         })
       if (x.paid_amount > 0)
         entries.push({
@@ -905,17 +922,18 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
           particulars: `Paid against bill`,
           ref: x.expense_no,
           debit: x.paid_amount,
-          credit: 0
+          credit: 0,
+          plant_id: x.plant_id
         })
     }
     // Machine-usage lines on purchases hired from this vendor — payable.
     const mach = (await d
       .prepare(
-        `SELECT pu.purchase_no, pu.date, pu.created_at, COALESCE(pm.amount,0) AS amount, a.name AS aname
+        `SELECT pu.purchase_no, pu.date, pu.created_at, COALESCE(pm.amount,0) AS amount, a.name AS aname, pu.plant_id
          FROM purchase_machines pm JOIN purchases pu ON pu.id = pm.purchase_id
          JOIN assets a ON a.id = pm.asset_id WHERE pm.outsource_id = ?`
       )
-      .all(partyId)) as { purchase_no: string; date: string; created_at: string; amount: number; aname: string }[]
+      .all(partyId)) as { purchase_no: string; date: string; created_at: string; amount: number; aname: string; plant_id: number }[]
     for (const x of mach)
       if (x.amount > 0)
         entries.push({
@@ -924,16 +942,17 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
           particulars: `Machine hire — ${x.aname}`,
           ref: x.purchase_no,
           debit: 0,
-          credit: x.amount
+          credit: x.amount,
+          plant_id: x.plant_id
         })
     // Machine-usage lines on direct sales hired from this vendor — payable.
     const dmach = (await d
       .prepare(
-        `SELECT di.dispatch_no, di.date, di.created_at, COALESCE(dm.amount,0) AS amount, a.name AS aname
+        `SELECT di.dispatch_no, di.date, di.created_at, COALESCE(dm.amount,0) AS amount, a.name AS aname, di.plant_id
          FROM dispatch_machines dm JOIN dispatches di ON di.id = dm.dispatch_id
          JOIN assets a ON a.id = dm.asset_id WHERE dm.outsource_id = ?`
       )
-      .all(partyId)) as { dispatch_no: string; date: string; created_at: string; amount: number; aname: string }[]
+      .all(partyId)) as { dispatch_no: string; date: string; created_at: string; amount: number; aname: string; plant_id: number }[]
     for (const x of dmach)
       if (x.amount > 0)
         entries.push({
@@ -942,16 +961,18 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
           particulars: `Machine hire — ${x.aname}`,
           ref: x.dispatch_no,
           debit: 0,
-          credit: x.amount
+          credit: x.amount,
+          plant_id: x.plant_id
         })
     // Machine-usage lines on rack sales hired from this vendor — payable.
     const rsmach = (await d
       .prepare(
-        `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rsm.amount,0) AS amount, a.name AS aname
+        `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rsm.amount,0) AS amount, a.name AS aname, r.plant_id
          FROM rack_sale_machines rsm JOIN rack_sales rs ON rs.id = rsm.rack_sale_id
+         JOIN racks r ON r.id = rs.rack_id
          JOIN assets a ON a.id = rsm.asset_id WHERE rsm.outsource_id = ?`
       )
-      .all(partyId)) as { sale_no: string; date: string; created_at: string; amount: number; aname: string }[]
+      .all(partyId)) as { sale_no: string; date: string; created_at: string; amount: number; aname: string; plant_id: number | null }[]
     for (const x of rsmach)
       if (x.amount > 0)
         entries.push({
@@ -960,14 +981,15 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
           particulars: `Machine hire — ${x.aname}`,
           ref: x.sale_no,
           debit: 0,
-          credit: x.amount
+          credit: x.amount,
+          plant_id: x.plant_id
         })
     // Outsourced direct sales bought from this vendor — what we owe them for the goods (payable).
     const osale = (await d
       .prepare(
         `SELECT dispatch_no, date, created_at, product_name, uom,
                 COALESCE(sale_quantity, quantity) AS qty,
-                ROUND(COALESCE(buy_rate,0) * COALESCE(sale_quantity, quantity), 2) AS amount
+                ROUND(COALESCE(buy_rate,0) * COALESCE(sale_quantity, quantity), 2) AS amount, plant_id
          FROM dispatches
          WHERE outsourced = 1 AND outsource_id = ? AND COALESCE(buy_rate,0) > 0`
       )
@@ -979,6 +1001,7 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
       uom: string
       qty: number
       amount: number
+      plant_id: number
     }[]
     for (const x of osale)
       if (x.amount > 0)
@@ -990,7 +1013,8 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
           qty: x.qty,
           uom: x.uom,
           debit: 0,
-          credit: x.amount
+          credit: x.amount,
+          plant_id: x.plant_id
         })
   }
 
@@ -1005,7 +1029,7 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
           (COALESCE(amount,0)
             + CASE WHEN transport_billed=1 THEN transport_charge ELSE 0 END
             + CASE WHEN other_billed=1 THEN other_charge ELSE 0 END) AS billed,
-          paid_amount
+          paid_amount, plant_id
          FROM dispatches WHERE customer_id = ? AND to_plant_id IS NULL`
       )
       .all(partyId)) as {
@@ -1023,6 +1047,7 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
       other: number
       billed: number
       paid_amount: number
+      plant_id: number
     }[]
     const uomLabel = (u: string): string => (u === 'CM' ? 'm³' : u === 'TON' ? 'Ton' : u === 'CFT' ? 'CFT' : u)
     for (const x of dispatches) {
@@ -1042,7 +1067,8 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
           qty: x.quantity,
           uom: x.uom,
           debit: x.billed,
-          credit: 0
+          credit: 0,
+          plant_id: x.plant_id
         })
       }
       if (x.paid_amount > 0)
@@ -1052,13 +1078,14 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
           particulars: `Received against sale`,
           ref: x.dispatch_no,
           debit: 0,
-          credit: x.paid_amount
+          credit: x.paid_amount,
+          plant_id: x.plant_id
         })
     }
     const sales = (await d
       .prepare(
         `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rs.amount,0) AS amount,
-                rs.product_name, rs.quantity, rs.uom, r.rack_no
+                rs.product_name, rs.quantity, rs.uom, r.rack_no, r.plant_id
          FROM rack_sales rs JOIN racks r ON r.id = rs.rack_id
          WHERE rs.customer_id = ? AND rs.amount IS NOT NULL`
       )
@@ -1071,6 +1098,7 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
       quantity: number
       uom: string
       rack_no: string
+      plant_id: number | null
     }[]
     for (const x of sales)
       entries.push({
@@ -1081,7 +1109,8 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
         qty: x.quantity,
         uom: x.uom,
         debit: x.amount,
-        credit: 0
+        credit: 0,
+        plant_id: x.plant_id
       })
   }
 
@@ -1089,7 +1118,7 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
     const purchases = (await d
       .prepare(
         `SELECT purchase_no, date, created_at, COALESCE(amount,0) AS amount, paid_amount, quantity, uom,
-                COALESCE(material_type,'raw') AS material_type, product_name
+                COALESCE(material_type,'raw') AS material_type, product_name, plant_id
          FROM purchases WHERE supplier_id = ? AND linked_dispatch_id IS NULL`
       )
       .all(partyId)) as {
@@ -1102,6 +1131,7 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
       uom: string
       material_type: string
       product_name: string | null
+      plant_id: number
     }[]
     for (const x of purchases) {
       if (x.amount > 0)
@@ -1113,7 +1143,8 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
           qty: x.quantity,
           uom: x.uom,
           debit: 0,
-          credit: x.amount
+          credit: x.amount,
+          plant_id: x.plant_id
         })
       if (x.paid_amount > 0)
         entries.push({
@@ -1122,12 +1153,13 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
           particulars: `Paid against bill`,
           ref: x.purchase_no,
           debit: x.paid_amount,
-          credit: 0
+          credit: 0,
+          plant_id: x.plant_id
         })
     }
     const diesel = (await d
       .prepare(
-        `SELECT purchase_no, date, created_at, COALESCE(amount,0) AS amount, paid_amount, litres
+        `SELECT purchase_no, date, created_at, COALESCE(amount,0) AS amount, paid_amount, litres, plant_id
          FROM diesel_purchases WHERE supplier_id = ?`
       )
       .all(partyId)) as {
@@ -1137,6 +1169,7 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
       amount: number
       paid_amount: number
       litres: number
+      plant_id: number
     }[]
     for (const x of diesel) {
       if (x.amount > 0)
@@ -1148,7 +1181,8 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
           qty: x.litres,
           uom: 'L',
           debit: 0,
-          credit: x.amount
+          credit: x.amount,
+          plant_id: x.plant_id
         })
       if (x.paid_amount > 0)
         entries.push({
@@ -1157,7 +1191,8 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
           particulars: `Paid against diesel bill`,
           ref: x.purchase_no,
           debit: x.paid_amount,
-          credit: 0
+          credit: 0,
+          plant_id: x.plant_id
         })
     }
   }
@@ -1166,7 +1201,7 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
     const loadings = (await d
       .prepare(
         `SELECT rl.loading_no, rl.date, rl.created_at, COALESCE(rl.amount,0) AS amount,
-                COALESCE(rl.diesel_amount,0) AS diesel, COALESCE(rl.diesel_charged,0) AS diesel_charged, rl.total_cm, rl.trips, r.rack_no
+                COALESCE(rl.diesel_amount,0) AS diesel, COALESCE(rl.diesel_charged,0) AS diesel_charged, rl.total_cm, rl.trips, r.rack_no, rl.plant_id
          FROM rack_loadings rl JOIN racks r ON r.id = rl.rack_id
          WHERE rl.transporter_id = ?`
       )
@@ -1180,6 +1215,7 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
       total_cm: number
       trips: number
       rack_no: string
+      plant_id: number | null
     }[]
     for (const x of loadings) {
       if (x.amount > 0)
@@ -1189,7 +1225,8 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
           particulars: `Transport — ${x.trips} trips, ${x.total_cm} m³ · Rack ${x.rack_no}`,
           ref: x.loading_no,
           debit: 0,
-          credit: x.amount
+          credit: x.amount,
+          plant_id: x.plant_id
         })
       if (x.diesel > 0 && x.diesel_charged)
         entries.push({
@@ -1198,13 +1235,14 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
           particulars: `Diesel issued (deduction)`,
           ref: x.loading_no,
           debit: x.diesel,
-          credit: 0
+          credit: 0,
+          plant_id: x.plant_id
         })
     }
     const unloadings = (await d
       .prepare(
         `SELECT ru.unloading_no, ru.date, ru.created_at, COALESCE(ru.amount,0) AS amount,
-                COALESCE(ru.diesel_amount,0) AS diesel, COALESCE(ru.diesel_charged,0) AS diesel_charged, ru.total_cm, ru.trips, r.rack_no
+                COALESCE(ru.diesel_amount,0) AS diesel, COALESCE(ru.diesel_charged,0) AS diesel_charged, ru.total_cm, ru.trips, r.rack_no, r.plant_id
          FROM rack_unloadings ru JOIN racks r ON r.id = ru.rack_id
          WHERE ru.transporter_id = ?`
       )
@@ -1218,6 +1256,7 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
       total_cm: number
       trips: number
       rack_no: string
+      plant_id: number | null
     }[]
     for (const x of unloadings) {
       if (x.amount > 0)
@@ -1227,7 +1266,8 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
           particulars: `Unloading transport — ${x.trips} trips, ${x.total_cm} m³ · Rack ${x.rack_no}`,
           ref: x.unloading_no,
           debit: 0,
-          credit: x.amount
+          credit: x.amount,
+          plant_id: x.plant_id
         })
       if (x.diesel > 0 && x.diesel_charged)
         entries.push({
@@ -1236,13 +1276,14 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
           particulars: `Diesel issued (deduction)`,
           ref: x.unloading_no,
           debit: x.diesel,
-          credit: 0
+          credit: 0,
+          plant_id: x.plant_id
         })
     }
     // Transport charges from direct sales carried by this transporter (payable).
     const sales = (await d
       .prepare(
-        `SELECT dispatch_no, date, created_at, product_name, COALESCE(transport_charge,0) AS charge
+        `SELECT dispatch_no, date, created_at, product_name, COALESCE(transport_charge,0) AS charge, plant_id
          FROM dispatches WHERE transporter_id = ? AND COALESCE(transport_charge,0) > 0`
       )
       .all(partyId)) as {
@@ -1251,6 +1292,7 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
       created_at: string
       product_name: string
       charge: number
+      plant_id: number
     }[]
     for (const x of sales)
       entries.push({
@@ -1259,16 +1301,17 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
         particulars: `Transport — direct sale ${x.product_name}`,
         ref: x.dispatch_no,
         debit: 0,
-        credit: x.charge
+        credit: x.charge,
+        plant_id: x.plant_id
       })
     // Transport charged on purchases (bringing material in) — payable.
     const pin = (await d
       .prepare(
-        `SELECT pu.purchase_no, pu.date, pu.created_at, COALESCE(pt.charge,0) AS charge, COALESCE(pt.vehicle_no,'') AS vno
+        `SELECT pu.purchase_no, pu.date, pu.created_at, COALESCE(pt.charge,0) AS charge, COALESCE(pt.vehicle_no,'') AS vno, pu.plant_id
          FROM purchase_transporters pt JOIN purchases pu ON pu.id = pt.purchase_id
          WHERE pt.transporter_id = ?`
       )
-      .all(partyId)) as { purchase_no: string; date: string; created_at: string; charge: number; vno: string }[]
+      .all(partyId)) as { purchase_no: string; date: string; created_at: string; charge: number; vno: string; plant_id: number }[]
     for (const x of pin)
       if (x.charge > 0)
         entries.push({
@@ -1277,16 +1320,17 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
           particulars: `Transport — purchase inward${x.vno ? ` (${x.vno})` : ''}`,
           ref: x.purchase_no,
           debit: 0,
-          credit: x.charge
+          credit: x.charge,
+          plant_id: x.plant_id
         })
     // Transporter cost lines on direct sales — payable.
     const dtin = (await d
       .prepare(
-        `SELECT di.dispatch_no, di.date, di.created_at, COALESCE(dt.charge,0) AS charge, COALESCE(dt.vehicle_no,'') AS vno
+        `SELECT di.dispatch_no, di.date, di.created_at, COALESCE(dt.charge,0) AS charge, COALESCE(dt.vehicle_no,'') AS vno, di.plant_id
          FROM dispatch_transporters dt JOIN dispatches di ON di.id = dt.dispatch_id
          WHERE dt.transporter_id = ?`
       )
-      .all(partyId)) as { dispatch_no: string; date: string; created_at: string; charge: number; vno: string }[]
+      .all(partyId)) as { dispatch_no: string; date: string; created_at: string; charge: number; vno: string; plant_id: number }[]
     for (const x of dtin)
       if (x.charge > 0)
         entries.push({
@@ -1295,18 +1339,20 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
           particulars: `Transport — direct sale${x.vno ? ` (${x.vno})` : ''}`,
           ref: x.dispatch_no,
           debit: 0,
-          credit: x.charge
+          credit: x.charge,
+          plant_id: x.plant_id
         })
     // Transporter cost lines on rack sales — payable; sale-time diesel charged is recovered (debit).
     const rstin = (await d
       .prepare(
         `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rst.charge,0) AS charge, COALESCE(rst.vehicle_no,'') AS vno,
-                COALESCE(rst.diesel_amount,0) AS diesel, COALESCE(rst.diesel_charged,0) AS diesel_charged
+                COALESCE(rst.diesel_amount,0) AS diesel, COALESCE(rst.diesel_charged,0) AS diesel_charged, r.plant_id
          FROM rack_sale_transporters rst JOIN rack_sales rs ON rs.id = rst.rack_sale_id
+         JOIN racks r ON r.id = rs.rack_id
          WHERE rst.transporter_id = ?`
       )
       .all(partyId)) as {
-      sale_no: string; date: string; created_at: string; charge: number; vno: string; diesel: number; diesel_charged: number
+      sale_no: string; date: string; created_at: string; charge: number; vno: string; diesel: number; diesel_charged: number; plant_id: number | null
     }[]
     for (const x of rstin) {
       if (x.charge > 0)
@@ -1316,7 +1362,8 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
           particulars: `Transport — rack sale${x.vno ? ` (${x.vno})` : ''}`,
           ref: x.sale_no,
           debit: 0,
-          credit: x.charge
+          credit: x.charge,
+          plant_id: x.plant_id
         })
       if (x.diesel > 0 && x.diesel_charged)
         entries.push({
@@ -1325,13 +1372,14 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
           particulars: `Diesel issued (deduction)`,
           ref: x.sale_no,
           debit: x.diesel,
-          credit: 0
+          credit: 0,
+          plant_id: x.plant_id
         })
     }
     // Diesel issued and charged to this transporter — recovered from what we owe (debit).
     const dsl = (await d
       .prepare(
-        `SELECT issue_no, date, created_at, COALESCE(litres,0) AS litres, COALESCE(amount,0) AS amount
+        `SELECT issue_no, date, created_at, COALESCE(litres,0) AS litres, COALESCE(amount,0) AS amount, plant_id
          FROM diesel_issues WHERE transporter_id = ? AND charged = 1 AND COALESCE(amount,0) > 0`
       )
       .all(partyId)) as {
@@ -1340,6 +1388,7 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
       created_at: string
       litres: number
       amount: number
+      plant_id: number
     }[]
     for (const x of dsl)
       entries.push({
@@ -1348,7 +1397,8 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
         particulars: `Diesel issued — ${x.litres} L`,
         ref: x.issue_no,
         debit: x.amount,
-        credit: 0
+        credit: 0,
+        plant_id: x.plant_id
       })
   }
 
@@ -1358,42 +1408,42 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
       .prepare(
         `SELECT ru.unloading_no, ru.date, ru.created_at, COALESCE(ru.amount,0) AS amount,
                 COALESCE(ru.diesel_amount,0) AS diesel, COALESCE(ru.diesel_charged,0) AS diesel_charged,
-                ru.qty_cm, ru.trips, r.rack_no
+                ru.qty_cm, ru.trips, r.rack_no, r.plant_id
          FROM rack_unloadings ru JOIN racks r ON r.id = ru.rack_id WHERE ru.rack_vehicle_id = ?`
       )
       .all(partyId)) as {
       unloading_no: string; date: string; created_at: string; amount: number; diesel: number
-      diesel_charged: number; qty_cm: number; trips: number; rack_no: string
+      diesel_charged: number; qty_cm: number; trips: number; rack_no: string; plant_id: number | null
     }[]
     for (const x of unl) {
       if (x.amount > 0)
         entries.push({
           date: x.date, created_at: x.created_at,
           particulars: `Unloading — ${x.trips} trips, ${x.qty_cm} m³ · Rack ${x.rack_no}`,
-          ref: x.unloading_no, debit: 0, credit: x.amount
+          ref: x.unloading_no, debit: 0, credit: x.amount, plant_id: x.plant_id
         })
       if (x.diesel > 0 && x.diesel_charged)
-        entries.push({ date: x.date, created_at: x.created_at, particulars: `Diesel issued (deduction)`, ref: x.unloading_no, debit: x.diesel, credit: 0 })
+        entries.push({ date: x.date, created_at: x.created_at, particulars: `Diesel issued (deduction)`, ref: x.unloading_no, debit: x.diesel, credit: 0, plant_id: x.plant_id })
     }
     // Transport this tipper did at sale time — payable to it.
     const st = (await d
       .prepare(
         `SELECT rs.sale_no, rs.date, rs.created_at, COALESCE(rst.charge,0) AS charge,
-                COALESCE(rst.diesel_amount,0) AS diesel, COALESCE(rst.diesel_charged,0) AS diesel_charged, r.rack_no
+                COALESCE(rst.diesel_amount,0) AS diesel, COALESCE(rst.diesel_charged,0) AS diesel_charged, r.rack_no, r.plant_id
          FROM rack_sale_transporters rst JOIN rack_sales rs ON rs.id = rst.rack_sale_id
          JOIN racks r ON r.id = rs.rack_id WHERE rst.rack_vehicle_id = ?`
       )
       .all(partyId)) as {
-      sale_no: string; date: string; created_at: string; charge: number; diesel: number; diesel_charged: number; rack_no: string
+      sale_no: string; date: string; created_at: string; charge: number; diesel: number; diesel_charged: number; rack_no: string; plant_id: number | null
     }[]
     for (const x of st) {
       if (x.charge > 0)
         entries.push({
           date: x.date, created_at: x.created_at,
-          particulars: `Sale transport · Rack ${x.rack_no}`, ref: x.sale_no, debit: 0, credit: x.charge
+          particulars: `Sale transport · Rack ${x.rack_no}`, ref: x.sale_no, debit: 0, credit: x.charge, plant_id: x.plant_id
         })
       if (x.diesel > 0 && x.diesel_charged)
-        entries.push({ date: x.date, created_at: x.created_at, particulars: `Diesel issued (deduction)`, ref: x.sale_no, debit: x.diesel, credit: 0 })
+        entries.push({ date: x.date, created_at: x.created_at, particulars: `Diesel issued (deduction)`, ref: x.sale_no, debit: x.diesel, credit: 0, plant_id: x.plant_id })
     }
   }
 
@@ -1403,22 +1453,22 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
       .prepare(
         `SELECT ru.unloading_no, ru.date, ru.created_at, COALESCE(ru.amount,0) AS amount,
                 COALESCE(ru.diesel_amount,0) AS diesel, COALESCE(ru.diesel_charged,0) AS diesel_charged,
-                ru.qty_cm, ru.trips, ru.work_type, r.rack_no
+                ru.qty_cm, ru.trips, ru.work_type, r.rack_no, r.plant_id
          FROM rack_unloadings ru JOIN racks r ON r.id = ru.rack_id WHERE ru.rack_jcb_id = ?`
       )
       .all(partyId)) as {
       unloading_no: string; date: string; created_at: string; amount: number; diesel: number
-      diesel_charged: number; qty_cm: number; trips: number; work_type: string | null; rack_no: string
+      diesel_charged: number; qty_cm: number; trips: number; work_type: string | null; rack_no: string; plant_id: number | null
     }[]
     for (const x of unl) {
       if (x.amount > 0)
         entries.push({
           date: x.date, created_at: x.created_at,
           particulars: `JCB ${wLabel[x.work_type ?? 'unloading'] ?? 'work'} — ${x.trips} · Rack ${x.rack_no}`,
-          ref: x.unloading_no, debit: 0, credit: x.amount
+          ref: x.unloading_no, debit: 0, credit: x.amount, plant_id: x.plant_id
         })
       if (x.diesel > 0 && x.diesel_charged)
-        entries.push({ date: x.date, created_at: x.created_at, particulars: `Diesel issued (deduction)`, ref: x.unloading_no, debit: x.diesel, credit: 0 })
+        entries.push({ date: x.date, created_at: x.created_at, particulars: `Diesel issued (deduction)`, ref: x.unloading_no, debit: x.diesel, credit: 0, plant_id: x.plant_id })
     }
   }
 
@@ -1438,14 +1488,19 @@ async function buildEntries(partyType: LedgerType, partyId: number, plantId?: nu
       ref: p.ref || `PAY-${p.id}`,
       debit: received ? 0 : p.amount,
       credit: received ? p.amount : 0,
-      payment_id: p.id
+      payment_id: p.id,
+      plant_id: p.plant_id ?? null
     })
   }
 
-  entries.sort((a, b) =>
+  // When a plant is active, keep only lines for that plant plus common (untagged)
+  // ones. With no active plant (admin / all-plants) nothing is filtered, so the
+  // company-wide ledger is exactly as before.
+  const scoped = plantId ? entries.filter((e) => e.plant_id == null || e.plant_id === plantId) : entries
+  scoped.sort((a, b) =>
     a.date === b.date ? a.created_at.localeCompare(b.created_at) : a.date.localeCompare(b.date)
   )
-  return entries
+  return scoped
 }
 
 function runningSign(partyType: LedgerType): 1 | -1 {

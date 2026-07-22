@@ -1182,6 +1182,12 @@ CREATE INDEX idx_pcash_plant ON plant_cash_entries(plant_id)`
     // NULL/empty = all plants (unrestricted). Admins are always unrestricted.
     id: '041_user_plant_ids',
     sql: `ALTER TABLE users ADD COLUMN plant_ids TEXT`
+  },
+  {
+    // Plant-scope a payment (the plant active when it was recorded; NULL = common).
+    // Lets party ledgers, dues and payment history be viewed per plant.
+    id: '042_payment_plant_id',
+    sql: `ALTER TABLE payments ADD COLUMN plant_id INT`
   }
 ]
 
@@ -1323,6 +1329,7 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   await addColumn('employees', 'bank_ifsc', `TEXT NOT NULL DEFAULT ''`)
 
   await addColumn('users', 'plant_ids', 'TEXT')
+  await addColumn('payments', 'plant_id', 'INTEGER')
 }
 
 /**

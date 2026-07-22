@@ -796,6 +796,7 @@ CREATE TABLE IF NOT EXISTS payments (
   ref        TEXT NOT NULL DEFAULT '',
   date       TEXT NOT NULL,
   remarks    TEXT NOT NULL DEFAULT '',
+  plant_id   INTEGER,
   created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
