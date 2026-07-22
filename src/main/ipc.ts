@@ -3,7 +3,7 @@ import { handlers } from './handlers'
 import { authenticate } from './services/users'
 import { runWithUser } from './context'
 import { logActivity } from './services/audit'
-import { can, isWriteMethod, SELF_METHODS } from '@shared/permissions'
+import { can, isWriteMethod, SELF_METHODS, plantScopeViolation } from '@shared/permissions'
 import type { User } from '@shared/types'
 
 // The desktop app is single-window, so one in-memory current user is enough.
@@ -35,6 +35,7 @@ export function registerIpc(): void {
     if (!fn) throw new Error(`Unknown API method: ${method}`)
     if (!desktopUser) throw new Error('Not signed in.')
     if (!can(desktopUser, method)) throw new Error('You do not have permission to do that.')
+    if (plantScopeViolation(desktopUser, payload)) throw new Error('You do not have access to that plant.')
 
     return runWithUser(desktopUser, async () => {
       try {

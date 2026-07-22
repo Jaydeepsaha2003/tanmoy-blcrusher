@@ -1,11 +1,16 @@
 import { getDb } from '../db'
+import { currentPlantScope } from '../context'
 import type { Plant, UomFactors } from '@shared/types'
 import { properCase, TON_PER_CM, CFT_PER_CM } from '@shared/types'
 import { ensureDefaultLocation } from './stockLocations'
 import { ensureUniqueName } from './names'
 
 export async function listPlants(): Promise<Plant[]> {
-  return (await getDb().prepare(`SELECT * FROM plants ORDER BY name`).all()) as Plant[]
+  const all = (await getDb().prepare(`SELECT * FROM plants ORDER BY name`).all()) as Plant[]
+  // A plant-restricted user only ever sees their assigned plants — this drives the
+  // plant switcher and every plant dropdown in the app.
+  const scope = currentPlantScope()
+  return scope.length === 0 ? all : all.filter((p) => scope.includes(p.id))
 }
 
 function posOr(value: unknown, fallback: number): number {

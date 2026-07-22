@@ -69,6 +69,12 @@ export interface User {
   modules: ModuleKey[]
   /** Modules the user can also edit (create/update/delete). Subset of modules. */
   edit_modules: ModuleKey[]
+  /**
+   * Plants this user may access. Empty = ALL plants (unrestricted). Admins are
+   * always unrestricted. Restricts the plant switcher, plant dropdowns and every
+   * plant-scoped read/write to just these plants.
+   */
+  plant_ids: number[]
   active: number | boolean
   created_at?: string
 }

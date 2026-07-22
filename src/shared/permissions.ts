@@ -134,6 +134,28 @@ export function canEditModule(user: User | null, key: ModuleKey): boolean {
   return Array.isArray(user.edit_modules) && user.edit_modules.includes(key)
 }
 
+/**
+ * Defense-in-depth plant scoping enforced at the API boundary (both transports).
+ * A plant-restricted staff user may not reference a plant outside their set via the
+ * `plant_id` in the payload — this is the key that gates every plant-scoped read
+ * (dashboard, expenses, diesel, production, dispatch, ledgers…) and single-plant
+ * write. Admins and unrestricted staff (empty plant_ids) are never blocked.
+ *
+ * We deliberately do NOT block a `plant_ids[]` array here: that is the plant
+ * *assignment* of a master record, and editing a master shared across plants must
+ * not fail just because one of its plants is outside the editor's scope. The
+ * masters UI only offers in-scope plants for new assignments.
+ */
+export function plantScopeViolation(user: User | null, payload: unknown): boolean {
+  if (!user || user.role === 'admin') return false
+  const scope = user.plant_ids
+  if (!Array.isArray(scope) || scope.length === 0) return false // unrestricted
+  if (!payload || typeof payload !== 'object') return false
+  const pid = (payload as Record<string, unknown>).plant_id
+  if (pid == null || pid === '') return false
+  return !scope.map(Number).includes(Number(pid))
+}
+
 /** Authoritative check: may this user call this API method? */
 export function can(user: User | null, method: string): boolean {
   if (!user) return false

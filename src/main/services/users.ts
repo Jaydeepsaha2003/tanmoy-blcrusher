@@ -14,6 +14,7 @@ interface UserRow {
   access_level: AccessLevel
   modules: string
   edit_modules: string | null
+  plant_ids: string | null
   active: number
   created_at: string
 }
@@ -31,6 +32,26 @@ function parseModuleList(raw: string | null | undefined): ModuleKey[] {
   }
 }
 
+function parsePlantIds(raw: string | null | undefined): number[] {
+  try {
+    const arr = JSON.parse(raw || '[]')
+    return Array.isArray(arr) ? sanitizePlantIds(arr) : []
+  } catch {
+    return []
+  }
+}
+
+/** Keep only distinct positive integer plant ids. Empty = all plants (unrestricted). */
+function sanitizePlantIds(v: unknown): number[] {
+  if (!Array.isArray(v)) return []
+  const out = new Set<number>()
+  for (const x of v) {
+    const n = Number(x)
+    if (Number.isInteger(n) && n > 0) out.add(n)
+  }
+  return Array.from(out)
+}
+
 function toUser(row: UserRow): User {
   return {
     id: row.id,
@@ -40,6 +61,8 @@ function toUser(row: UserRow): User {
     access_level: row.access_level,
     modules: parseModuleList(row.modules),
     edit_modules: parseModuleList(row.edit_modules),
+    // Admins are always unrestricted regardless of any stored value.
+    plant_ids: row.role === 'admin' ? [] : parsePlantIds(row.plant_ids),
     active: row.active,
     created_at: row.created_at
   }
@@ -108,7 +131,19 @@ export interface UserInput {
   access_level: AccessLevel
   modules: ModuleKey[]
   edit_modules?: ModuleKey[]
+  /** Plants this staff user may access. Empty = all plants. Ignored for admins. */
+  plant_ids?: number[]
   active?: boolean | number
+}
+
+/** Resolve stored plant scope: admins get all (empty); staff keep only real plant ids. */
+async function buildPlantIds(role: Role, plantIds: number[] | undefined): Promise<number[]> {
+  if (role === 'admin') return []
+  const wanted = sanitizePlantIds(plantIds)
+  if (wanted.length === 0) return []
+  const rows = (await getDb().prepare(`SELECT id FROM plants`).all()) as { id: number }[]
+  const real = new Set(rows.map((r) => r.id))
+  return wanted.filter((id) => real.has(id))
 }
 
 export async function createUser(p: UserInput): Promise<User> {
@@ -125,10 +160,11 @@ export async function createUser(p: UserInput): Promise<User> {
 
   const role: Role = p.role === 'admin' ? 'admin' : 'staff'
   const access = buildAccess(role, p.modules, p.edit_modules ?? [])
+  const plantIds = await buildPlantIds(role, p.plant_ids)
   const info = await d
     .prepare(
-      `INSERT INTO users (username, name, password_hash, role, access_level, modules, edit_modules, active)
-       VALUES (@username,@name,@password_hash,@role,@access_level,@modules,@edit_modules,@active)`
+      `INSERT INTO users (username, name, password_hash, role, access_level, modules, edit_modules, plant_ids, active)
+       VALUES (@username,@name,@password_hash,@role,@access_level,@modules,@edit_modules,@plant_ids,@active)`
     )
     .run({
       username,
@@ -138,6 +174,7 @@ export async function createUser(p: UserInput): Promise<User> {
       access_level: access.accessLevel,
       modules: JSON.stringify(access.modules),
       edit_modules: JSON.stringify(access.editModules),
+      plant_ids: JSON.stringify(plantIds),
       active: p.active === false ? 0 : 1
     })
   return toUser(await d.prepare(`SELECT * FROM users WHERE id = ?`).get(Number(info.lastInsertRowid)) as UserRow)
@@ -166,13 +203,14 @@ export async function updateUser(p: UserInput): Promise<User> {
   }
 
   const access = buildAccess(role, p.modules, p.edit_modules ?? [])
+  const plantIds = await buildPlantIds(role, p.plant_ids)
   const passwordHash = p.password && p.password.length > 0 ? hashPassword(p.password) : old.password_hash
   if (p.password && p.password.length > 0 && p.password.length < 4) {
     throw new Error('Password must be at least 4 characters.')
   }
   await d.prepare(
     `UPDATE users SET username=@username, name=@name, password_hash=@password_hash,
-       role=@role, access_level=@access_level, modules=@modules, edit_modules=@edit_modules, active=@active WHERE id=@id`
+       role=@role, access_level=@access_level, modules=@modules, edit_modules=@edit_modules, plant_ids=@plant_ids, active=@active WHERE id=@id`
   ).run({
     id: p.id,
     username,
@@ -182,6 +220,7 @@ export async function updateUser(p: UserInput): Promise<User> {
     access_level: access.accessLevel,
     modules: JSON.stringify(access.modules),
     edit_modules: JSON.stringify(access.editModules),
+    plant_ids: JSON.stringify(plantIds),
     active
   })
   return toUser(await d.prepare(`SELECT * FROM users WHERE id = ?`).get(p.id) as UserRow)

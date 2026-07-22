@@ -411,7 +411,19 @@ function MenuSearch(): React.JSX.Element {
 
 function PlantSwitcher(): React.JSX.Element {
   const { plantId, setPlantId } = usePlant()
+  const { user } = usePerms()
   const { data: plants = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
+  // A plant-restricted user works one of their plants at a time — no "All Plants"
+  // (which would span the whole company). Admins/unrestricted users keep it.
+  const restricted = !!user && user.role !== 'admin' && (user.plant_ids?.length ?? 0) > 0
+
+  // Keep the active plant valid for the user: restricted users always have one of
+  // their own plants selected, even if a stale/foreign id was stored.
+  React.useEffect(() => {
+    if (!restricted || plants.length === 0) return
+    if (!plantId || !plants.some((p) => p.id === plantId)) setPlantId(plants[0].id)
+  }, [restricted, plants, plantId, setPlantId])
+
   return (
     <div className="relative">
       <Factory
@@ -423,7 +435,7 @@ function PlantSwitcher(): React.JSX.Element {
         onChange={(e) => setPlantId(e.target.value ? Number(e.target.value) : undefined)}
         className="h-8 rounded-md border border-input bg-background pl-8 pr-3 text-sm font-medium shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <option value="">All Plants</option>
+        {!restricted && <option value="">All Plants</option>}
         {plants.map((p) => (
           <option key={p.id} value={p.id}>
             {p.name}

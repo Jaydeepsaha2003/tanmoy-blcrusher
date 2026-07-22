@@ -1176,6 +1176,12 @@ CREATE TABLE IF NOT EXISTS plant_cash_entries (
   created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_pcash_plant ON plant_cash_entries(plant_id)`
+  },
+  {
+    // Plant-wise user access. JSON array of plant ids a staff user may access;
+    // NULL/empty = all plants (unrestricted). Admins are always unrestricted.
+    id: '041_user_plant_ids',
+    sql: `ALTER TABLE users ADD COLUMN plant_ids TEXT`
   }
 ]
 
@@ -1315,6 +1321,8 @@ async function sqliteLegacyMigrate(adapter: Adapter): Promise<void> {
   await addColumn('employees', 'dl_no', `TEXT NOT NULL DEFAULT ''`)
   await addColumn('employees', 'bank_account', `TEXT NOT NULL DEFAULT ''`)
   await addColumn('employees', 'bank_ifsc', `TEXT NOT NULL DEFAULT ''`)
+
+  await addColumn('users', 'plant_ids', 'TEXT')
 }
 
 /**

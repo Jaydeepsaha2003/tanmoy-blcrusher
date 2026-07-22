@@ -5,7 +5,7 @@ import { handlers } from '../src/main/handlers'
 import { authenticate, getUserById } from '../src/main/services/users'
 import { runWithUser } from '../src/main/context'
 import { logActivity } from '../src/main/services/audit'
-import { can, isWriteMethod, SELF_METHODS } from '../src/shared/permissions'
+import { can, isWriteMethod, SELF_METHODS, plantScopeViolation } from '../src/shared/permissions'
 import type { User } from '../src/shared/types'
 import {
   createSession,
@@ -119,6 +119,9 @@ app.post('/api/call', async (req, res) => {
     if (!user) return res.status(401).json({ error: 'Not authenticated.' })
     if (!can(user, method)) {
       return res.status(403).json({ error: 'You do not have permission to do that.' })
+    }
+    if (plantScopeViolation(user, payload)) {
+      return res.status(403).json({ error: 'You do not have access to that plant.' })
     }
     const fn = handlers[method]
     if (!fn) return res.status(400).json({ error: `Unknown API method: ${method}` })

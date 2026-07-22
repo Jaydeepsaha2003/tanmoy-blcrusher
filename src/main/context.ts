@@ -14,3 +14,14 @@ export function runWithUser<T>(user: User | null, fn: () => Promise<T>): Promise
 export function getCurrentUser(): User | null {
   return store.getStore() ?? null
 }
+
+/**
+ * Plant ids the current user is limited to. Empty array = unrestricted (admin or a
+ * staff user with no plant restriction) — callers treat empty as "all plants".
+ * Aggregate/cross-plant reads use this to stay within the user's plants even when
+ * no explicit plant_id is supplied.
+ */
+export function currentPlantScope(): number[] {
+  const u = getCurrentUser()
+  return u && u.role !== 'admin' && Array.isArray(u.plant_ids) ? u.plant_ids : []
+}

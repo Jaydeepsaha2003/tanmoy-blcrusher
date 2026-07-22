@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, ShieldCheck, UserCog } from 'lucide-react'
+import { Plus, Pencil, Trash2, ShieldCheck, UserCog, Factory } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { User, Role, ModuleKey } from '@shared/types'
 import { STAFF_MODULES, ROLE_PRESETS } from '@shared/permissions'
@@ -9,11 +9,11 @@ import { usePerms } from '@/lib/user'
 import {
   Button,
   Input,
-  Select,
   SearchSelect,
   Field,
   Badge,
   Modal,
+  PlantCheckboxes,
   Table,
   THead,
   TBody,
@@ -35,6 +35,7 @@ interface Form {
   role: Role
   modules: ModuleKey[]
   edit_modules: ModuleKey[]
+  plant_ids: number[]
 }
 
 export function UsersPage(): React.JSX.Element {
@@ -42,6 +43,7 @@ export function UsersPage(): React.JSX.Element {
   const toast = useToast()
   const { user: me } = usePerms()
   const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: api.users.list })
+  const { data: plants = [] } = useQuery({ queryKey: ['plants'], queryFn: api.plants.list })
   const [form, setForm] = React.useState<Form | null>(null)
 
   const save = useMutation({
@@ -55,7 +57,7 @@ export function UsersPage(): React.JSX.Element {
   })
 
   function openNew(): void {
-    setForm({ username: '', name: '', password: '', role: 'staff', modules: [], edit_modules: [] })
+    setForm({ username: '', name: '', password: '', role: 'staff', modules: [], edit_modules: [], plant_ids: [] })
   }
   function openEdit(u: User): void {
     setForm({
@@ -65,8 +67,16 @@ export function UsersPage(): React.JSX.Element {
       password: '',
       role: u.role,
       modules: u.modules,
-      edit_modules: u.edit_modules
+      edit_modules: u.edit_modules,
+      plant_ids: u.plant_ids ?? []
     })
+  }
+  function togglePlant(id: number): void {
+    if (!form) return
+    const plant_ids = form.plant_ids.includes(id)
+      ? form.plant_ids.filter((x) => x !== id)
+      : [...form.plant_ids, id]
+    setForm({ ...form, plant_ids })
   }
   async function remove(u: User): Promise<void> {
     const ok = await confirmDialog({ title: 'Delete user', message: `Delete user "${u.username}"?` })
@@ -147,9 +157,18 @@ export function UsersPage(): React.JSX.Element {
                     )}
                   </TD>
                   <TD className="text-sm text-muted-foreground">
-                    {u.role === 'admin'
-                      ? 'Everything'
-                      : `${u.modules.length} module${u.modules.length === 1 ? '' : 's'} · ${u.edit_modules.length} editable`}
+                    {u.role === 'admin' ? (
+                      'Everything'
+                    ) : (
+                      <>
+                        {u.modules.length} module{u.modules.length === 1 ? '' : 's'} · {u.edit_modules.length} editable
+                        <div className="text-xs">
+                          {u.plant_ids && u.plant_ids.length > 0
+                            ? `${u.plant_ids.length} plant${u.plant_ids.length === 1 ? '' : 's'}`
+                            : 'All plants'}
+                        </div>
+                      </>
+                    )}
                   </TD>
                   <TD>
                     {u.active ? (
@@ -215,6 +234,18 @@ export function UsersPage(): React.JSX.Element {
 
             {form.role === 'staff' && (
               <>
+                <div>
+                  <div className="mb-1.5 flex items-center gap-2 text-sm font-medium text-foreground/80">
+                    <Factory size={15} /> Plant access
+                  </div>
+                  <PlantCheckboxes plants={plants} selected={form.plant_ids} onToggle={togglePlant} />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Tick the plants this user may work in. They'll only see those plants in the switcher and
+                    every plant dropdown, and can't open another plant's data.{' '}
+                    <b>Select none = access to all plants.</b>
+                  </p>
+                </div>
+
                 <div>
                   <div className="mb-1.5 flex items-center gap-2 text-sm font-medium text-foreground/80">
                     <UserCog size={15} /> Quick presets
